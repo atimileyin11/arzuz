@@ -1,0 +1,59 @@
+# Arzuz — Netlify configuration
+
+[build]
+  publish = "."
+
+# Clean URLs: /register instead of /register.html
+[[redirects]]
+  from = "/register"
+  to   = "/register.html"
+  status = 200
+
+[[redirects]]
+  from = "/list"
+  to   = "/owner-list.html"
+  status = 200
+
+[[redirects]]
+  from = "/my-building"
+  to   = "/scout.html"
+  status = 200
+
+[[redirects]]
+  from = "/safety"
+  to   = "/safety.html"
+  status = 200
+
+[[redirects]]
+  from = "/privacy"
+  to   = "/privacy.html"
+  status = 200
+
+[[redirects]]
+  from = "/terms"
+  to   = "/terms.html"
+  status = 200
+
+# API routes → Netlify Functions
+[[redirects]]
+  from = "/api/*"
+  to   = "/.netlify/functions/:splat"
+  status = 200
+
+# Never cache config — you will change the session and keys.
+[[headers]]
+  for = "/assets/config.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

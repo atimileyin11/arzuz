@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Register my building — Arzuz</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" href="assets/icons/favicon.ico" sizes="any">
+<link rel="icon" href="assets/icons/icon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<meta property="og:title" content="Arzuz — student housing in Malete you can verify before you pay">
+<meta property="og:description" content="Tell us the room you need and we'll find it. Real prices, honest reviews from students who live there, no agent fees.">
+<meta property="og:image" content="assets/social/og-image.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="assets/arzuz.css">
+</head>
+<body>
+<div class="wrap pad"><div id="form"></div></div>
+<script src="assets/config.js"></script>
+<script src="assets/data.js"></script>
+<script src="assets/notify.js"></script>
+<script src="assets/submit.js"></script>
+<script src="assets/whatsapp.js"></script>
+<script src="assets/app.js"></script>
+<script>
+
+Arzuz.chrome('student');
+Arzuz.form({
+  table:'scout_submissions',
+  backHref:'index.html', backLabel:'\u2190 Back to home',
+  steps:[
+   {k:'where', h:"Where do you live?",
+    f:[["area","Street or area name","text"],["rooms","How many rooms in the building?","number"]]},
+   {k:'pin', h:"Drop a pin at the gate",
+    hint:"Stand at the entrance and tap. This is how we work out the real walking distance to campus instead of trusting a guess.",
+    f:[["pin","Location","pin"]]},
+   {k:'paid', h:"What do you actually pay?",
+    hint:"The real number for the session \u2014 not the asking price. We never show which tenant told us.",
+    f:[["amt","Rent per session (\u20A6)","number"],["lp","Who collects your rent \u2014 number","tel"]]},
+   {k:'who', h:"Who collects the rent?",
+    hint:"Many owners never meet their tenants. This tells us who is actually running the compound.",
+    o:["The owner","A caretaker","An agent","I am not sure"]},
+   {k:'ut', h:"What does it actually have?", hint:"Only tick what genuinely works.", c:UTILITIES},
+   {k:'vac', h:"Any room becoming free soon?",
+    hint:"The most useful thing you can tell us \u2014 it reaches us before it reaches any agent.",
+    o:["No","Yes, this month","Yes, next session","Not sure"]},
+   {k:'ct', h:"Where should we reach you?",
+    hint:"So we can credit you when a student moves in through your listing.",
+    f:[["first","First name","text"],["phone","WhatsApp number","tel"]]}
+  ],
+  done:
+   '<div class="done"><div class="m"><span>az</span></div><h3>That is genuinely useful.</h3>'+
+   '<p>You know this building better than any agent does. We will verify it and add it with a '+
+   '<b>Community verified</b> badge.</p>'+
+   '<p class="sm">What you pay is stored privately and only ever shown combined with other tenants. '+
+   'Your name is never attached to it.</p>'+
+   '<div class="nav"><a class="next" href="index.html">Done</a></div></div>'
+});
+
+Arzuz.footer();
+</script>
+</body>
+</html>

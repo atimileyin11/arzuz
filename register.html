@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tell us what you need — Arzuz</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" href="assets/icons/favicon.ico" sizes="any">
+<link rel="icon" href="assets/icons/icon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<meta property="og:title" content="Arzuz — student housing in Malete you can verify before you pay">
+<meta property="og:description" content="Tell us the room you need and we'll find it. Real prices, honest reviews from students who live there, no agent fees.">
+<meta property="og:image" content="assets/social/og-image.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="assets/arzuz.css">
+</head>
+<body>
+<div class="wrap pad"><div id="form"></div></div>
+<script src="assets/config.js"></script>
+<script src="assets/data.js"></script>
+<script src="assets/notify.js"></script>
+<script src="assets/submit.js"></script>
+<script src="assets/whatsapp.js"></script>
+<script src="assets/app.js"></script>
+<script>
+
+Arzuz.chrome('student');
+Arzuz.form({
+  table:'demand_records',
+  backHref:'index.html', backLabel:'\u2190 Back to home',
+  steps:[
+   {k:'type', h:"What kind of room?", o:ROOM_TYPES.concat(["Not sure yet"])},
+   {k:'budget', h:"What's your maximum for the session?",
+    hint:"Pick the band you can realistically afford.",
+    o:["Under \u20A6100,000","\u20A6100,000 \u2013 \u20A6150,000","\u20A6150,000 \u2013 \u20A6200,000",
+       "\u20A6200,000 \u2013 \u20A6250,000","Above \u20A6250,000"]},
+   {k:'dist', h:"How far from campus can you go?",
+    o:["Near \u2014 under 10 min walk","Mid \u2014 10 to 20 min","Far \u2014 over 20 min","Doesn't matter"]},
+   {k:'when', h:"When do you need it?",
+    o:["This session","Next session","Within 3 months","Flexible"]},
+   {k:'age', h:"How old are you?",
+    hint:"We ask because anyone under 18 gets extra protection \u2014 see <a href=\'safety.html\'>our safety page</a>.",
+    o:["Under 18","18 to 20","21 to 24","25 or older"]},
+   {k:'ct', h:"Where should we message you?",
+    hint:"Matches come on WhatsApp. Your number is never shown publicly.",
+    f:[["first","First name","text"],["phone","WhatsApp number","tel"]]},
+   {k:'guardian', h:"A parent or guardian's number",
+    hint:"You told us you are under 18. We send them everything we send you, and we will not arrange a viewing for you on your own. This is the one question we cannot skip.",
+    onlyIf:function(a){ return a.age === 'Under 18'; },
+    f:[["g_name","Their name","text"],["g_phone","Their WhatsApp number","tel"]]},
+   {k:'pain', h:"What's wrong with where you live now?",
+    hint:"Helps us know what to fix. Skip if you like.", opt:true,
+    ta:"No water for two weeks. Landlord will not respond."}
+  ],
+  done:
+   '<div class="done" style="padding-bottom:0"><div class="m"><span>az</span></div>'+
+   '<h3>You are on the list.</h3>'+
+   '<p>We are talking to landlords in Malete now, and we will message you on WhatsApp as soon as '+
+   'something matches what you asked for.</p>'+
+   '<p class="sm">You joined early enough to be a <b style="color:var(--stamp)">Founding Member</b> '+
+   '\u2014 your reviews carry a badge other students can see.</p></div>'+
+   '<div class="blk" style="border-bottom:none"><h3>What a match looks like</h3>'+
+   '<div class="phone"><div class="wam"><div class="from">Arzuz</div>'+
+   'Found one. Self-contain on Campus Road, 11 minutes from the main gate, \u20A6185,000 for the '+
+   'session. Water and generator confirmed by a student living there.<br>'+
+   '<span class="lnk">arzuz.com/\u2026</span><div class="tm">09:14</div></div></div>'+
+   '<p style="font-size:13.5px;color:var(--mid);margin-top:14px;line-height:1.5">No app to open, '+
+   'no notification to enable. It arrives where students already are.</p>'+
+   '<div class="nav"><a class="next" href="index.html">Done</a></div></div>'
+});
+
+Arzuz.footer();
+</script>
+</body>
+</html>

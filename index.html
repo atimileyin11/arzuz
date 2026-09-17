@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arzuz — Student housing in Malete you can verify before you pay</title>
+  <meta name="description"
+    content="Tell us the room you need and we'll find it. Real prices, honest reviews from students who live there, no agent fees.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap"
+    rel="stylesheet">
+  <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
+  <link rel="icon" href="assets/icons/icon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <meta property="og:title" content="Arzuz — student housing in Malete you can verify before you pay">
+  <meta property="og:description"
+    content="Tell us the room you need and we'll find it. Real prices, honest reviews from students who live there, no agent fees.">
+  <meta property="og:image" content="assets/social/og-image.png">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="assets/arzuz.css">
+  <style>
+    /* ================= homepage specific premium styles ================= */
+    .h-wrap {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    @media(max-width: 640px) {
+      .h-wrap {
+        padding: 0 18px;
+      }
+    }
+
+    /* ---- reveal system ---- */
+    .rv {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.8s var(--ease-spring), transform 0.8s var(--ease-spring);
+    }
+
+    .rv.in {
+      opacity: 1;
+      transform: none;
+    }
+
+    @media(prefers-reduced-motion: reduce) {
+      .rv {
+        opacity: 1;
+        transform: none;
+        transition: none;
+      }
+    }
+
+    /* ---- hero ---- */
+    .h-hero {
+      position: relative;
+      padding: 82px 0 98px;
+      overflow: hidden;
+      background:
+        radial-gradient(ellipse at 85% 15%, rgba(124, 58, 237, 0.12) 0%, transparent 55%),
+        radial-gradient(ellipse at 15% 85%, rgba(107, 59, 167, 0.08) 0%, transparent 55%);
+    }
+
+    .h-eyebrow {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--stamp-vibrant);
+      margin-bottom: 28px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: rgba(124, 58, 237, 0.08);
+      border-radius: 20px;
+      border: 1px solid rgba(124, 58, 237, 0.18);
+      backdrop-filter: blur(8px);
+    }
+
+    .h-eyebrow::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--stamp-vibrant);
+      display: inline-block;
+      box-shadow: 0 0 10px var(--stamp-vibrant);
+    }
+
+    .h-h1 {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: clamp(44px, 9.6vw, 86px);
+      line-height: .95;
+      letter-spacing: -.045em;
+      max-width: 12ch;
+      margin-bottom: 28px;
+      text-wrap: balance;
+    }
+
+    .h-h1 .ln {
+      display: block;
+      overflow: hidden;
+    }
+
+    .h-h1 .ln i {
+      display: block;
+      font-style: normal;
+      transform: translateY(105%);
+      animation: rise 0.95s var(--ease-spring) forwards;
+    }
+
+    .h-h1 .ln:nth-child(2) i {
+      animation-delay: .1s;
+    }
+
+    .h-h1 .ln:nth-child(3) i {
+      animation-delay: .2s;
+    }
+
+    .h-h1 em {
+      font-style: normal;
+      background: linear-gradient(135deg, var(--stamp) 0%, var(--stamp-vibrant) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    @keyframes rise {
+      to {
+        transform: none;
+      }
+    }
+
+    .h-lede {
+      font-size: clamp(17.5px, 2.3vw, 21px);
+      line-height: 1.58;
+      color: var(--body-c);
+      max-width: 44ch;
+      margin-bottom: 38px;
+      opacity: 0;
+      animation: fadeUp 0.85s var(--ease-spring) 0.42s forwards;
+      text-wrap: pretty;
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(18px);
+      }
+
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    .h-doors {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      opacity: 0;
+      animation: fadeUp 0.85s var(--ease-spring) 0.55s forwards;
+    }
+
+    .h-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16.5px;
+      font-weight: 700;
+      padding: 17px 30px;
+      border-radius: 10px;
+      text-decoration: none;
+      border: 2px solid var(--stamp);
+      transition: transform 0.25s var(--ease-bounce), box-shadow 0.25s ease, background 0.25s ease;
+    }
+
+    .h-btn:active {
+      transform: scale(0.965);
+    }
+
+    .h-p {
+      background: linear-gradient(135deg, var(--stamp) 0%, var(--stamp-vibrant) 100%);
+      color: #fff;
+      border: none;
+      box-shadow: 0 8px 24px var(--stamp-glow);
+    }
+
+    .h-p:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 14px 32px rgba(124, 58, 237, 0.4);
+    }
+
+    .h-s {
+      background: var(--glass-bg-light);
+      backdrop-filter: blur(10px);
+      color: var(--stamp-vibrant);
+      border-color: rgba(124, 58, 237, 0.3);
+    }
+
+    .h-s:hover {
+      transform: translateY(-3px);
+      background: var(--stamp-soft);
+      border-color: var(--stamp-vibrant);
+    }
+
+    .h-third {
+      margin-top: 24px;
+      font-size: 15px;
+      opacity: 0;
+      animation: fadeUp 0.85s var(--ease-spring) 0.68s forwards;
+    }
+
+    .h-third a {
+      color: var(--stamp-vibrant);
+      font-weight: 600;
+      text-decoration: underline;
+      text-underline-offset: 4px;
+    }
+
+    /* hero stamp mark */
+    .h-stamp {
+      position: absolute;
+      right: -24px;
+      top: 96px;
+      width: 210px;
+      height: 210px;
+      border-radius: 50%;
+      border: 3px solid var(--stamp-vibrant);
+      color: var(--stamp-vibrant);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      pointer-events: none;
+      transform: rotate(-8deg);
+      animation: press 0.85s var(--ease-spring) 0.34s both;
+      background: rgba(250, 247, 242, 0.7);
+      backdrop-filter: var(--glass-blur);
+      box-shadow: 0 10px 30px rgba(124, 58, 237, 0.15);
+    }
+
+    .h-stamp::after {
+      content: "";
+      position: absolute;
+      inset: 10px;
+      border: 1.5px solid var(--stamp-vibrant);
+      border-radius: 50%;
+      opacity: .45;
+    }
+
+    .h-stamp b {
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: .2em;
+      display: block;
+    }
+
+    .h-stamp strong {
+      font-family: var(--display);
+      font-size: 27px;
+      font-weight: 800;
+      letter-spacing: -.02em;
+      display: block;
+      margin: 4px 0;
+    }
+
+    .h-stamp span {
+      font-size: 11px;
+      letter-spacing: .14em;
+      display: block;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .h-stamp hr {
+      width: 80px;
+      border: none;
+      border-top: 1.5px solid var(--stamp-vibrant);
+      opacity: .5;
+      margin: 0;
+    }
+
+    @keyframes press {
+      0% {
+        transform: rotate(-8deg) scale(2.2);
+        opacity: 0;
+      }
+
+      58% {
+        transform: rotate(-8deg) scale(.95);
+        opacity: 1;
+      }
+
+      100% {
+        transform: rotate(-8deg) scale(1);
+        opacity: 1;
+      }
+    }
+
+    @media(min-width: 760px) {
+      .h-stamp {
+        right: 30px;
+        top: 104px;
+        width: 228px;
+        height: 228px;
+      }
+    }
+
+    @media(max-width: 759px) {
+      .h-hero {
+        padding-bottom: 144px;
+      }
+
+      .h-stamp {
+        width: 166px;
+        height: 166px;
+        right: -40px;
+        top: auto;
+        bottom: -32px;
+        opacity: .45;
+      }
+
+      .h-stamp strong {
+        font-size: 22px;
+      }
+
+      .h-stamp hr {
+        width: 62px;
+      }
+
+      .h-doors {
+        flex-direction: column;
+      }
+
+      .h-doors .h-btn {
+        width: 100%;
+        text-align: center;
+      }
+
+      .h-h1 {
+        max-width: none;
+      }
+    }
+
+    /* ---- open strip ---- */
+    .h-strip {
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: var(--stamp-soft);
+      backdrop-filter: blur(8px);
+      padding: 18px 0;
+    }
+
+    .h-strip p {
+      font-size: 15.5px;
+      color: var(--body-c);
+      margin: 0;
+      font-weight: 500;
+    }
+
+    .h-strip b {
+      color: var(--stamp-vibrant);
+    }
+
+    /* ---- signature dark band section ---- */
+    .h-band {
+      background: #08060E;
+      color: #fff;
+      padding: 92px 0 100px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .h-band::before {
+      content: "";
+      position: absolute;
+      top: -120px;
+      right: -120px;
+      width: 500px;
+      height: 500px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(139, 92, 246, 0.3) 0%, transparent 65%);
+      pointer-events: none;
+    }
+
+    .h-band::after {
+      content: "";
+      position: absolute;
+      bottom: -100px;
+      left: -100px;
+      width: 400px;
+      height: 400px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.18) 0%, transparent 65%);
+      pointer-events: none;
+    }
+
+    .h-band .lbl {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: #C4B5FD;
+      margin-bottom: 24px;
+    }
+
+    .h-band h2 {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: clamp(30px, 4.8vw, 46px);
+      line-height: 1.08;
+      letter-spacing: -.038em;
+      color: #fff;
+      max-width: 20ch;
+      margin-bottom: 18px;
+      text-wrap: balance;
+    }
+
+    .h-band .sub {
+      font-size: 16px;
+      color: #C4B8D1;
+      max-width: 56ch;
+      margin-bottom: 46px;
+      line-height: 1.58;
+    }
+
+    .h-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 1fr;
+      gap: 38px;
+      align-items: start;
+    }
+
+    @media(max-width: 760px) {
+      .h-grid {
+        grid-template-columns: 1fr;
+        gap: 34px;
+      }
+    }
+
+    .h-bars .row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .h-bars .k {
+      width: 122px;
+      flex: none;
+      font-size: 14px;
+      color: #E0D7E8;
+      font-variant-numeric: tabular-nums;
+      font-weight: 500;
+    }
+
+    .h-bars .t {
+      flex: 1;
+      height: 28px;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 7px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .h-bars .t i {
+      display: block;
+      height: 100%;
+      width: 0;
+      background: var(--stamp);
+      border-radius: 7px;
+      transition: width 0.9s var(--ease-spring), background 0.3s ease;
+    }
+
+    .h-bars .t i.lit {
+      background: linear-gradient(90deg, #8B5CF6 0%, #A855F7 100%);
+      box-shadow: 0 0 18px rgba(168, 85, 247, 0.5);
+    }
+
+    .h-bars .v {
+      width: 36px;
+      text-align: right;
+      flex: none;
+      font-size: 14px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: #fff;
+    }
+
+    .h-ctl {
+      background: var(--glass-bg-dark);
+      backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--glass-border-dark);
+      border-radius: 16px;
+      padding: 30px 28px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+    }
+
+    .h-ctl .cl {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: #C4B5FD;
+      margin-bottom: 18px;
+    }
+
+    .h-ctl .pv {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: 52px;
+      letter-spacing: -.04em;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      margin-bottom: 22px;
+      color: #fff;
+      text-shadow: 0 4px 16px rgba(139, 92, 246, 0.3);
+    }
+
+    .h-ctl input[type=range] {
+      width: 100%;
+      accent-color: #A855F7;
+      height: 34px;
+      cursor: pointer;
+    }
+
+    .h-out {
+      margin-top: 24px;
+      font-size: 17px;
+      line-height: 1.5;
+      color: #EDE5F5;
+    }
+
+    .h-out b {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: 40px;
+      color: #fff;
+      letter-spacing: -.03em;
+      font-variant-numeric: tabular-nums;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .h-note {
+      margin-top: 22px;
+      font-size: 15px;
+      line-height: 1.55;
+      padding: 16px 20px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #E2D9EC;
+    }
+
+    .h-cap {
+      margin-top: 34px;
+      font-size: 13.5px;
+      color: #9A8CA8;
+    }
+
+    /* ---- generic sections ---- */
+    .h-sec {
+      padding: 90px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .h-lbl {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--stamp-vibrant);
+      margin-bottom: 22px;
+    }
+
+    .h-h2 {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: clamp(30px, 4.6vw, 44px);
+      line-height: 1.1;
+      letter-spacing: -.035em;
+      max-width: 22ch;
+      margin-bottom: 20px;
+      text-wrap: balance;
+    }
+
+    .h-sub {
+      font-size: 17px;
+      line-height: 1.6;
+      color: var(--body-c);
+      max-width: 60ch;
+    }
+
+    /* problem quote */
+    .h-quote {
+      margin-top: 40px;
+      padding: 32px 36px;
+      background: var(--surface);
+      backdrop-filter: blur(12px);
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);
+    }
+
+    .h-quote p {
+      font-size: clamp(19px, 2.6vw, 24px);
+      line-height: 1.48;
+      font-style: italic;
+      color: var(--ink);
+      margin-bottom: 16px;
+    }
+
+    .h-quote p b {
+      font-style: normal;
+      color: var(--stamp-vibrant);
+    }
+
+    .h-quote cite {
+      font-size: 14px;
+      color: var(--mid);
+      font-style: normal;
+      font-weight: 600;
+    }
+
+    /* steps */
+    .h-steps {
+      margin-top: 46px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .h-step {
+      background: var(--glass-bg-light);
+      backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--glass-border-light);
+      border-radius: 14px;
+      padding: 28px 32px;
+      display: flex;
+      gap: 24px;
+      align-items: flex-start;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.03);
+      transition: transform 0.28s var(--ease-spring), box-shadow 0.28s var(--ease-spring), border-color 0.28s ease;
+    }
+
+    .h-step:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 16px 36px rgba(107, 59, 167, 0.08);
+      border-color: rgba(124, 58, 237, 0.3);
+    }
+
+    .h-step .n {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: 16.5px;
+      color: #fff;
+      background: linear-gradient(135deg, var(--stamp) 0%, var(--stamp-vibrant) 100%);
+      flex: none;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-variant-numeric: tabular-nums;
+      box-shadow: 0 4px 14px var(--stamp-glow);
+    }
+
+    .h-step h3 {
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 21px;
+      letter-spacing: -.02em;
+      margin-bottom: 7px;
+    }
+
+    .h-step p {
+      font-size: 15.5px;
+      color: var(--mid);
+      line-height: 1.58;
+      max-width: 66ch;
+    }
+
+    /* verification */
+    .h-tiers {
+      margin-top: 44px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+    }
+
+    @media(max-width: 760px) {
+      .h-tiers {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .h-tier {
+      background: var(--glass-bg-light);
+      backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--glass-border-light);
+      border-radius: 14px;
+      padding: 28px 26px;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.03);
+      transition: transform 0.28s var(--ease-spring), box-shadow 0.28s var(--ease-spring), border-color 0.28s ease;
+    }
+
+    .h-tier:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
+    }
+
+    .h-tier.lead {
+      border-color: var(--stamp-vibrant);
+      border-width: 2px;
+      box-shadow: 0 10px 30px var(--stamp-glow);
+    }
+
+    .h-badge {
+      display: inline-block;
+      font-size: 11.5px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      padding: 6px 14px;
+      border-radius: 6px;
+      margin-bottom: 18px;
+    }
+
+    .h-tier h3 {
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 19px;
+      margin-bottom: 9px;
+      letter-spacing: -.018em;
+    }
+
+    .h-tier p {
+      font-size: 15px;
+      color: var(--mid);
+      line-height: 1.58;
+    }
+
+    .h-promise {
+      margin-top: 24px;
+      background: linear-gradient(135deg, var(--stamp) 0%, var(--stamp-vibrant) 100%);
+      color: #fff;
+      border-radius: 16px;
+      padding: 32px 36px;
+      box-shadow: 0 16px 40px var(--stamp-glow);
+    }
+
+    .h-promise h3 {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: 24px;
+      margin-bottom: 12px;
+      letter-spacing: -.02em;
+    }
+
+    .h-promise p {
+      font-size: 16px;
+      line-height: 1.62;
+      color: #EDE5F5;
+      max-width: 78ch;
+    }
+
+    /* closing dark section */
+    .h-close {
+      background: #08060E;
+      color: #fff;
+      padding: 92px 0;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .h-close h2 {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: clamp(32px, 5vw, 48px);
+      line-height: 1.08;
+      letter-spacing: -.04em;
+      color: #fff;
+      max-width: 18ch;
+      margin-bottom: 20px;
+    }
+
+    .h-close p {
+      font-size: 17px;
+      color: #C4B8D1;
+      max-width: 54ch;
+      margin-bottom: 40px;
+      line-height: 1.58;
+    }
+
+    .h-close .h-p {
+      background: #fff;
+      color: var(--ink);
+      border: none;
+    }
+
+    .h-close .h-p:hover {
+      box-shadow: 0 12px 36px rgba(255, 255, 255, 0.25);
+      background: #f5f5f5;
+      transform: translateY(-3px);
+    }
+
+    .h-close .h-s {
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(8px);
+    }
+
+    .h-close .h-s:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: #fff;
+      transform: translateY(-3px);
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ============ HERO ============ -->
+  <section class="h-hero">
+    <div class="h-wrap">
+      <div class="h-stamp">
+        <b>ARZUZ</b>
+        <hr>
+        <strong>INSPECTED</strong>
+        <hr>
+        <span id="hsDate"></span>
+      </div>
+      <p class="h-eyebrow">Malete · Kwara State</p>
+      <h1 class="h-h1">
+        <span class="ln"><i>Tell us the</i></span>
+        <span class="ln"><i>room you need.</i></span>
+        <span class="ln"><i><em>We’ll find it.</em></i></span>
+      </h1>
+      <p class="h-lede">Verified student housing in Malete. Real prices, honest reviews from
+        students who actually live there, and no agent fees.</p>
+      <div class="h-doors">
+        <a class="h-btn h-p" href="register.html">I’m looking for a room</a>
+        <a class="h-btn h-s" href="owner-list.html">I have a property</a>
+      </div>
+      <p class="h-third"><a href="scout.html">I already live somewhere — register my building</a></p>
+    </div>
+  </section>
+
+  <div class="h-strip">
+    <div class="h-wrap">
+      <p><b>Registration is open</b> for the 2026/2027 session in Malete.
+        Tell us what you need and we’ll start looking.</p>
+    </div>
+  </div>
+
+  <!-- ============ THE DEMAND CURVE — signature moment ============ -->
+  <section class="h-band">
+    <div class="h-wrap">
+      <p class="lbl rv">Why landlords list with us</p>
+      <h2 class="rv">A landlord who can see the demand curve prices differently.</h2>
+      <p class="sub rv" id="curveNote"></p>
+
+      <div class="h-grid">
+        <div class="h-bars rv" id="bars"></div>
+        <div class="h-ctl rv">
+          <div class="cl">Set your rent per session</div>
+          <div class="pv" id="pv">₦220,000</div>
+          <input type="range" id="sp" min="60000" max="320000" step="5000" value="220000" aria-label="Rent per session">
+          <div class="h-out"><b id="reachN">0</b><span id="reachT"></span></div>
+          <div class="h-note" id="note"></div>
+        </div>
+      </div>
+      <p class="h-cap rv" id="curveCap"></p>
+    </div>
+  </section>
+
+  <!-- ============ PROBLEM ============ -->
+  <section class="h-sec">
+    <div class="h-wrap">
+      <p class="h-lbl rv">The problem</p>
+      <h2 class="h-h2 rv">You pay for a full year before you know whether the water runs.</h2>
+      <p class="h-sub rv">The tenant is a blind buyer. The agent controls the information. And when
+        the water stops in November, there is nobody to tell.</p>
+      <div class="h-quote rv">
+        <p>“Closest you will get to campus, and they know it. Water stops for days at a time and
+          there is no generator. <b>Not worth what they are charging.</b>”</p>
+        <cite>A student in Malete, on a room listed at ₦265,000 a session</cite>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ HOW IT WORKS ============ -->
+  <section class="h-sec">
+    <div class="h-wrap">
+      <p class="h-lbl rv">How it works</p>
+      <h2 class="h-h2 rv">Demand first, then supply.</h2>
+      <div class="h-steps" id="steps"></div>
+    </div>
+  </section>
+
+  <!-- ============ VERIFICATION ============ -->
+  <section class="h-sec">
+    <div class="h-wrap">
+      <p class="h-lbl rv">Verification</p>
+      <h2 class="h-h2 rv">We show you what we know, and what we don’t.</h2>
+      <p class="h-sub rv">A verification without a date is a claim, not a fact. Every stamp carries
+        one, and every inspection carries the name of the person who did it.</p>
+      <div class="h-tiers">
+        <div class="h-tier rv">
+          <span class="h-badge b0">Unverified</span>
+          <h3>Nobody has checked it</h3>
+          <p>Submitted by the landlord. We say so plainly rather than hide it. Visit before you pay
+            anything.</p>
+        </div>
+        <div class="h-tier rv">
+          <span class="h-badge b1">Community verified</span>
+          <h3>A resident confirmed it</h3>
+          <p>Checked by someone who lives there or has been there — but not yet by us.</p>
+        </div>
+        <div class="h-tier rv lead">
+          <span class="h-badge b2">Inspected</span>
+          <h3>We went there ourselves</h3>
+          <p>Water source tested, power hours confirmed with residents, distance measured on foot.
+            Dated and signed.</p>
+        </div>
+      </div>
+      <div class="h-promise rv">
+        <h3>If it does not match, we make it right.</h3>
+        <p>Move into a property we inspected and find the water, power or security are not what we
+          said — we re-inspect within seven days, correct the listing publicly, and Arzuz Care is
+          free for your whole session. Nobody else in this market pays for their own mistake.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CLOSING ============ -->
+  <section class="h-close">
+    <div class="h-wrap">
+      <h2 class="rv">Get in before we launch.</h2>
+      <p class="rv">Students who register now get matched first. Properties listed before launch go
+        live on day one, get verified at no cost, and appear above later listings.</p>
+      <div class="h-doors rv" style="animation:none;opacity:1">
+        <a class="h-btn h-p" href="register.html">I’m looking for a room</a>
+        <a class="h-btn h-s" href="owner-list.html">I have a property</a>
+      </div>
+    </div>
+  </section>
+
+  <script src="assets/config.js"></script>
+  <script src="assets/data.js"></script>
+  <script src="assets/notify.js"></script>
+  <script src="assets/submit.js"></script>
+  <script src="assets/app.js"></script>
+  <script>
+    Arzuz.chrome();
+    document.getElementById('hsDate').textContent = Arzuz.STAMP_DATE;
+
+    /* curve description status */
+    document.getElementById('curveNote').innerHTML = Arzuz.isReal()
+      ? 'Drag the rent. Watch how many students can reach you. Live figures for Malete \u2014 every ' +
+      'student counted registered a specific need and verified their phone number.'
+      : '<b style="color:#C4B5FD">Illustrative figures.</b> Drag the rent to see how the pricing works. ' +
+      'Real numbers appear here as students register, and we never show a count we cannot trace to a record.';
+    document.getElementById('curveCap').textContent = Arzuz.isReal()
+      ? 'Listing is free and there is no commission, whichever number you choose.'
+      : 'Listing is free and there is no commission. Register your property and we will send you the real numbers for your area.';
+
+    /* ---------- steps rendering ---------- */
+    const STEPS = [
+      ['You tell us what you need', 'Room type, budget, how far you can walk, when you are moving. Ninety seconds. No fee, no browsing required.'],
+      ['We take that to landlords', 'Not a pitch — a number. How many students want their room type, and what those students can pay.'],
+      ['Listings get checked', 'Every listing carries a public verification state, so you know how much has actually been confirmed.'],
+      ['You get matched', 'When something fits, we message you on WhatsApp with photos, verified details and reviews.'],
+      ['Residents keep it honest', 'Only students with a verified number can review. Landlords can reply to any review. They cannot delete one.']];
+    document.getElementById('steps').innerHTML = STEPS.map((s, i) =>
+      `<div class="h-step rv"><span class="n">${i + 1}</span><div><h3>${s[0]}</h3><p>${s[1]}</p></div></div>`).join('');
+
+    /* ---------- demand curve interactive slider ---------- */
+    const bars = document.getElementById('bars');
+    const rows = BANDS.map(b => {
+      const lbl = b[0] >= 250000 ? 'Above ₦250k' : `₦${b[0] / 1000}k – ₦${b[1] / 1000}k`;
+      return { lo: b[0], n: b[2], lbl, pct: Math.round(b[2] / 44 * 100) };
+    });
+    bars.innerHTML = rows.map(r =>
+      `<div class="row"><span class="k">${r.lbl}</span><span class="t"><i data-w="${r.pct}" data-lo="${r.lo}"></i></span><span class="v">${r.n}</span></div>`).join('');
+
+    const sp = document.getElementById('sp');
+    function paint() {
+      const p = +sp.value, r = Arzuz.reach(p);
+      document.getElementById('pv').textContent = Arzuz.ng(p);
+      document.getElementById('reachN').textContent = r;
+      document.getElementById('reachT').textContent =
+        ` of the ${DEMAND_TOTAL} students looking in Malete can afford your room.`;
+      bars.querySelectorAll('i').forEach(el => {
+        el.classList.toggle('lit', +el.dataset.lo >= p - 50000 && +el.dataset.lo < p);
+      });
+      const note = document.getElementById('note');
+      if (p > 200000) {
+        note.innerHTML = `Drop to ₦200,000 and <b style="color:#C4B5FD">${Arzuz.reach(200000) - r} more students</b> can see you — filled faster, with no commission taken.`;
+      } else if (p <= 100000) {
+        note.textContent = 'Almost everyone looking can afford this. If your rooms still sit empty, the problem is visibility, not price.';
+      } else {
+        note.innerHTML = `You are priced into the deepest part of the market. <b style="color:#C4B5FD">${r} students</b> can reach you today.`;
+      }
+    }
+    sp.addEventListener('input', paint);
+    paint();
+
+    /* ---------- scroll reveals + bar fill ---------- */
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function fillBars() {
+      bars.querySelectorAll('i').forEach((el, i) => {
+        setTimeout(() => { el.style.width = el.dataset.w + '%'; }, reduce ? 0 : i * 80);
+      });
+    }
+
+    if (reduce) {
+      document.querySelectorAll('.rv').forEach(e => e.classList.add('in'));
+      fillBars();
+    } else {
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach(e => {
+          if (!e.isIntersecting) return;
+          const group = [...e.target.parentElement.querySelectorAll('.rv')];
+          const idx = Math.max(0, group.indexOf(e.target));
+          setTimeout(() => e.target.classList.add('in'), Math.min(idx, 5) * 70);
+          if (e.target === bars) fillBars();
+          io.unobserve(e.target);
+        });
+      }, { threshold: .12, rootMargin: '0px 0px -5% 0px' });
+      document.querySelectorAll('.rv').forEach(e => io.observe(e));
+    }
+
+    /* Header scrolled glass highlight */
+    window.addEventListener('scroll', () => {
+      const header = document.querySelector('header');
+      if (header) header.classList.toggle('scrolled', window.scrollY > 20);
+    });
+
+    Arzuz.footer();
+  </script>
+</body>
+
+</html>
