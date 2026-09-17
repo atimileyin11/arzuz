@@ -733,3 +733,168 @@ textarea {
   margin-bottom: 16px;
   font-weight: 600;
 }
+
+/* ---------- Form Step Guidance & Compulsory Badges ---------- */
+.step-guide-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  padding: 5px 12px;
+  border-radius: 20px;
+  margin-bottom: 14px;
+}
+
+.step-guide-bar.req {
+  background: rgba(124, 58, 237, 0.12);
+  color: var(--stamp-vibrant);
+  border: 1px solid rgba(124, 58, 237, 0.28);
+}
+
+.step-guide-bar.opt {
+  background: rgba(100, 116, 139, 0.12);
+  color: #64748B;
+  border: 1px solid rgba(100, 116, 139, 0.25);
+}
+
+.fld-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.fld-badge-req {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(124, 58, 237, 0.12);
+  color: var(--stamp-vibrant);
+  border: 1px solid rgba(124, 58, 237, 0.25);
+}
+
+.fld-badge-opt {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(100, 116, 139, 0.08);
+  color: #64748B;
+  border: 1px solid rgba(100, 116, 139, 0.2);
+}
+
+.fld-error {
+  font-size: 13px;
+  font-weight: 600;
+  color: #EF4444;
+  margin-top: 6px;
+  display: none;
+  align-items: center;
+  gap: 5px;
+  animation: fadeIn 0.2s ease forwards;
+}
+
+.fld-error.active {
+  display: flex;
+}
+
+.input-error {
+  border-color: #EF4444 !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2) !important;
+  animation: inputShake 0.4s var(--ease-spring);
+}
+
+@keyframes inputShake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+
+.btn-skip {
+  background: none;
+  border: 1.5px dashed rgba(107, 59, 167, 0.35);
+  color: var(--mid);
+  font-family: var(--body);
+  font-size: 14.5px;
+  font-weight: 600;
+  padding: 12px 18px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-skip:hover {
+  background: rgba(124, 58, 237, 0.06);
+  color: var(--stamp-vibrant);
+  border-color: var(--stamp-vibrant);
+  transform: translateY(-1px);
+}
+
+/* ---------- Interactive Leaflet Map Container ---------- */
+.map-wrap {
+  margin-bottom: 18px;
+}
+
+#leaflet-map {
+  height: 280px;
+  width: 100%;
+  border-radius: 12px;
+  border: 1.5px solid rgba(124, 58, 237, 0.25);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  z-index: 10;
+  background: #E5E7EB;
+}
+
+.map-controls-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.map-coords-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--stamp-vibrant);
+  background: rgba(124, 58, 237, 0.1);
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(124, 58, 237, 0.2);
+}
+
+.btn-locate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-locate:hover {
+  border-color: var(--stamp-vibrant);
+  color: var(--stamp-vibrant);
+  background: rgba(124, 58, 237, 0.05);
+}
+

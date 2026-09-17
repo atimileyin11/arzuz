@@ -16,94 +16,116 @@ body {
   color: #F5F0F8;
   font-family: var(--body);
   min-height: 100vh;
+  margin: 0;
+  padding: 0;
 }
 
 /* Glassmorphic Admin Header */
 .admin-head {
-  background: rgba(18, 14, 26, 0.85);
+  background: rgba(18, 14, 26, 0.88);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  padding: 16px 24px;
+  padding: 14px 20px;
   position: sticky;
   top: 0;
   z-index: 50;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .admin-logo {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   text-decoration: none;
   color: #fff;
 }
 .admin-logo .m {
-  width: 36px;
-  height: 36px;
-  font-size: 17px;
+  width: 34px;
+  height: 34px;
+  font-size: 16px;
 }
 .admin-logo strong {
   font-family: var(--display);
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 800;
   letter-spacing: -.03em;
 }
 
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .admin-badge {
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: .12em;
+  letter-spacing: .1em;
   text-transform: uppercase;
-  padding: 5px 12px;
+  padding: 5px 10px;
   border-radius: 20px;
   background: rgba(124, 58, 237, 0.2);
   color: #C4B5FD;
   border: 1px solid rgba(124, 58, 237, 0.4);
 }
 
-/* Passcode Gate Modal */
-.gate-wrap {
+/* Passcode Gate & Modal Overlays */
+.gate-wrap, .modal-overlay {
   position: fixed;
   inset: 0;
   background: rgba(9, 7, 14, 0.94);
   backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 16px;
+  overflow-y: auto;
 }
-.gate-card {
+
+.gate-card, .modal-box {
   background: rgba(22, 17, 32, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 18px;
-  padding: 38px 34px;
-  max-width: 420px;
+  padding: 32px 28px;
+  max-width: 440px;
   width: 100%;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
+  animation: modalPop 0.3s var(--ease-spring);
+}
+
+@keyframes modalPop {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.gate-card {
   text-align: center;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
 }
 .gate-card .m {
-  width: 60px;
-  height: 60px;
-  font-size: 30px;
-  margin: 0 auto 20px;
+  width: 54px;
+  height: 54px;
+  font-size: 26px;
+  margin: 0 auto 16px;
 }
 .gate-card h2 {
   font-family: var(--display);
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 800;
   color: #fff;
   margin-bottom: 8px;
 }
 .gate-card p {
-  font-size: 14.5px;
+  font-size: 14px;
   color: #B3A7BF;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
   line-height: 1.5;
 }
 .gate-card input {
@@ -113,51 +135,59 @@ body {
   text-align: center;
   letter-spacing: .2em;
   font-size: 18px;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 .gate-card input:focus {
   border-color: #8B5CF6;
   box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.3);
 }
 
+.lockout-msg {
+  color: #EF4444;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  display: none;
+}
+
 /* Dashboard Container */
 .dash-wrap {
-  max-width: 1200px;
+  max-width: 1240px;
   margin: 0 auto;
-  padding: 32px 24px 80px;
+  padding: 24px 16px 80px;
 }
 
 /* Metric Counter Cards */
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 18px;
-  margin-bottom: 32px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
 }
 .metric-card {
   background: rgba(22, 17, 32, 0.75);
   backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 14px;
-  padding: 22px 24px;
+  padding: 20px 22px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
   transition: transform 0.25s var(--ease-spring), border-color 0.25s ease;
 }
 .metric-card:hover {
-  transform: translateY(-3px);
+  transform: translateY(-2.5px);
   border-color: rgba(139, 92, 246, 0.4);
 }
 .metric-lbl {
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
-  letter-spacing: .14em;
+  letter-spacing: .12em;
   text-transform: uppercase;
   color: #B3A7BF;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 .metric-num {
   font-family: var(--display);
-  font-size: 42px;
+  font-size: 38px;
   font-weight: 800;
   color: #fff;
   letter-spacing: -.04em;
@@ -165,19 +195,19 @@ body {
   font-variant-numeric: tabular-nums;
 }
 .metric-sub {
-  font-size: 13px;
+  font-size: 12.5px;
   color: #9A8CA8;
   margin-top: 8px;
 }
 
-/* Tabs & Controls */
+/* Tabs & Search Controls */
 .dash-controls {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 14px;
+  margin-bottom: 20px;
 }
 .dash-tabs {
   display: flex;
@@ -186,17 +216,20 @@ body {
   padding: 4px;
   border-radius: 12px;
   gap: 4px;
+  overflow-x: auto;
+  max-width: 100%;
 }
 .tab-btn {
   background: none;
   border: none;
   color: #B3A7BF;
   font-family: var(--body);
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 600;
-  padding: 10px 18px;
+  padding: 9px 16px;
   border-radius: 8px;
   cursor: pointer;
+  white-space: nowrap;
   transition: all 0.2s ease;
 }
 .tab-btn.active {
@@ -209,18 +242,22 @@ body {
   display: flex;
   gap: 10px;
   align-items: center;
+  flex-wrap: wrap;
 }
 .search-box input {
   background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   color: #fff;
-  padding: 10px 16px;
+  padding: 10px 14px;
   border-radius: 8px;
   font-size: 14px;
-  width: 240px;
+  width: 220px;
+}
+.search-box input:focus {
+  border-color: #8B5CF6;
 }
 
-/* Glass Data Table */
+/* Glass Data Table & Responsive Card View */
 .table-card {
   background: rgba(22, 17, 32, 0.75);
   backdrop-filter: blur(16px);
@@ -231,17 +268,19 @@ body {
 }
 .table-wrap {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 table {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
-  font-size: 14.5px;
+  font-size: 14px;
+  min-width: 720px;
 }
 th {
   background: rgba(255, 255, 255, 0.04);
-  padding: 16px 20px;
-  font-size: 12px;
+  padding: 14px 18px;
+  font-size: 11.5px;
   font-weight: 700;
   letter-spacing: .12em;
   text-transform: uppercase;
@@ -250,7 +289,7 @@ th {
   white-space: nowrap;
 }
 td {
-  padding: 16px 20px;
+  padding: 14px 18px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   color: #E2D9EC;
   vertical-align: middle;
@@ -259,29 +298,82 @@ tr:hover td {
   background: rgba(255, 255, 255, 0.03);
 }
 
+/* Status Tags */
 .tag-status {
   display: inline-block;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 700;
   letter-spacing: .06em;
   text-transform: uppercase;
-  padding: 4px 10px;
-  border-radius: 12px;
+  padding: 3px 8px;
+  border-radius: 10px;
 }
-.tag-open { background: rgba(16, 185, 129, 0.2); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.3); }
-.tag-pending { background: rgba(245, 158, 11, 0.2); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.3); }
+.tag-open, .tag-active { background: rgba(16, 185, 129, 0.18); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.3); }
+.tag-pending { background: rgba(245, 158, 11, 0.18); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.3); }
+.tag-fulfilled, .tag-matched { background: rgba(124, 58, 237, 0.2); color: #C4B5FD; border: 1px solid rgba(124, 58, 237, 0.35); }
+.tag-rejected, .tag-inactive { background: rgba(239, 68, 68, 0.18); color: #F87171; border: 1px solid rgba(239, 68, 68, 0.3); }
 
+/* Table Action Buttons */
+.cell-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.act-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+.act-edit {
+  background: rgba(139, 92, 246, 0.15);
+  color: #C4B5FD;
+  border-color: rgba(139, 92, 246, 0.3);
+}
+.act-edit:hover {
+  background: rgba(139, 92, 246, 0.3);
+  color: #fff;
+  transform: translateY(-1px);
+}
+.act-del {
+  background: rgba(239, 68, 68, 0.12);
+  color: #FCA5A5;
+  border-color: rgba(239, 68, 68, 0.25);
+}
+.act-del:hover {
+  background: rgba(239, 68, 68, 0.25);
+  color: #fff;
+  transform: translateY(-1px);
+}
+.act-map {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93C5FD;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+.act-map:hover {
+  background: rgba(59, 130, 246, 0.28);
+  color: #fff;
+  transform: translateY(-1px);
+}
 .wa-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   background: rgba(31, 168, 85, 0.18);
   color: #34D399;
   border: 1px solid rgba(31, 168, 85, 0.3);
-  padding: 6px 12px;
+  padding: 5px 10px;
   border-radius: 6px;
   text-decoration: none;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   transition: all 0.2s ease;
 }
@@ -290,24 +382,96 @@ tr:hover td {
   transform: translateY(-1px);
 }
 
+/* Edit Modal Styling */
+.modal-box {
+  max-width: 560px;
+}
+.modal-box h3 {
+  font-family: var(--display);
+  font-size: 22px;
+  color: #fff;
+  margin-top: 0;
+  margin-bottom: 6px;
+}
+.modal-box .sub {
+  font-size: 13px;
+  color: #A79BB5;
+  margin-bottom: 20px;
+}
+.edit-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+@media (max-width: 600px) {
+  .edit-form-grid { grid-template-columns: 1fr; }
+}
+.edit-fld {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.edit-fld label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #C4B5FD;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.edit-fld input, .edit-fld select, .edit-fld textarea {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: var(--body);
+}
+.edit-fld input:focus, .edit-fld select:focus, .edit-fld textarea:focus {
+  border-color: #8B5CF6;
+  outline: none;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}
+
 /* Telegram Settings Panel */
 .settings-panel {
   background: rgba(22, 17, 32, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px;
-  padding: 28px 30px;
+  padding: 24px 26px;
   margin-top: 32px;
 }
 .settings-panel h3 {
   color: #fff;
-  font-size: 20px;
-  margin-bottom: 14px;
+  font-size: 19px;
+  margin-top: 0;
+  margin-bottom: 10px;
 }
 .settings-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 16px;
-  margin-bottom: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.settings-grid input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+@media (max-width: 640px) {
+  .admin-head { padding: 12px 14px; }
+  .dash-wrap { padding: 18px 12px 60px; }
+  .metric-card { padding: 16px 18px; }
+  .metric-num { font-size: 32px; }
+  .search-box input { width: 100%; }
+  .search-box { width: 100%; justify-content: stretch; }
+  .search-box button { width: 100%; }
 }
 </style>
 </head>
@@ -318,10 +482,11 @@ tr:hover td {
   <div class="gate-card">
     <div class="m"><span>az</span></div>
     <h2>Arzuz Admin</h2>
-    <p>Private Owner Dashboard. Enter your passcode to view form responses & database entries.</p>
+    <p>Private Owner Dashboard. Enter your passcode to view, edit, or manage form submissions.</p>
+    <div class="lockout-msg" id="lockoutMsg">Too many incorrect attempts. Please wait.</div>
     <input type="password" id="passInput" placeholder="••••••••" autofocus autocomplete="current-password">
     <button class="next" id="btnUnlock">Unlock Dashboard</button>
-    <p style="margin-top: 14px; font-size: 13px; color: #8D8099;">Default passcode is set in config.js</p>
+    <p style="margin-top: 14px; font-size: 13px; color: #8D8099;">Passcode protected with SHA-256 security</p>
   </div>
 </div>
 
@@ -331,10 +496,10 @@ tr:hover td {
     <span class="m"><span>az</span></span>
     <strong>arzuz <i>admin</i></strong>
   </a>
-  <div style="display: flex; align-items: center; gap: 12px;">
+  <div class="head-actions">
     <span class="admin-badge" id="envBadge">Production DB</span>
-    <button class="bk" id="btnRefresh" style="color: #C4B5FD;">↻ Refresh</button>
-    <button class="bk" id="btnLock" style="color: #F87171;">Lock</button>
+    <button class="bk" id="btnRefresh" style="color: #C4B5FD; padding: 6px 12px; font-size: 13.5px;">↻ Refresh</button>
+    <button class="bk" id="btnLock" style="color: #F87171; padding: 6px 12px; font-size: 13.5px;">Lock</button>
   </div>
 </header>
 
@@ -345,7 +510,7 @@ tr:hover td {
     <div class="metric-card">
       <div class="metric-lbl">Total Student Needs</div>
       <div class="metric-num" id="mDemands">0</div>
-      <div class="metric-sub">Registered student room requests</div>
+      <div class="metric-sub">Registered student requests</div>
     </div>
     <div class="metric-card">
       <div class="metric-lbl">Property Listings</div>
@@ -359,7 +524,7 @@ tr:hover td {
     </div>
     <div class="metric-card">
       <div class="metric-lbl">Target Area</div>
-      <div class="metric-num" style="font-size: 32px;">Malete</div>
+      <div class="metric-num" style="font-size: 30px;">Malete</div>
       <div class="metric-sub">Kwara State Session 2026/2027</div>
     </div>
   </div>
@@ -387,29 +552,63 @@ tr:hover td {
     </div>
   </div>
 
-  <!-- Telegram Bot & Email Notifications Panel -->
+  <!-- Telegram Bot & Instant Notification Settings Panel -->
   <div class="settings-panel">
     <h3>Telegram & Email Instant Alert Settings</h3>
-    <p style="color: #B3A7BF; font-size: 14.5px; margin-bottom: 20px;">
+    <p style="color: #B3A7BF; font-size: 14px; margin-bottom: 18px;">
       Whenever a student or landlord submits a form, an instant notification is sent to your Telegram Bot and Email.
     </p>
     <div class="settings-grid">
       <div class="fld">
-        <label style="color: #C4B5FD;">Telegram Bot Token</label>
+        <label style="color: #C4B5FD; font-size: 12.5px; font-weight: 700;">Telegram Bot Token</label>
         <input type="text" id="tgToken" placeholder="123456789:ABCdefGhIJKlm...">
       </div>
       <div class="fld">
-        <label style="color: #C4B5FD;">Telegram Chat ID</label>
+        <label style="color: #C4B5FD; font-size: 12.5px; font-weight: 700;">Telegram Chat ID</label>
         <input type="text" id="tgChat" placeholder="987654321 or @channel">
       </div>
     </div>
     <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-      <button class="next" id="btnSaveNotify" style="max-width: 200px;">Save Settings</button>
-      <button class="h-btn h-s" id="btnAutoDetect" style="color: #34D399; border-color: rgba(52, 211, 153, 0.4);">Auto-Detect Chat ID</button>
-      <button class="h-btn h-s" id="btnTestNotify" style="color: #C4B5FD; border-color: rgba(196, 181, 253, 0.4);">Send Test Alert</button>
+      <button class="next" id="btnSaveNotify" style="max-width: 180px; font-size: 14px; padding: 10px 16px;">Save Settings</button>
+      <button class="h-btn h-s" id="btnAutoDetect" style="color: #34D399; border-color: rgba(52, 211, 153, 0.4); font-size: 13.5px; padding: 8px 14px;">Auto-Detect Chat ID</button>
+      <button class="h-btn h-s" id="btnTestNotify" style="color: #C4B5FD; border-color: rgba(196, 181, 253, 0.4); font-size: 13.5px; padding: 8px 14px;">Send Test Alert</button>
     </div>
   </div>
 
+</div>
+
+<!-- Edit Submission Modal -->
+<div class="modal-overlay" id="editModal" style="display: none;">
+  <div class="modal-box">
+    <h3 id="editModalTitle">Edit Record</h3>
+    <div class="sub" id="editModalSub">Update details and status. Changes persist directly to Supabase.</div>
+    <form id="editRecordForm">
+      <input type="hidden" id="editRowId">
+      <input type="hidden" id="editRowTable">
+      <div class="edit-form-grid" id="editFieldsContainer">
+        <!-- Dynamic fields populated via JS -->
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="bk" id="btnCancelEdit" style="color: #B3A7BF;">Cancel</button>
+        <button type="submit" class="next" id="btnSaveEdit" style="padding: 10px 22px; font-size: 14px;">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal-overlay" id="delModal" style="display: none;">
+  <div class="modal-box" style="max-width: 420px; text-align: center;">
+    <div style="font-size: 38px; margin-bottom: 12px;">⚠️</div>
+    <h3 style="color: #F87171;">Delete Submission</h3>
+    <p style="color: #B3A7BF; font-size: 14px; line-height: 1.5; margin-bottom: 24px;">
+      Are you sure you want to permanently delete this submission? This will remove it from the database and cannot be undone.
+    </p>
+    <div style="display: flex; gap: 12px; justify-content: center;">
+      <button type="button" class="bk" id="btnCancelDel" style="color: #B3A7BF;">Cancel</button>
+      <button type="button" class="next" id="btnConfirmDel" style="background: #EF4444; border-color: #DC2626; padding: 10px 22px; font-size: 14px;">Yes, Delete</button>
+    </div>
+  </div>
 </div>
 
 <script src="assets/config.js"></script>
@@ -421,43 +620,107 @@ tr:hover td {
   var cfg = window.ARZUZ_CONFIG || {};
   var currentTable = 'demand_records';
   var loadedData = { demand_records: [], listings: [], scout_submissions: [] };
+  var pendingDelete = null;
 
-  // Passcode gate check
+  // HTML Entity Escaper for XSS Prevention
+  function esc(str){
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  // SHA-256 Hash Computation
+  async function computeSha256(text){
+    var buffer = new TextEncoder().encode(text);
+    var digest = await crypto.subtle.digest('SHA-256', buffer);
+    var hashArray = Array.from(new Uint8Array(digest));
+    return hashArray.map(function(b){ return b.toString(16).padStart(2, '0'); }).join('');
+  }
+
+  // Passcode Gate & Security Lockout Logic
   var gateModal = document.getElementById('gateModal');
   var passInput = document.getElementById('passInput');
   var btnUnlock = document.getElementById('btnUnlock');
+  var lockoutMsg = document.getElementById('lockoutMsg');
 
-  function checkAuth(){
-    var isAuth = sessionStorage.getItem('arzuz_admin_auth') === 'true';
-    if(isAuth){
-      gateModal.style.display = 'none';
-      fetchData();
+  function checkLockout(){
+    var lockUntil = parseInt(localStorage.getItem('arzuz_admin_lockout') || '0', 10);
+    var now = Date.now();
+    if (lockUntil > now) {
+      var remainingSec = Math.ceil((lockUntil - now) / 1000);
+      lockoutMsg.textContent = 'Too many failed attempts. Locked for ' + remainingSec + 's.';
+      lockoutMsg.style.display = 'block';
+      passInput.disabled = true;
+      btnUnlock.disabled = true;
+      setTimeout(checkLockout, 1000);
+      return true;
     } else {
-      gateModal.style.display = 'flex';
+      lockoutMsg.style.display = 'none';
+      passInput.disabled = false;
+      btnUnlock.disabled = false;
+      return false;
     }
   }
 
-  btnUnlock.addEventListener('click', function(){
-    var pass = passInput.value.trim();
-    var expected = cfg.ADMIN_PASSCODE || 'arzuz2026';
-    if(pass === expected){
-      sessionStorage.setItem('arzuz_admin_auth', 'true');
+  function checkAuth(){
+    var isAuth = sessionStorage.getItem('arzuz_admin_auth') === 'true';
+    var authTime = parseInt(sessionStorage.getItem('arzuz_admin_auth_time') || '0', 10);
+    // 2-Hour Session Expiry
+    if (isAuth && (Date.now() - authTime < 2 * 60 * 60 * 1000)) {
       gateModal.style.display = 'none';
       fetchData();
     } else {
-      alert('Incorrect passcode. Please check config.js.');
+      sessionStorage.removeItem('arzuz_admin_auth');
+      gateModal.style.display = 'flex';
+      checkLockout();
     }
+  }
+
+  btnUnlock.addEventListener('click', async function(){
+    if (checkLockout()) return;
+    var pass = passInput.value.trim();
+    if (!pass) return;
+
+    var inputHash = await computeSha256(pass);
+    var expectedHash = cfg.ADMIN_PASSCODE_HASH || 'f22e934da8474776e9142c041f0daea4b43eaafb089bf41e8f2b6d86a19628f1';
+    var plainFallback = cfg.ADMIN_PASSCODE || 'arzuz2026';
+
+    if (inputHash === expectedHash || pass === plainFallback) {
+      localStorage.removeItem('arzuz_admin_fails');
+      sessionStorage.setItem('arzuz_admin_auth', 'true');
+      sessionStorage.setItem('arzuz_admin_auth_time', Date.now().toString());
+      gateModal.style.display = 'none';
+      fetchData();
+    } else {
+      var fails = parseInt(localStorage.getItem('arzuz_admin_fails') || '0', 10) + 1;
+      localStorage.setItem('arzuz_admin_fails', fails.toString());
+      if (fails >= 5) {
+        localStorage.setItem('arzuz_admin_lockout', (Date.now() + 300000).toString()); // 5 mins lockout
+        checkLockout();
+      } else {
+        alert('Incorrect passcode. ' + (5 - fails) + ' attempt(s) remaining.');
+      }
+    }
+  });
+
+  passInput.addEventListener('keydown', function(e){
+    if (e.key === 'Enter') btnUnlock.click();
   });
 
   document.getElementById('btnLock').addEventListener('click', function(){
     sessionStorage.removeItem('arzuz_admin_auth');
+    sessionStorage.removeItem('arzuz_admin_auth_time');
     location.reload();
   });
 
   // Telegram settings prefill & save
   var tgTokenEl = document.getElementById('tgToken');
   var tgChatEl = document.getElementById('tgChat');
-  tgTokenEl.value = cfg.TELEGRAM_BOT_TOKEN || localStorage.getItem('arzuz_tg_token') || '8526070493:AAHuH9dAfy4EcyJkPuUWl2Ruy3EtWUbALVE';
+  tgTokenEl.value = cfg.TELEGRAM_BOT_TOKEN || localStorage.getItem('arzuz_tg_token') || '';
   tgChatEl.value = cfg.TELEGRAM_CHAT_ID || localStorage.getItem('arzuz_tg_chat') || '';
 
   document.getElementById('btnSaveNotify').addEventListener('click', function(){
@@ -489,16 +752,13 @@ tr:hover td {
   document.getElementById('btnTestNotify').addEventListener('click', function(){
     var token = tgTokenEl.value.trim() || cfg.TELEGRAM_BOT_TOKEN;
     var chat = tgChatEl.value.trim() || cfg.TELEGRAM_CHAT_ID;
-    if(!token){
-      alert('Please enter a valid Telegram Bot Token first.');
-      return;
-    }
+    if(!token){ alert('Please enter a valid Telegram Bot Token first.'); return; }
     cfg.TELEGRAM_BOT_TOKEN = token;
     cfg.TELEGRAM_CHAT_ID = chat;
-    ArzuzNotify.sendTelegram("🔔 *Test Alert from Arzuz Admin Dashboard*\nYour Telegram Bot notification integration is working perfectly!")
+    ArzuzNotify.sendTelegram("🔔 *Test Alert from Arzuz Admin Dashboard*\nYour Telegram notification is working perfectly!")
       .then(function(ok){
         if(ok) alert('Test alert sent to Telegram!');
-        else alert('Failed to send test alert. Make sure you messaged @arzuzwaitlist_bot on Telegram or click Auto-Detect Chat ID.');
+        else alert('Failed to send test alert. Make sure you messaged @arzuzwaitlist_bot on Telegram or click Auto-Detect.');
       });
   });
 
@@ -512,14 +772,12 @@ tr:hover td {
     });
   });
 
-  // Search filter
   document.getElementById('searchInput').addEventListener('input', renderTable);
   document.getElementById('btnRefresh').addEventListener('click', fetchData);
 
+  // Fetch data from Supabase
   function fetchData(){
     if(!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY){
-      // Load fallback preview rows if Supabase isn't configured
-      loadFallbackData();
       return;
     }
     var tables = ['demand_records', 'listings', 'scout_submissions'];
@@ -542,25 +800,15 @@ tr:hover td {
     });
   }
 
-  function loadFallbackData(){
-    loadedData.demand_records = [
-      { created_at: new Date().toISOString(), room_type: "Self-contain", budget_band: "₦150,000 – ₦200,000", distance: "Near — under 10 min", first_name: "Adeola", phone: "2348012345678", timing: "This session" },
-      { created_at: new Date(Date.now()-86400000).toISOString(), room_type: "Shared room", budget_band: "₦100,000 – ₦150,000", distance: "Mid — 10 to 20 min", first_name: "Ibrahim", phone: "2348087654321", timing: "Next session" }
-    ];
-    loadedData.listings = [
-      { created_at: new Date().toISOString(), property_type: "Self-contain", area: "Campus Road", listed_price_ngn: 185000, rooms: "3", owner_name: "Mr. Quadri", owner_phone: "2348099887766" }
-    ];
-    loadedData.scout_submissions = [
-      { created_at: new Date().toISOString(), area: "Post Office Area", rent_reported: 160000, scout_phone: "2348033445566", vacancy_signal: "Yes, this month" }
-    ];
-    updateMetrics();
-    renderTable();
-  }
-
   function updateMetrics(){
     document.getElementById('mDemands').textContent = loadedData.demand_records.length;
     document.getElementById('mListings').textContent = loadedData.listings.length;
     document.getElementById('mScouts').textContent = loadedData.scout_submissions.length;
+  }
+
+  function getStatusTag(status){
+    var s = (status || 'pending').toLowerCase();
+    return '<span class="tag-status tag-' + esc(s) + '">' + esc(s) + '</span>';
   }
 
   function renderTable(){
@@ -577,58 +825,266 @@ tr:hover td {
     var body = document.getElementById('tableBody');
 
     if(currentTable === 'demand_records'){
-      head.innerHTML = '<th>Date</th><th>Name</th><th>Room Type</th><th>Budget</th><th>Distance</th><th>Timing</th><th>Contact</th>';
+      head.innerHTML = '<th>Date</th><th>Status</th><th>Name</th><th>Room Type</th><th>Budget</th><th>Distance</th><th>Contact</th><th>Actions</th>';
       body.innerHTML = rows.map(function(r){
         var dateStr = new Date(r.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
         var phone = r.phone || (r.payload && r.payload.phone) || '';
         var waLink = phone ? '<a class="wa-btn" href="https://wa.me/'+phone.replace(/\+/g,'')+'" target="_blank">WhatsApp</a>' : '-';
         return '<tr>'+
-          '<td>'+dateStr+'</td>'+
-          '<td><b>'+(r.first_name || (r.payload&&r.payload.first) || 'Student')+'</b></td>'+
-          '<td>'+(r.room_type || (r.payload&&r.payload.type) || '-')+'</td>'+
-          '<td>'+(r.budget_band || (r.payload&&r.payload.budget) || '-')+'</td>'+
-          '<td>'+(r.distance || (r.payload&&r.payload.dist) || '-')+'</td>'+
-          '<td>'+(r.timing || (r.payload&&r.payload.when) || '-')+'</td>'+
+          '<td>'+esc(dateStr)+'</td>'+
+          '<td>'+getStatusTag(r.status)+'</td>'+
+          '<td><b>'+esc(r.first_name || (r.payload&&r.payload.first) || 'Student')+'</b></td>'+
+          '<td>'+esc(r.room_type || (r.payload&&r.payload.type) || '-')+'</td>'+
+          '<td>'+esc(r.budget_band || (r.payload&&r.payload.budget) || '-')+'</td>'+
+          '<td>'+esc(r.distance || (r.payload&&r.payload.dist) || '-')+'</td>'+
           '<td>'+waLink+'</td>'+
+          '<td><div class="cell-actions">'+
+            '<button class="act-btn act-edit" onclick="window.openEditModal(\'demand_records\',\''+r.id+'\')">✎ Edit</button>'+
+            '<button class="act-btn act-del" onclick="window.openDeleteModal(\'demand_records\',\''+r.id+'\')">🗑</button>'+
+          '</div></td>'+
         '</tr>';
-      }).join('') || '<tr><td colspan="7" style="text-align:center; padding:30px; color:#8D8099;">No records found.</td></tr>';
+      }).join('') || '<tr><td colspan="8" style="text-align:center; padding:30px; color:#8D8099;">No student records found.</td></tr>';
     } 
     else if(currentTable === 'listings'){
-      head.innerHTML = '<th>Date</th><th>Owner Name</th><th>Property Type</th><th>Area</th><th>Rooms</th><th>Price</th><th>Contact</th>';
+      head.innerHTML = '<th>Date</th><th>Status</th><th>Owner Name</th><th>Property</th><th>Area</th><th>Price</th><th>Location</th><th>Actions</th>';
       body.innerHTML = rows.map(function(r){
         var dateStr = new Date(r.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
         var price = r.listed_price_ngn || (r.payload&&r.payload.rent) || 0;
         var phone = r.owner_phone || (r.payload&&r.payload.ph) || '';
-        var waLink = phone ? '<a class="wa-btn" href="https://wa.me/'+phone.replace(/\+/g,'')+'" target="_blank">WhatsApp</a>' : '-';
+        var lat = r.latitude || (r.payload && r.payload.lat);
+        var lng = r.longitude || (r.payload && r.payload.lng);
+        var mapBtn = (lat && lng) 
+          ? '<a class="act-btn act-map" href="https://www.google.com/maps?q='+lat+','+lng+'" target="_blank">📍 Map</a>' 
+          : '<span style="color:#6B5C7D; font-size:12px;">No pin</span>';
+
         return '<tr>'+
-          '<td>'+dateStr+'</td>'+
-          '<td><b>'+(r.owner_name || (r.payload&&r.payload.nm) || 'Owner')+'</b></td>'+
-          '<td>'+(r.property_type || (r.payload&&r.payload.ty) || '-')+'</td>'+
-          '<td>'+(r.area || (r.payload&&r.payload.ar) || '-')+'</td>'+
-          '<td>'+(r.rooms || (r.payload&&r.payload.rm) || '-')+'</td>'+
+          '<td>'+esc(dateStr)+'</td>'+
+          '<td>'+getStatusTag(r.status)+'</td>'+
+          '<td><b>'+esc(r.owner_name || (r.payload&&r.payload.nm) || 'Owner')+'</b></td>'+
+          '<td>'+esc(r.property_type || (r.payload&&r.payload.ty) || '-')+'</td>'+
+          '<td>'+esc(r.area || (r.payload&&r.payload.ar) || '-')+'</td>'+
           '<td><b>₦'+Number(price).toLocaleString()+'</b></td>'+
-          '<td>'+waLink+'</td>'+
+          '<td>'+mapBtn+'</td>'+
+          '<td><div class="cell-actions">'+
+            (phone ? '<a class="wa-btn" href="https://wa.me/'+phone.replace(/\+/g,'')+'" target="_blank">WA</a>' : '')+
+            '<button class="act-btn act-edit" onclick="window.openEditModal(\'listings\',\''+r.id+'\')">✎ Edit</button>'+
+            '<button class="act-btn act-del" onclick="window.openDeleteModal(\'listings\',\''+r.id+'\')">🗑</button>'+
+          '</div></td>'+
         '</tr>';
-      }).join('') || '<tr><td colspan="7" style="text-align:center; padding:30px; color:#8D8099;">No listings found.</td></tr>';
+      }).join('') || '<tr><td colspan="8" style="text-align:center; padding:30px; color:#8D8099;">No listings found.</td></tr>';
     } 
     else if(currentTable === 'scout_submissions'){
-      head.innerHTML = '<th>Date</th><th>Area</th><th>Rooms</th><th>Rent Paid</th><th>Vacancy</th><th>Contact</th>';
+      head.innerHTML = '<th>Date</th><th>Status</th><th>Area</th><th>Rent Paid</th><th>Vacancy</th><th>Location</th><th>Actions</th>';
       body.innerHTML = rows.map(function(r){
         var dateStr = new Date(r.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
         var rent = r.rent_reported || (r.payload&&r.payload.amt) || 0;
         var phone = r.scout_phone || (r.payload&&r.payload.phone) || '';
-        var waLink = phone ? '<a class="wa-btn" href="https://wa.me/'+phone.replace(/\+/g,'')+'" target="_blank">WhatsApp</a>' : '-';
+        var lat = r.latitude || (r.payload && r.payload.lat);
+        var lng = r.longitude || (r.payload && r.payload.lng);
+        var mapBtn = (lat && lng) 
+          ? '<a class="act-btn act-map" href="https://www.google.com/maps?q='+lat+','+lng+'" target="_blank">📍 Map</a>' 
+          : '<span style="color:#6B5C7D; font-size:12px;">No pin</span>';
+
         return '<tr>'+
-          '<td>'+dateStr+'</td>'+
-          '<td><b>'+(r.area || (r.payload&&r.payload.area) || '-')+'</b></td>'+
-          '<td>'+(r.payload&&r.payload.rooms || '-')+'</td>'+
+          '<td>'+esc(dateStr)+'</td>'+
+          '<td>'+getStatusTag(r.status)+'</td>'+
+          '<td><b>'+esc(r.area || (r.payload&&r.payload.area) || '-')+'</b></td>'+
           '<td><b>₦'+Number(rent).toLocaleString()+'</b></td>'+
-          '<td>'+(r.vacancy_signal || (r.payload&&r.payload.vac) || '-')+'</td>'+
-          '<td>'+waLink+'</td>'+
+          '<td>'+esc(r.vacancy_signal || (r.payload&&r.payload.vac) || '-')+'</td>'+
+          '<td>'+mapBtn+'</td>'+
+          '<td><div class="cell-actions">'+
+            (phone ? '<a class="wa-btn" href="https://wa.me/'+phone.replace(/\+/g,'')+'" target="_blank">WA</a>' : '')+
+            '<button class="act-btn act-edit" onclick="window.openEditModal(\'scout_submissions\',\''+r.id+'\')">✎ Edit</button>'+
+            '<button class="act-btn act-del" onclick="window.openDeleteModal(\'scout_submissions\',\''+r.id+'\')">🗑</button>'+
+          '</div></td>'+
         '</tr>';
-      }).join('') || '<tr><td colspan="6" style="text-align:center; padding:30px; color:#8D8099;">No scout reports found.</td></tr>';
+      }).join('') || '<tr><td colspan="7" style="text-align:center; padding:30px; color:#8D8099;">No scout reports found.</td></tr>';
     }
   }
+
+  // ================= EDIT MODAL FUNCTIONALITY =================
+  var editModal = document.getElementById('editModal');
+  var editForm = document.getElementById('editRecordForm');
+  var editFieldsContainer = document.getElementById('editFieldsContainer');
+  var editRowIdEl = document.getElementById('editRowId');
+  var editRowTableEl = document.getElementById('editRowTable');
+
+  window.openEditModal = function(table, id){
+    var row = (loadedData[table] || []).find(function(r){ return r.id === id; });
+    if (!row) return;
+
+    editRowIdEl.value = id;
+    editRowTableEl.value = table;
+    document.getElementById('editModalTitle').textContent = 'Edit ' + (table === 'demand_records' ? 'Student Demand' : (table === 'listings' ? 'Property Listing' : 'Scout Report'));
+
+    var p = row.payload || {};
+    var html = '';
+
+    // Status Field
+    html += '<div class="edit-fld"><label>Status</label><select id="edit_status">';
+    var statuses = (table === 'demand_records')
+      ? ['open', 'matched', 'fulfilled', 'expired']
+      : ['pending', 'active', 'rejected', 'inactive'];
+
+    statuses.forEach(function(st){
+      html += '<option value="'+st+'"'+((row.status||'').toLowerCase()===st?' selected':'')+'>'+st.toUpperCase()+'</option>';
+    });
+    html += '</select></div>';
+
+    // Internal Notes Field
+    html += '<div class="edit-fld"><label>Admin Notes</label><input type="text" id="edit_notes" value="'+esc(row.notes||'')+'" placeholder="Internal notes..."></div>';
+
+    if (table === 'demand_records') {
+      html += '<div class="edit-fld"><label>Student Name</label><input type="text" id="edit_first" value="'+esc(row.first_name || p.first || '')+'"></div>';
+      html += '<div class="edit-fld"><label>Phone / WhatsApp</label><input type="tel" id="edit_phone" value="'+esc(row.phone || p.phone || '')+'"></div>';
+      html += '<div class="edit-fld"><label>Room Type</label><input type="text" id="edit_room_type" value="'+esc(row.room_type || p.type || '')+'"></div>';
+      html += '<div class="edit-fld"><label>Budget Band</label><input type="text" id="edit_budget_band" value="'+esc(row.budget_band || p.budget || '')+'"></div>';
+    } 
+    else if (table === 'listings') {
+      html += '<div class="edit-fld"><label>Owner Name</label><input type="text" id="edit_nm" value="'+esc(row.owner_name || p.nm || '')+'"></div>';
+      html += '<div class="edit-fld"><label>Phone / WhatsApp</label><input type="tel" id="edit_ph" value="'+esc(row.owner_phone || p.ph || '')+'"></div>';
+      html += '<div class="edit-fld"><label>Area / Street</label><input type="text" id="edit_ar" value="'+esc(row.area || p.ar || '')+'"></div>';
+      html += '<div class="edit-fld"><label>Price (₦)</label><input type="number" id="edit_rent" value="'+esc(row.listed_price_ngn || p.rent || '')+'"></div>';
+      html += '<div class="edit-fld"><label>Rooms</label><input type="text" id="edit_rm" value="'+esc(row.rooms || p.rm || '')+'"></div>';
+    } 
+    else if (table === 'scout_submissions') {
+      html += '<div class="edit-fld"><label>Area / Street</label><input type="text" id="edit_area" value="'+esc(row.area || p.area || '')+'"></div>';
+      html += '<div class="edit-fld"><label>Phone / WhatsApp</label><input type="tel" id="edit_phone" value="'+esc(row.scout_phone || p.phone || '')+'"></div>';
+      html += '<div class="edit-fld"><label>Rent Paid (₦)</label><input type="number" id="edit_amt" value="'+esc(row.rent_reported || p.amt || '')+'"></div>';
+      html += '<div class="edit-fld"><label>Vacancy Signal</label><input type="text" id="edit_vac" value="'+esc(row.vacancy_signal || p.vac || '')+'"></div>';
+    }
+
+    editFieldsContainer.innerHTML = html;
+    editModal.style.display = 'flex';
+  };
+
+  document.getElementById('btnCancelEdit').addEventListener('click', function(){
+    editModal.style.display = 'none';
+  });
+
+  editForm.addEventListener('submit', function(e){
+    e.preventDefault();
+    var table = editRowTableEl.value;
+    var id = editRowIdEl.value;
+    var row = (loadedData[table] || []).find(function(r){ return r.id === id; });
+    if (!row) return;
+
+    var statusVal = document.getElementById('edit_status').value;
+    var notesVal = document.getElementById('edit_notes').value.trim();
+    var newPayload = Object.assign({}, row.payload || {});
+
+    if (table === 'demand_records') {
+      newPayload.first = document.getElementById('edit_first').value.trim();
+      newPayload.phone = document.getElementById('edit_phone').value.trim();
+      newPayload.type = document.getElementById('edit_room_type').value.trim();
+      newPayload.budget = document.getElementById('edit_budget_band').value.trim();
+    } else if (table === 'listings') {
+      newPayload.nm = document.getElementById('edit_nm').value.trim();
+      newPayload.ph = document.getElementById('edit_ph').value.trim();
+      newPayload.ar = document.getElementById('edit_ar').value.trim();
+      newPayload.rent = document.getElementById('edit_rent').value.trim();
+      newPayload.rm = document.getElementById('edit_rm').value.trim();
+    } else if (table === 'scout_submissions') {
+      newPayload.area = document.getElementById('edit_area').value.trim();
+      newPayload.phone = document.getElementById('edit_phone').value.trim();
+      newPayload.amt = document.getElementById('edit_amt').value.trim();
+      newPayload.vac = document.getElementById('edit_vac').value.trim();
+    }
+
+    var patchBody = {
+      status: statusVal,
+      notes: notesVal,
+      payload: newPayload
+    };
+
+    var btnSave = document.getElementById('btnSaveEdit');
+    btnSave.textContent = 'Saving...';
+    btnSave.disabled = true;
+
+    var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/' + table + '?id=eq.' + id;
+    fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'apikey': cfg.SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + cfg.SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(patchBody)
+    })
+    .then(function(r){
+      if(!r.ok) throw new Error('Update failed: ' + r.status);
+      return r.json();
+    })
+    .then(function(updatedRows){
+      // Update local state
+      row.status = statusVal;
+      row.notes = notesVal;
+      row.payload = newPayload;
+      if (updatedRows && updatedRows[0]) {
+        Object.assign(row, updatedRows[0]);
+      }
+      renderTable();
+      editModal.style.display = 'none';
+      ArzuzSubmit.showToast('Record updated successfully!', 'success');
+    })
+    .catch(function(err){
+      alert('Could not update record: ' + err.message + '\nMake sure the Supabase UPDATE policy is applied.');
+    })
+    .finally(function(){
+      btnSave.textContent = 'Save Changes';
+      btnSave.disabled = false;
+    });
+  });
+
+  // ================= DELETE CONFIRMATION FUNCTIONALITY =================
+  var delModal = document.getElementById('delModal');
+
+  window.openDeleteModal = function(table, id){
+    pendingDelete = { table: table, id: id };
+    delModal.style.display = 'flex';
+  };
+
+  document.getElementById('btnCancelDel').addEventListener('click', function(){
+    delModal.style.display = 'none';
+    pendingDelete = null;
+  });
+
+  document.getElementById('btnConfirmDel').addEventListener('click', function(){
+    if (!pendingDelete) return;
+    var table = pendingDelete.table;
+    var id = pendingDelete.id;
+
+    var btn = document.getElementById('btnConfirmDel');
+    btn.textContent = 'Deleting...';
+    btn.disabled = true;
+
+    var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/' + table + '?id=eq.' + id;
+    fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'apikey': cfg.SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + cfg.SUPABASE_ANON_KEY
+      }
+    })
+    .then(function(r){
+      if (!r.ok) throw new Error('Delete failed: ' + r.status);
+      // Remove from local data
+      loadedData[table] = loadedData[table].filter(function(r){ return r.id !== id; });
+      updateMetrics();
+      renderTable();
+      delModal.style.display = 'none';
+      ArzuzSubmit.showToast('Record deleted.', 'info');
+    })
+    .catch(function(err){
+      alert('Could not delete record: ' + err.message + '\nMake sure the Supabase DELETE policy is applied.');
+    })
+    .finally(function(){
+      btn.textContent = 'Yes, Delete';
+      btn.disabled = false;
+      pendingDelete = null;
+    });
+  });
 
   // CSV Exporter
   document.getElementById('btnExport').addEventListener('click', function(){

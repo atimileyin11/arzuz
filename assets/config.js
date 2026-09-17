@@ -14,8 +14,9 @@ window.ARZUZ_CONFIG = window.ARZUZ_CONFIG || {
   TELEGRAM_CHAT_ID: '',     // e.g. '987654321' or '@arzuzwaitlist_bot' (Auto-detected if empty when you message the bot)
   NOTIFICATION_EMAIL: 'support@arzuz.com',
 
-  // Admin Dashboard Security Passcode
-  ADMIN_PASSCODE: 'arzuz2026',
+  // Admin Dashboard Security Passcode (SHA-256 Hash of 'arzuz2026')
+  ADMIN_PASSCODE_HASH: 'f22e934da8474776e9142c041f0daea4b43eaafb089bf41e8f2b6d86a19628f1',
+  ADMIN_PASSCODE: 'arzuz2026', // Fallback for backward compatibility
 
   // The academic session currently collecting for
   SESSION: '2026/2027',

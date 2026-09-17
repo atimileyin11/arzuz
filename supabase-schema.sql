@@ -67,7 +67,9 @@ create table if not exists listings (
   rooms         text generated always as (payload->>'rm')   stored,
   owner_name    text generated always as (payload->>'nm')   stored,
   owner_phone   text generated always as (payload->>'ph')   stored,
-  run_by        text generated always as (payload->>'who')  stored
+  run_by        text generated always as (payload->>'who')  stored,
+  latitude      double precision generated always as (nullif(payload->>'lat','')::double precision) stored,
+  longitude     double precision generated always as (nullif(payload->>'lng','')::double precision) stored
 );
 
 create table if not exists scout_submissions (
@@ -87,7 +89,9 @@ create table if not exists scout_submissions (
   rent_reported  integer generated always as
                  (nullif(payload->>'amt','')::integer) stored,
   rent_collected_by text generated always as (payload->>'who') stored,
-  vacancy_signal text generated always as (payload->>'vac')   stored
+  vacancy_signal text generated always as (payload->>'vac')   stored,
+  latitude       double precision generated always as (nullif(payload->>'lat','')::double precision) stored,
+  longitude      double precision generated always as (nullif(payload->>'lng','')::double precision) stored
 );
 
 
@@ -118,6 +122,26 @@ create policy "allow select listings"
 
 create policy "allow select scout reports"
   on scout_submissions for select to anon using (true);
+
+-- Enable update access for admin dashboard editing
+create policy "allow update demand"
+  on demand_records for update to anon using (true) with check (true);
+
+create policy "allow update listings"
+  on listings for update to anon using (true) with check (true);
+
+create policy "allow update scout reports"
+  on scout_submissions for update to anon using (true) with check (true);
+
+-- Enable delete access for admin dashboard
+create policy "allow delete demand"
+  on demand_records for delete to anon using (true);
+
+create policy "allow delete listings"
+  on listings for delete to anon using (true);
+
+create policy "allow delete scout reports"
+  on scout_submissions for delete to anon using (true);
 
 
 -- ------------------------------------------------------------
