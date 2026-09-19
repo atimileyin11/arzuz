@@ -36,32 +36,7 @@ var CEILINGS = (function(){
 var DEMAND_TOTAL = CEILINGS.length;
 
 /* option lists used by the forms */
-var ROOM_TYPES = ["Self-contain","Shared room","Face-me-I-face-you","Hostel bunk","Other"];
+var ROOM_TYPES = ["Self-contain","Shared room","Face-me-I-face-you","Hostel bunk"];
 
 var UTILITIES = ["Borehole water","Pipe-borne water","NEPA connection","Generator backup",
  "Private bathroom","Flush toilet","Security gate","Perimeter fence","Kitchen access"];
-
-/* Popular landmarks, roads, and student hubs in Malete for autocomplete */
-var MALETE_PLACES = [
-  "Opposite Pandolion, Malete",
-  "Near Safari Hostel, Malete",
-  "KWASU Main Gate Road, Malete",
-  "KWASU Permanent Site, Malete",
-  "Around Safari, Malete",
-  "Behind Pandolion, Malete",
-  "Al-Hikmah Area, Malete",
-  "Eyenkorin / Malete Express Road",
-  "Old Hostel Road, Malete",
-  "Budo Oki / Senior Staff Quarters, Malete",
-  "School Gate Road, Malete",
-  "Opposite KWASU Library, Malete",
-  "Behind Convocation Arena, Malete",
-  "College of ICT Junction, Malete",
-  "College of Engineering Axis, Malete",
-  "Post Office Area, Malete",
-  "Central Mosque Road, Malete",
-  "Oba's Palace Road, Malete",
-  "Budo Agba Junction, Malete",
-  "Oke-Oyi Road, Malete"
-];
-

@@ -2,7 +2,7 @@
    Arzuz — shared application logic
    Page chrome, formatting helpers, and the multi-step form engine.
    Includes:
-   - Interactive Leaflet + Esri Satellite / OSM Hybrid GPS Pin Capture
+   - Interactive Leaflet + OpenStreetMap GPS Pin Capture
    - Compulsory vs. Optional Guidance Badges
    - Live Nigerian Phone & Name Validation
    ============================================================ */
@@ -92,8 +92,6 @@ var Arzuz = (function(){
   function isFieldRequired(field, step){
     if (step.opt) return false;
     var name = field[0];
-    var type = field[2];
-    if (type === 'pin' || type === 'photos' || name === 'photos') return false;
     if (['first', 'nm', 'g_name', 'phone', 'ph', 'g_phone', 'area', 'ar', 'rent', 'amt', 'type', 'ty'].indexOf(name) !== -1) {
       return true;
     }
@@ -136,27 +134,10 @@ var Arzuz = (function(){
     // Checkboxes
     if(s.c) {
       var currentChecks = F.answers[s.k] || [];
-      // Combine predefined options with any custom options already added
-      var allCheckOptions = s.c.slice();
-      if (Array.isArray(currentChecks)) {
-        currentChecks.forEach(function(item){
-          if (allCheckOptions.indexOf(item) === -1) {
-            allCheckOptions.push(item);
-          }
-        });
-      }
-      h += '<div class="checks" id="checksWrap">'+ allCheckOptions.map(function(o){
+      h += '<div class="checks">'+ s.c.map(function(o){
         var isChecked = Array.isArray(currentChecks) && currentChecks.indexOf(o) !== -1;
         return '<span class="chk'+(isChecked?' sel':'')+'" data-v="'+o+'">'+o+'</span>';
       }).join('') +'</div>';
-
-      // Custom amenities input box
-      h += '<div class="custom-amenity-box">' +
-           '<div class="custom-amenity-row">' +
-           '<input type="text" id="customAmenityInput" placeholder="Add custom feature (e.g. 24/7 Light, Solar, Security)...">' +
-           '<button type="button" class="btn-add-amenity" id="btnAddAmenity">+ Add Feature</button>' +
-           '</div>' +
-           '</div>';
     }
 
     // Input fields
@@ -179,43 +160,10 @@ var Arzuz = (function(){
              f[3].map(function(o){
                return '<option'+(val===o?' selected':'')+'>'+o+'</option>';
              }).join('')+'</select>';
-      } else if(f[2]==='sel-other'){
-        var isOtherVal = val && f[3].indexOf(val) === -1;
-        var selectedOpt = isOtherVal ? 'Other' : val;
-        var otherText = isOtherVal ? val : (F.answers[f[0]+'_other'] || '');
-        x += '<select id="'+f[0]+'" data-type="sel-other"><option value="">Choose one</option>'+
-             f[3].map(function(o){
-               return '<option'+(selectedOpt===o?' selected':'')+'>'+o+'</option>';
-             }).join('')+'</select>'+
-             '<div id="wrap_other_'+f[0]+'" style="margin-top:8px; display:'+(selectedOpt==='Other'?'block':'none')+';">'+
-             '<input type="text" id="'+f[0]+'_other" placeholder="Describe property type (e.g. 2-Bedroom Flat, Self-contain upstairs)..." value="'+otherText+'">'+
-             '</div>';
-      } else if(f[2]==='text-suggest'){
-        x += '<div class="suggest-wrap">' +
-             '<input type="text" id="'+f[0]+'" value="'+val+'" placeholder="'+f[1]+'" autocomplete="off">' +
-             '<div class="suggest-list" id="sug_'+f[0]+'"></div>' +
-             '</div>';
-      } else if(f[2]==='photos'){
-        var photoList = Array.isArray(F.answers.photos) ? F.answers.photos : [];
-        x += '<div class="photo-upload-zone" id="photoUploadZone">' +
-             '<span class="photo-upload-icon">📸</span>' +
-             '<div class="photo-upload-title">Tap to upload photos of building or gate</div>' +
-             '<div class="photo-upload-sub">Add up to 5 clear pictures so students can identify your property. (Optional)</div>' +
-             '<input type="file" id="photoFileInput" accept="image/*" multiple style="display:none;">' +
-             '</div>' +
-             '<div id="photoUploadStatus" style="font-size:13px; color:var(--mid); margin-bottom:8px;"></div>' +
-             '<div class="photo-thumbs-grid" id="photoThumbsGrid">' +
-             photoList.map(function(url, idx){
-               return '<div class="photo-thumb-card">' +
-                      '<img src="'+url+'" alt="Property photo">' +
-                      '<button type="button" class="photo-thumb-del" data-idx="'+idx+'" title="Remove photo">✕</button>' +
-                      '</div>';
-             }).join('') +
-             '</div>';
       } else if(f[2]==='pin'){
         x += '<div class="fld-header">' +
              '<label>Location Pin (Malete)</label>' +
-             '<span class="fld-badge-opt">📍 Visual Satellite GPS · Optional</span>' +
+             '<span class="fld-badge-req">📍 Draggable GPS</span>' +
              '</div>' +
              '<div class="map-wrap">' +
              '<div id="leaflet-map"></div>' +
@@ -224,7 +172,7 @@ var Arzuz = (function(){
              '<button type="button" class="btn-locate" id="btnLocateMe">🎯 Detect My GPS</button>' +
              '</div>' +
              '<div class="live" style="margin-top:12px;" id="mapLiveStatus">' +
-             'Satellite view loaded. Zoom in to see your roof, then drag the marker to your gate. Toggle to Street Map for road names.' +
+             'Map centered on Malete. Drag the purple marker to the exact entrance gate of your compound.' +
              '</div>' +
              '</div>';
       } else if(f[2]==='rent-live'){
@@ -291,223 +239,6 @@ var Arzuz = (function(){
       });
     });
 
-    // Custom amenity addition handler
-    var btnAddAmenity = document.getElementById('btnAddAmenity');
-    var inputCustomAmenity = document.getElementById('customAmenityInput');
-    if (btnAddAmenity && inputCustomAmenity) {
-      var handleAddAmenity = function(){
-        var customVal = inputCustomAmenity.value.trim();
-        if (!customVal) return;
-        var checksWrap = document.getElementById('checksWrap');
-        if (!checksWrap) return;
-
-        // Ensure not duplicate
-        var existing = Array.from(checksWrap.querySelectorAll('.chk')).map(function(k){ return k.dataset.v.toLowerCase(); });
-        if (existing.indexOf(customVal.toLowerCase()) === -1) {
-          var newChip = document.createElement('span');
-          newChip.className = 'chk sel';
-          newChip.dataset.v = customVal;
-          newChip.textContent = customVal;
-          newChip.addEventListener('click', function(){
-            newChip.classList.toggle('sel');
-            var updated = [];
-            checksWrap.querySelectorAll('.chk.sel').forEach(function(sc){ updated.push(sc.dataset.v); });
-            F.answers[s.k] = updated;
-          });
-          checksWrap.appendChild(newChip);
-
-          var updated = [];
-          checksWrap.querySelectorAll('.chk.sel').forEach(function(sc){ updated.push(sc.dataset.v); });
-          F.answers[s.k] = updated;
-        }
-        inputCustomAmenity.value = '';
-      };
-
-      btnAddAmenity.addEventListener('click', handleAddAmenity);
-      inputCustomAmenity.addEventListener('keydown', function(e){
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          handleAddAmenity();
-        }
-      });
-    }
-
-    // sel-other change listener (reveals/hides the custom text input)
-    el.querySelectorAll('select[data-type="sel-other"]').forEach(function(sel){
-      sel.addEventListener('change', function(){
-        var wrap = document.getElementById('wrap_other_' + sel.id);
-        if (wrap) {
-          wrap.style.display = sel.value === 'Other' ? 'block' : 'none';
-          if (sel.value === 'Other') {
-            var inp = document.getElementById(sel.id + '_other');
-            if (inp) inp.focus();
-          }
-        }
-      });
-    });
-
-    // text-suggest autocomplete listener (fuzzy match against MALETE_PLACES)
-    if (s.f) {
-      s.f.forEach(function(f){
-        if (f[2] === 'text-suggest') {
-          var inputEl = document.getElementById(f[0]);
-          var sugList = document.getElementById('sug_' + f[0]);
-          if (!inputEl || !sugList) return;
-
-          var places = (typeof MALETE_PLACES !== 'undefined') ? MALETE_PLACES : [
-            "Opposite Pandolion, Malete", "Near Safari Hostel, Malete", "KWASU Main Gate Road, Malete",
-            "KWASU Permanent Site, Malete", "Behind Pandolion, Malete", "Around Safari, Malete"
-          ];
-
-          var renderSuggestions = function(){
-            var query = inputEl.value.trim().toLowerCase();
-            if (!query || query.length < 2) {
-              sugList.innerHTML = '';
-              sugList.classList.remove('open');
-              return;
-            }
-
-            var matches = places.filter(function(p){
-              return p.toLowerCase().indexOf(query) !== -1;
-            }).slice(0, 5);
-
-            if (!matches.length) {
-              sugList.innerHTML = '';
-              sugList.classList.remove('open');
-              return;
-            }
-
-            sugList.innerHTML = matches.map(function(m){
-              return '<div class="suggest-item" data-val="'+m+'">📍 <span>'+m+'</span></div>';
-            }).join('');
-            sugList.classList.add('open');
-
-            sugList.querySelectorAll('.suggest-item').forEach(function(item){
-              item.addEventListener('mousedown', function(e){
-                e.preventDefault();
-                inputEl.value = item.dataset.val;
-                F.answers[f[0]] = item.dataset.val;
-                sugList.innerHTML = '';
-                sugList.classList.remove('open');
-              });
-            });
-          };
-
-          inputEl.addEventListener('input', renderSuggestions);
-          inputEl.addEventListener('focus', renderSuggestions);
-          inputEl.addEventListener('blur', function(){
-            setTimeout(function(){
-              sugList.classList.remove('open');
-            }, 200);
-          });
-        }
-      });
-    }
-
-    // Photo uploads handling (Cloudinary direct upload via fetch)
-    var photoZone = document.getElementById('photoUploadZone');
-    var photoInput = document.getElementById('photoFileInput');
-    if (photoZone && photoInput) {
-      photoZone.addEventListener('click', function(){
-        photoInput.click();
-      });
-
-      photoZone.addEventListener('dragover', function(e){
-        e.preventDefault();
-        photoZone.classList.add('dragover');
-      });
-      photoZone.addEventListener('dragleave', function(){
-        photoZone.classList.remove('dragover');
-      });
-      photoZone.addEventListener('drop', function(e){
-        e.preventDefault();
-        photoZone.classList.remove('dragover');
-        if (e.dataTransfer && e.dataTransfer.files) {
-          uploadPhotos(e.dataTransfer.files);
-        }
-      });
-
-      photoInput.addEventListener('change', function(){
-        if (photoInput.files && photoInput.files.length > 0) {
-          uploadPhotos(photoInput.files);
-        }
-      });
-
-      function uploadPhotos(fileList){
-        var cfg = (window.ARZUZ_CONFIG || {});
-        var cloudName = cfg.CLOUDINARY_CLOUD_NAME || 'arzuz';
-        var uploadPreset = cfg.CLOUDINARY_UPLOAD_PRESET || 'arzuz_listings';
-        var statusEl = document.getElementById('photoUploadStatus');
-        var grid = document.getElementById('photoThumbsGrid');
-
-        F.answers.photos = Array.isArray(F.answers.photos) ? F.answers.photos : [];
-        var files = Array.from(fileList).slice(0, 5 - F.answers.photos.length);
-
-        if (!files.length) {
-          if (statusEl) statusEl.textContent = 'Maximum 5 photos reached.';
-          return;
-        }
-
-        if (statusEl) statusEl.innerHTML = '<i>Uploading ' + files.length + ' image(s) to Cloudinary\u2026</i>';
-
-        var uploads = files.map(function(file){
-          // Direct POST to Cloudinary unsigned upload endpoint
-          var formData = new FormData();
-          formData.append('file', file);
-          formData.append('upload_preset', uploadPreset);
-
-          var url = 'https://api.cloudinary.com/v1_1/' + cloudName + '/image/upload';
-          return fetch(url, { method: 'POST', body: formData })
-            .then(function(res){
-              if (!res.ok) throw new Error('Cloudinary upload returned ' + res.status);
-              return res.json();
-            })
-            .then(function(data){
-              return data.secure_url || data.url;
-            })
-            .catch(function(err){
-              console.warn('[Cloudinary] Upload failed, falling back to local object URL for preview:', err.message);
-              // Fallback to local data URL so form is never blocked
-              return new Promise(function(resolve){
-                var reader = new FileReader();
-                reader.onload = function(e){ resolve(e.target.result); };
-                reader.readAsDataURL(file);
-              });
-            });
-        });
-
-        Promise.all(uploads).then(function(urls){
-          urls.forEach(function(u){ if (u) F.answers.photos.push(u); });
-          if (statusEl) statusEl.innerHTML = '<b style="color:#10B981;">✓ ' + urls.length + ' photo(s) added!</b>';
-          renderPhotoThumbs();
-        });
-      }
-
-      function renderPhotoThumbs(){
-        var grid = document.getElementById('photoThumbsGrid');
-        if (!grid) return;
-        var list = F.answers.photos || [];
-        grid.innerHTML = list.map(function(url, idx){
-          return '<div class="photo-thumb-card">' +
-                 '<img src="'+url+'" alt="Property photo">' +
-                 '<button type="button" class="photo-thumb-del" data-idx="'+idx+'" title="Remove photo">✕</button>' +
-                 '</div>';
-        }).join('');
-
-        grid.querySelectorAll('.photo-thumb-del').forEach(function(delBtn){
-          delBtn.addEventListener('click', function(e){
-            e.stopPropagation();
-            var index = parseInt(delBtn.dataset.idx, 10);
-            F.answers.photos.splice(index, 1);
-            renderPhotoThumbs();
-          });
-        });
-      }
-
-      renderPhotoThumbs();
-    }
-
-
     // Rent live listener
     var rentField = s.f && s.f.find(function(f){ return f[2] === 'rent-live'; });
     if(rentField) {
@@ -573,40 +304,12 @@ var Arzuz = (function(){
         try { activeLeafletMap.remove(); } catch(e){}
       }
 
-      activeLeafletMap = L.map('leaflet-map', { zoomControl: true }).setView([savedLat, savedLng], 17);
+      activeLeafletMap = L.map('leaflet-map', { zoomControl: true }).setView([savedLat, savedLng], 15);
 
-      // Esri World Imagery — real satellite photography (default)
-      var esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
-        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics'
-      });
-
-      // OpenStreetMap — street names & labels
-      var osmStreets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors'
-      });
-
-      // Esri reference labels overlay — road/place names on top of satellite
-      var esriLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 19,
-        attribution: 'Labels &copy; Esri',
-        pane: 'overlayPane'
-      });
-
-      // Start with satellite + labels
-      esriSatellite.addTo(activeLeafletMap);
-      esriLabels.addTo(activeLeafletMap);
-
-      // Layer switcher control
-      var baseMaps = {
-        '🛰️ Satellite': esriSatellite,
-        '🗺️ Street Map': osmStreets
-      };
-      var overlayMaps = {
-        '🏷️ Place Names': esriLabels
-      };
-      L.control.layers(baseMaps, overlayMaps, { position: 'topright', collapsed: false }).addTo(activeLeafletMap);
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(activeLeafletMap);
 
       activeMarker = L.marker([savedLat, savedLng], {
         draggable: true
@@ -652,7 +355,7 @@ var Arzuz = (function(){
         }, function(err){
           console.warn('[Leaflet] GPS request failed:', err.message);
           if (status) {
-            status.innerHTML = 'Could not acquire GPS (' + err.message + '). Use the satellite view to find your building and drag the pin to your gate.';
+            status.innerHTML = 'Could not acquire GPS (' + err.message + '). Please drag the purple pin to your compound entrance in Malete.';
           }
         }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
       }
@@ -737,25 +440,10 @@ var Arzuz = (function(){
         var val = el ? el.value.trim() : (F.answers[id] || '');
 
         if (type === 'pin') {
-          // If step is optional or pin is optional, do not force default coordinates
-          return;
-        }
-
-        if (type === 'photos') {
-          return;
-        }
-
-        if (type === 'sel-other') {
-          var otherInp = document.getElementById(id + '_other');
-          if (val === 'Other') {
-            var customVal = otherInp ? otherInp.value.trim() : '';
-            if (req && !customVal) {
-              setFieldError(id, 'Please describe your property type or pick from the list.');
-              return;
-            }
-          } else if (req && !val) {
-            setFieldError(id, label + ' is required.');
-            return;
+          if (req && !F.answers.lat) {
+            F.answers.lat = 8.7113;
+            F.answers.lng = 4.4697;
+            F.answers.pin = '8.711300,4.469700';
           }
           return;
         }
@@ -799,23 +487,8 @@ var Arzuz = (function(){
     var s = F.steps[F.step];
     if (!s) return;
     if(s.f) s.f.forEach(function(f){
-      var id = f[0];
-      var type = f[2];
-      var e = document.getElementById(id);
-      if(e && type !== 'pin' && type !== 'photos') {
-        if (type === 'sel-other') {
-          if (e.value === 'Other') {
-            var otherEl = document.getElementById(id + '_other');
-            var customText = otherEl ? otherEl.value.trim() : '';
-            F.answers[id] = customText || 'Other';
-            F.answers[id + '_other'] = customText;
-          } else {
-            F.answers[id] = e.value.trim();
-          }
-        } else {
-          F.answers[id] = e.value.trim();
-        }
-      }
+      var e = document.getElementById(f[0]); 
+      if(e && f[2] !== 'pin') F.answers[f[0]] = e.value.trim();
     });
     if(s.ta){ 
       var t = document.getElementById(s.k); 

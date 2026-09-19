@@ -67,9 +67,6 @@ var ArzuzNotify = (function(){
       lines.push("• *Rent per Session:* ₦" + Number(p.rent || p.listed_price_ngn || 0).toLocaleString());
       lines.push("• *Negotiable:* " + (p.neg || "N/A"));
       lines.push("• *Run By:* " + (p.who || "N/A"));
-      if (Array.isArray(p.ut) && p.ut.length) lines.push("• *Features:* " + p.ut.join(', '));
-      if (Array.isArray(p.photos) && p.photos.length) lines.push("• *Photos:* " + p.photos.length + " uploaded (" + p.photos[0] + ")");
-      if (p.pin) lines.push("• *GPS Pin:* " + p.pin);
       lines.push("• *WhatsApp:* " + (p.ph || p.owner_phone || "N/A"));
     } 
     else if (table === 'scout_submissions') {
