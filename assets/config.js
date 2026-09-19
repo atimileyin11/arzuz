@@ -27,6 +27,11 @@ window.ARZUZ_CONFIG = window.ARZUZ_CONFIG || {
   // Support WhatsApp number
   SUPPORT_WHATSAPP: '2348000000000',
 
+  // Cloudinary Direct Upload Settings for Property Images
+  // Create an unsigned preset in Cloudinary: Settings -> Upload -> Upload presets -> Add unsigned preset
+  CLOUDINARY_CLOUD_NAME: 'arzuz',
+  CLOUDINARY_UPLOAD_PRESET: 'arzuz_listings',
+
   // WhatsApp confirmations via OpenWA (true = send post-submission messages)
   WHATSAPP_CONFIRMATIONS: true
 };
