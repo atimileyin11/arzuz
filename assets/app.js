@@ -163,17 +163,25 @@ var Arzuz = (function(){
       } else if(f[2]==='pin'){
         x += '<div class="fld-header">' +
              '<label>Location Pin (Malete)</label>' +
-             '<span class="fld-badge-req">📍 Draggable GPS</span>' +
+             '<span class="fld-badge-req">📡 Satellite + Street</span>' +
+             '</div>' +
+             '<div class="map-tip-banner" id="mapTipBanner">' +
+             '<span class="map-tip-icon">🛰️</span>' +
+             '<span><b>Satellite view is active.</b> You can see real rooftops, gates, and trees — zoom in and drop your pin directly on your building.</span>' +
              '</div>' +
              '<div class="map-wrap">' +
              '<div id="leaflet-map"></div>' +
+             '<div class="map-layer-switcher" id="mapLayerSwitcher">' +
+             '<button type="button" class="map-layer-btn active" id="btnLayerSat" data-layer="sat">🛰 Satellite</button>' +
+             '<button type="button" class="map-layer-btn" id="btnLayerStreet" data-layer="street">🗺 Street</button>' +
+             '</div>' +
+             '</div>' +
              '<div class="map-controls-bar">' +
-             '<span class="map-coords-badge" id="mapCoordsText">📍 Drag marker to entrance gate</span>' +
-             '<button type="button" class="btn-locate" id="btnLocateMe">🎯 Detect My GPS</button>' +
+             '<span class="map-coords-badge" id="mapCoordsText">📍 Tap map or drag marker to your gate</span>' +
+             '<button type="button" class="btn-locate" id="btnLocateMe">🎯 Use My GPS</button>' +
              '</div>' +
-             '<div class="live" style="margin-top:12px;" id="mapLiveStatus">' +
-             'Map centered on Malete. Drag the purple marker to the exact entrance gate of your compound.' +
-             '</div>' +
+             '<div class="map-status-box" id="mapLiveStatus">' +
+             'Switch to <b>Satellite</b> view to see actual rooftops. Tap anywhere on the map to drop a pin, or drag the marker to the exact gate of your compound.' +
              '</div>';
       } else if(f[2]==='rent-live'){
         x += '<input type="number" id="'+f[0]+'" placeholder="e.g. 180000" value="'+val+'">'+
@@ -288,90 +296,193 @@ var Arzuz = (function(){
     document.getElementById('fNext').addEventListener('click', next);
   }
 
-  /* Setup Leaflet Map & GPS Geolocation */
+  /* ============================================================
+     Setup Leaflet Map — Hybrid Satellite + Street Layer Switcher
+     Default: Esri World Imagery (real satellite photography)
+     Secondary: OpenStreetMap (street names for orientation)
+     Features: click-to-pin, drag-to-pin, GPS detect, layer toggle
+     ============================================================ */
   function setupLeafletMap(){
-    var defaultLat = 8.7113; // Malete, Kwara State
-    var defaultLng = 4.4697;
+    var MALETE_LAT = 8.7113; // Malete, Kwara State centre
+    var MALETE_LNG = 4.4697;
 
-    var savedLat = F.answers.lat ? parseFloat(F.answers.lat) : defaultLat;
-    var savedLng = F.answers.lng ? parseFloat(F.answers.lng) : defaultLng;
+    var savedLat = F.answers.lat ? parseFloat(F.answers.lat) : MALETE_LAT;
+    var savedLng = F.answers.lng ? parseFloat(F.answers.lng) : MALETE_LNG;
+
+    // Track active tile layer so we can swap it
+    var activeTileLayer = null;
+
+    // Tile layer definitions
+    var LAYERS = {
+      sat: {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        options: {
+          maxZoom: 19,
+          attribution: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>, Maxar, GeoEye, Earthstar Geographics'
+        }
+      },
+      street: {
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        options: {
+          maxZoom: 19,
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }
+      }
+    };
 
     function renderMap(){
       var mapContainer = document.getElementById('leaflet-map');
       if (!mapContainer || typeof L === 'undefined') return;
 
+      // Destroy any existing map instance cleanly
       if (activeLeafletMap) {
         try { activeLeafletMap.remove(); } catch(e){}
+        activeLeafletMap = null;
+        activeMarker = null;
+        activeTileLayer = null;
       }
 
-      activeLeafletMap = L.map('leaflet-map', { zoomControl: true }).setView([savedLat, savedLng], 15);
+      // Initialise map — satellite by default, zoom 16 for building-level view
+      activeLeafletMap = L.map('leaflet-map', {
+        zoomControl: true,
+        attributionControl: true
+      }).setView([savedLat, savedLng], 16);
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap'
-      }).addTo(activeLeafletMap);
+      // Load satellite layer by default
+      activeTileLayer = L.tileLayer(LAYERS.sat.url, LAYERS.sat.options);
+      activeTileLayer.addTo(activeLeafletMap);
+
+      // Custom pin icon — larger, more precise for satellite use
+      var pinIcon = L.divIcon({
+        className: '',
+        html: '<div class="map-pin-custom"><div class="map-pin-ring"></div><div class="map-pin-dot"></div></div>',
+        iconSize: [32, 42],
+        iconAnchor: [16, 42],
+        popupAnchor: [0, -42]
+      });
 
       activeMarker = L.marker([savedLat, savedLng], {
-        draggable: true
+        draggable: true,
+        icon: pinIcon,
+        title: 'Drag to your entrance gate'
       }).addTo(activeLeafletMap);
 
-      function updateCoordsUI(lat, lng, statusMsg){
+      activeMarker.bindTooltip('Drag me to your gate', {
+        permanent: false,
+        direction: 'top',
+        offset: [0, -10],
+        className: 'map-tooltip'
+      });
+
+      // ---- Update coordinates display ----
+      function updateCoordsUI(lat, lng, statusMsg, isGps){
         F.answers.lat = lat;
         F.answers.lng = lng;
         F.answers.pin = lat.toFixed(6) + ',' + lng.toFixed(6);
 
         var badge = document.getElementById('mapCoordsText');
         if (badge) {
-          badge.textContent = '📍 ' + lat.toFixed(5) + ', ' + lng.toFixed(5);
+          badge.textContent = '\uD83D\uDCCD ' + lat.toFixed(5) + ', ' + lng.toFixed(5);
+          badge.classList.add('coords-set');
         }
         var status = document.getElementById('mapLiveStatus');
         if (status && statusMsg) {
-          status.innerHTML = '<b>Location set:</b> ' + statusMsg;
+          var icon = isGps ? '\uD83C\uDF0D' : '\uD83D\uDCCD';
+          status.innerHTML = icon + ' <b>' + (isGps ? 'GPS locked:' : 'Pin placed:') + '</b> ' + statusMsg;
+          status.classList.add('status-success');
         }
       }
 
+      // ---- Drag to place pin ----
       activeMarker.on('dragend', function(){
         var pos = activeMarker.getLatLng();
-        updateCoordsUI(pos.lat, pos.lng, 'Marker moved manually. Accurate coordinates recorded.');
+        updateCoordsUI(pos.lat, pos.lng, 'Marker repositioned. Accurate coordinates recorded.', false);
       });
 
-      // Geolocation trigger function
+      // ---- Click-to-pin: tap anywhere on the map ----
+      activeLeafletMap.on('click', function(e){
+        activeMarker.setLatLng(e.latlng);
+        updateCoordsUI(e.latlng.lat, e.latlng.lng, 'Tapped location pinned. Drag to refine if needed.', false);
+      });
+
+      // ---- GPS detection ----
       function detectGps(){
         var status = document.getElementById('mapLiveStatus');
+        var btnLocate = document.getElementById('btnLocateMe');
         if (!navigator.geolocation) {
-          if (status) status.innerHTML = 'Geolocation is not supported by your browser. Please drag the pin on the map.';
+          if (status) status.innerHTML = '\u26A0\uFE0F Geolocation not supported. Tap your building on the satellite view to pin it.';
           return;
         }
-        if (status) status.innerHTML = '<i>Requesting GPS coordinates from your device\u2026</i>';
+        if (status) status.innerHTML = '<span class="map-loading"></span> Requesting GPS from your device\u2026';
+        if (btnLocate) { btnLocate.textContent = '\u23F3 Locating\u2026'; btnLocate.disabled = true; }
 
-        navigator.geolocation.getCurrentPosition(function(pos){
-          var lat = pos.coords.latitude;
-          var lng = pos.coords.longitude;
-          var acc = Math.round(pos.coords.accuracy || 15);
+        navigator.geolocation.getCurrentPosition(
+          function(pos){
+            var lat = pos.coords.latitude;
+            var lng = pos.coords.longitude;
+            var acc = Math.round(pos.coords.accuracy || 15);
 
-          activeMarker.setLatLng([lat, lng]);
-          activeLeafletMap.setView([lat, lng], 17);
-          updateCoordsUI(lat, lng, 'GPS captured successfully! Accurate to \u00B1' + acc + 'm. Drag marker if needed.');
-        }, function(err){
-          console.warn('[Leaflet] GPS request failed:', err.message);
-          if (status) {
-            status.innerHTML = 'Could not acquire GPS (' + err.message + '). Please drag the purple pin to your compound entrance in Malete.';
-          }
-        }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
+            activeMarker.setLatLng([lat, lng]);
+            // Zoom to building level (18) on GPS success for precision
+            activeLeafletMap.setView([lat, lng], 18);
+            updateCoordsUI(lat, lng, 'Accurate to \u00B1' + acc + 'm. You can drag the pin to fine-tune.', true);
+
+            if (btnLocate) { btnLocate.textContent = '\uD83C\uDF0D GPS Locked'; btnLocate.disabled = false; }
+          },
+          function(err){
+            console.warn('[Leaflet] GPS failed:', err.message);
+            if (status) {
+              status.innerHTML = '\u26A0\uFE0F Could not get GPS (' + err.message + '). Switch to <b>Satellite</b> and tap your building roof to pin it.';
+            }
+            if (btnLocate) { btnLocate.textContent = '\uD83C\uDFAF Use My GPS'; btnLocate.disabled = false; }
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
       }
 
       var btnLocate = document.getElementById('btnLocateMe');
       if (btnLocate) btnLocate.addEventListener('click', detectGps);
 
-      if (!F.answers.lat) {
-        detectGps();
-      } else {
-        updateCoordsUI(savedLat, savedLng, 'Restored previously pinned gate location.');
+      // ---- Layer switcher buttons ----
+      function switchLayer(layerKey){
+        if (!activeLeafletMap) return;
+        if (activeTileLayer) {
+          activeLeafletMap.removeLayer(activeTileLayer);
+        }
+        var def = LAYERS[layerKey];
+        activeTileLayer = L.tileLayer(def.url, def.options);
+        activeTileLayer.addTo(activeLeafletMap);
+        // Bring marker to front after layer swap
+        if (activeMarker) activeMarker.bringToFront();
+
+        // Update button active state
+        var btns = document.querySelectorAll('.map-layer-btn');
+        btns.forEach(function(b){ b.classList.remove('active'); });
+        var activeBtn = document.getElementById(layerKey === 'sat' ? 'btnLayerSat' : 'btnLayerStreet');
+        if (activeBtn) activeBtn.classList.add('active');
+
+        // Show/hide the satellite tip banner
+        var tip = document.getElementById('mapTipBanner');
+        if (tip) tip.style.display = layerKey === 'sat' ? '' : 'none';
       }
 
+      var btnSat = document.getElementById('btnLayerSat');
+      var btnStreet = document.getElementById('btnLayerStreet');
+      if (btnSat) btnSat.addEventListener('click', function(){ switchLayer('sat'); });
+      if (btnStreet) btnStreet.addEventListener('click', function(){ switchLayer('street'); });
+
+      // ---- Restore saved pin or auto-detect GPS ----
+      if (F.answers.lat) {
+        updateCoordsUI(savedLat, savedLng, 'Previously pinned location restored. Tap or drag to move.', false);
+      } else {
+        // Auto-detect GPS on first load
+        detectGps();
+      }
+
+      // Fix Leaflet container sizing after DOM settles
       setTimeout(function(){
         if (activeLeafletMap) activeLeafletMap.invalidateSize();
-      }, 300);
+      }, 320);
     }
 
     if (typeof L === 'undefined') {

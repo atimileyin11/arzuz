@@ -840,21 +840,92 @@ textarea {
   transform: translateY(-1px);
 }
 
-/* ---------- Interactive Leaflet Map Container ---------- */
+/* ---------- Interactive Leaflet Map — Satellite + Street Hybrid ---------- */
+
+/* Satellite tip banner shown when satellite layer is active */
+.map-tip-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(0, 20, 60, 0.07) 0%, rgba(124, 58, 237, 0.07) 100%);
+  border: 1px solid rgba(124, 58, 237, 0.2);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--body-c);
+  margin-bottom: 12px;
+}
+
+.map-tip-icon {
+  font-size: 18px;
+  flex: none;
+  margin-top: 1px;
+}
+
+/* Map tile area */
 .map-wrap {
-  margin-bottom: 18px;
+  position: relative;
+  margin-bottom: 0;
+  border-radius: 13px;
+  overflow: hidden;
+  border: 2px solid rgba(124, 58, 237, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(124, 58, 237, 0.08);
 }
 
 #leaflet-map {
-  height: 280px;
+  height: 340px;
   width: 100%;
-  border-radius: 12px;
-  border: 1.5px solid rgba(124, 58, 237, 0.25);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-  z-index: 10;
-  background: #E5E7EB;
+  background: #1a1a2e;
+  display: block;
+  /* z-index handled by Leaflet internally */
 }
 
+/* Layer switcher pill — floats inside map-wrap */
+.map-layer-switcher {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  background: rgba(10, 8, 18, 0.78);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-radius: 30px;
+  padding: 4px;
+  gap: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.map-layer-btn {
+  font-family: var(--body);
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 7px 16px;
+  border-radius: 24px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.65);
+  cursor: pointer;
+  transition: all 0.22s var(--ease-spring);
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
+.map-layer-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.map-layer-btn.active {
+  background: linear-gradient(135deg, var(--stamp) 0%, var(--stamp-vibrant) 100%);
+  color: #fff;
+  box-shadow: 0 3px 12px rgba(124, 58, 237, 0.45);
+}
+
+/* Controls bar below the map */
 .map-controls-bar {
   display: flex;
   align-items: center;
@@ -870,31 +941,144 @@ textarea {
   gap: 6px;
   font-size: 12.5px;
   font-weight: 600;
+  font-family: var(--mono);
   color: var(--stamp-vibrant);
-  background: rgba(124, 58, 237, 0.1);
-  padding: 6px 12px;
+  background: rgba(124, 58, 237, 0.09);
+  padding: 6px 13px;
   border-radius: 20px;
   border: 1px solid rgba(124, 58, 237, 0.2);
+  transition: background 0.25s ease, border-color 0.25s ease;
+}
+
+.map-coords-badge.coords-set {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #059669;
 }
 
 .btn-locate {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: var(--surface);
-  border: 1.5px solid var(--line);
-  color: var(--ink);
+  gap: 7px;
+  background: rgba(10, 8, 18, 0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1.5px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-family: var(--body);
   font-size: 13px;
-  font-weight: 600;
-  padding: 6px 14px;
-  border-radius: 8px;
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 9px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.22s var(--ease-spring);
+  letter-spacing: 0.01em;
 }
 
 .btn-locate:hover {
   border-color: var(--stamp-vibrant);
-  color: var(--stamp-vibrant);
-  background: rgba(124, 58, 237, 0.05);
+  background: rgba(124, 58, 237, 0.18);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(124, 58, 237, 0.2);
 }
 
+.btn-locate:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Status box below the controls bar */
+.map-status-box {
+  font-size: 13.5px;
+  padding: 13px 16px;
+  border-radius: 10px;
+  background: var(--surface);
+  backdrop-filter: blur(10px);
+  margin-top: 10px;
+  line-height: 1.52;
+  color: var(--body-c);
+  border: 1px solid var(--line);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.03);
+  transition: background 0.3s ease, border-color 0.3s ease;
+}
+
+.map-status-box.status-success {
+  background: rgba(16, 185, 129, 0.07);
+  border-color: rgba(16, 185, 129, 0.25);
+  color: #065f46;
+}
+
+/* Inline loading spinner (pure CSS, no images) */
+.map-loading {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(124, 58, 237, 0.3);
+  border-top-color: var(--stamp-vibrant);
+  border-radius: 50%;
+  animation: mapSpin 0.7s linear infinite;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+@keyframes mapSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Custom pin marker — rendered via Leaflet divIcon */
+.map-pin-custom {
+  position: relative;
+  width: 32px;
+  height: 42px;
+}
+
+.map-pin-ring {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 30px;
+  height: 30px;
+  border-radius: 50% 50% 50% 0;
+  background: linear-gradient(135deg, var(--stamp) 0%, var(--stamp-vibrant) 100%);
+  transform: translateX(-50%) rotate(-45deg);
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.5);
+  border: 2.5px solid #fff;
+}
+
+.map-pin-dot {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.4);
+}
+
+/* Leaflet tooltip override to match Arzuz style */
+.map-tooltip.leaflet-tooltip {
+  background: rgba(10, 8, 18, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: var(--body);
+  border-radius: 8px;
+  padding: 6px 12px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.map-tooltip.leaflet-tooltip::before {
+  border-top-color: rgba(255, 255, 255, 0.14);
+}
+
+/* Leaflet attribution control — small, no visual clutter */
+.leaflet-control-attribution {
+  font-size: 10px !important;
+  opacity: 0.7;
+}
