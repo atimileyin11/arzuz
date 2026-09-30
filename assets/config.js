@@ -24,8 +24,8 @@ window.ARZUZ_CONFIG = window.ARZUZ_CONFIG || {
   // Environment mode: 'production' or 'test'
   ENV: 'production',
 
-  // Support WhatsApp number
-  SUPPORT_WHATSAPP: '2348000000000',
+  // Support WhatsApp number (09024814771)
+  SUPPORT_WHATSAPP: '2349024814771',
 
   // WhatsApp confirmations via OpenWA (true = send post-submission messages)
   WHATSAPP_CONFIRMATIONS: true

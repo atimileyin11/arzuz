@@ -1,20 +1,35 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Register my building — Arzuz</title>
+<title>Register Your Building — Arzuz Student Housing Malete</title>
+<meta name="description" content="Tell us about a student building in Malete. Share real rent prices, utilities and location so students can verify before they pay. No agent fees.">
+<link rel="canonical" href="https://arzuz.com/my-building">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
 <link rel="icon" href="assets/icons/icon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
-<meta property="og:title" content="Arzuz — student housing in Malete you can verify before you pay">
-<meta property="og:description" content="Tell us the room you need and we'll find it. Real prices, honest reviews from students who live there, no agent fees.">
-<meta property="og:image" content="assets/social/og-image.png">
+<meta property="og:title" content="Register Your Building — Arzuz Student Housing Malete">
+<meta property="og:description" content="Share real rent prices and utilities for your building. Help students in Malete verify before they pay.">
+<meta property="og:image" content="https://arzuz.com/assets/social/og-image.png">
+<meta property="og:url" content="https://arzuz.com/my-building">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Register Your Building — Arzuz">
+<meta name="twitter:description" content="Share real rent prices and utilities for your Malete building. Help students verify before they pay.">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "Register Your Building — Arzuz",
+  "description": "Submit verified student housing data for Malete, Kwara State.",
+  "url": "https://arzuz.com/my-building",
+  "isPartOf": { "@type": "WebSite", "name": "Arzuz", "url": "https://arzuz.com" }
+}
+</script>
 <link rel="stylesheet" href="assets/arzuz.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
@@ -46,6 +61,10 @@ Arzuz.form({
     hint:"Many owners never meet their tenants. This tells us who is actually running the compound.",
     o:["The owner","A caretaker","An agent","I am not sure"]},
    {k:'ut', h:"What does it actually have?", hint:"Only tick what genuinely works.", c:UTILITIES},
+   {k:'photo', h:"Add a photo of the building",
+    hint:"Optional but powerful \u2014 listings with a photo get 3\u00d7 more matches. Take it from outside the gate.",
+    opt:true,
+    f:[["photo","Building photo","photo"]]},
    {k:'vac', h:"Any room becoming free soon?",
     hint:"The most useful thing you can tell us \u2014 it reaches us before it reaches any agent.",
     o:["No","Yes, this month","Yes, next session","Not sure"]},

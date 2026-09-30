@@ -57,7 +57,8 @@ var Arzuz = (function(){
       '<a href="safety.html">Your safety</a>'+
       '<a href="privacy.html">Privacy</a>'+
       '<a href="terms.html">Terms</a>'+
-      '<a href="mailto:support@arzuz.com">support@arzuz.com</a></div>'+
+      '<a href="mailto:support@arzuz.com">support@arzuz.com</a>'+
+      '<a href="https://wa.me/2349024814771" target="_blank" rel="noopener noreferrer">WhatsApp: 09024814771</a></div>'+
       'Arzuz does not collect rent, hold deposits, or take payment from tenants. '+
       'Your phone number is used to verify your account and send you matches. '+
       'It is never shown publicly.<br><br>'+
@@ -188,6 +189,18 @@ var Arzuz = (function(){
              '<div class="live" id="rentOut">Type a price and we will show how many students can reach you.</div>';
       } else if(f[2]==='tel'){
         x += '<input type="tel" id="'+f[0]+'" value="'+val+'" placeholder="e.g. 08012345678" inputmode="tel">';
+      } else if(f[2]==='photo'){
+        var hasPhoto = !!val;
+        x += '<div class="photo-upload-wrap" id="photoWrap_'+f[0]+'">' +
+             '<label class="photo-drop-zone" id="photoZone_'+f[0]+'" for="photoInput_'+f[0]+'">' +
+             (hasPhoto
+               ? '<img src="'+val+'" class="photo-preview" id="photoPreview_'+f[0]+'" alt="Building photo">'
+               : '<div class="photo-drop-inner"><span class="photo-icon">📷</span><span class="photo-label">Tap to add a photo<br><small>JPG, PNG, WebP · max 10 MB</small></span></div>') +
+             '</label>' +
+             '<input type="file" id="photoInput_'+f[0]+'" accept="image/*" style="display:none" data-field="'+f[0]+'">' +
+             '<div class="photo-progress" id="photoProgress_'+f[0]+'"></div>' +
+             (hasPhoto ? '<button type="button" class="photo-remove" data-field="'+f[0]+'">✕ Remove photo</button>' : '') +
+             '</div>';
       } else {
         x += '<input type="'+f[2]+'" id="'+f[0]+'" value="'+val+'" placeholder="'+f[1]+'">';
       }
@@ -224,6 +237,25 @@ var Arzuz = (function(){
     if (hasPinField) {
       setupLeafletMap();
     }
+
+    // Wire up photo upload fields
+    var photoFields = s.f ? s.f.filter(function(f){ return f[2] === 'photo'; }) : [];
+    photoFields.forEach(function(f){
+      var input = document.getElementById('photoInput_'+f[0]);
+      if (!input) return;
+      input.addEventListener('change', function(){
+        var file = input.files && input.files[0];
+        if (!file) return;
+        handlePhotoUpload(f[0], file);
+      });
+      var removeBtn = el.querySelector('.photo-remove[data-field="'+f[0]+'"]');
+      if (removeBtn) {
+        removeBtn.addEventListener('click', function(){
+          F.answers[f[0]] = '';
+          draw();
+        });
+      }
+    });
 
     // Option buttons event listener
     el.querySelectorAll('.opt').forEach(function(b){
@@ -495,6 +527,73 @@ var Arzuz = (function(){
     }
   }
 
+  /* ============================================================
+     Cloudinary photo upload — signs via Netlify Function then
+     POSTs the file directly to Cloudinary's upload API.
+     ============================================================ */
+  function handlePhotoUpload(fieldId, file){
+    var progressEl = document.getElementById('photoProgress_'+fieldId);
+    var zoneEl     = document.getElementById('photoZone_'+fieldId);
+
+    function setProgress(msg, cls){
+      if (!progressEl) return;
+      progressEl.className = 'photo-progress' + (cls ? ' '+cls : '');
+      progressEl.textContent = msg;
+    }
+
+    setProgress('⏳ Getting upload permission…');
+    if (zoneEl) zoneEl.classList.add('uploading');
+
+    fetch('/api/cloudinary-sign', { method: 'POST' })
+      .then(function(r){
+        if (!r.ok) throw new Error('Sign endpoint returned ' + r.status);
+        return r.json();
+      })
+      .then(function(sig){
+        setProgress('📤 Uploading photo…');
+
+        var fd = new FormData();
+        fd.append('file',       file);
+        fd.append('api_key',    sig.api_key);
+        fd.append('timestamp',  sig.timestamp);
+        fd.append('signature',  sig.signature);
+        fd.append('folder',     sig.folder);
+        fd.append('eager',      sig.eager);
+
+        var url = 'https://api.cloudinary.com/v1_1/' + sig.cloud_name + '/image/upload';
+        return fetch(url, { method: 'POST', body: fd }).then(function(r){
+          if (!r.ok) return r.text().then(function(t){ throw new Error('Cloudinary: ' + t); });
+          return r.json();
+        });
+      })
+      .then(function(result){
+        var secureUrl = result.secure_url;
+        F.answers[fieldId] = secureUrl;
+        setProgress('✅ Photo uploaded!', 'success');
+        if (zoneEl) {
+          zoneEl.classList.remove('uploading');
+          zoneEl.innerHTML = '<img src="'+secureUrl+'" class="photo-preview" alt="Building photo">';
+        }
+        // Show remove button
+        var wrap = document.getElementById('photoWrap_'+fieldId);
+        if (wrap && !wrap.querySelector('.photo-remove')) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'photo-remove';
+          btn.dataset.field = fieldId;
+          btn.textContent = '✕ Remove photo';
+          btn.addEventListener('click', function(){ F.answers[fieldId] = ''; draw(); });
+          wrap.appendChild(btn);
+        }
+        console.log('[Arzuz] Photo uploaded to Cloudinary:', secureUrl);
+      })
+      .catch(function(err){
+        console.error('[Arzuz] Photo upload failed:', err.message);
+        setProgress('⚠️ Upload failed — please try again.', 'error');
+        if (zoneEl) zoneEl.classList.remove('uploading');
+      });
+  }
+
   /* Validate all fields on current step before advancing */
   function validateCurrentStep(){
     var s = F.steps[F.step];
@@ -659,7 +758,8 @@ var Arzuz = (function(){
     chrome: chrome, 
     footer: footer, 
     form: form,
-    answers: function(){ return F.answers; }
+    answers: function(){ return F.answers; },
+    uploadPhoto: handlePhotoUpload
   };
 })();
 

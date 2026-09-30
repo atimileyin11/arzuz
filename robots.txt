@@ -1,0 +1,8 @@
+﻿User-agent: *
+Allow: /
+
+Sitemap: https://arzuz.com/sitemap.xml
+
+# Keep admin and owner-list private from crawlers
+Disallow: /admin.html
+Disallow: /owner-list.html

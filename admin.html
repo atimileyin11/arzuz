@@ -473,6 +473,48 @@ tr:hover td {
   .search-box { width: 100%; justify-content: stretch; }
   .search-box button { width: 100%; }
 }
+/* Photo thumbnail in admin table */
+.admin-photo-thumb {
+  width: 52px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.12);
+  display: block;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.admin-photo-thumb:hover {
+  transform: scale(1.08);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+/* Lightbox overlay for full-size photo */
+#photoLightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.88);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+#photoLightbox img {
+  max-width: 90vw;
+  max-height: 88vh;
+  border-radius: 10px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.8);
+  object-fit: contain;
+}
+/* Photo preview inside edit modal */
+.edit-photo-preview {
+  width: 100%;
+  border-radius: 10px;
+  margin-top: 6px;
+  object-fit: cover;
+  max-height: 180px;
+  border: 1px solid rgba(255,255,255,0.14);
+}
 </style>
 </head>
 <body>
@@ -608,6 +650,14 @@ tr:hover td {
       <button type="button" class="bk" id="btnCancelDel" style="color: #B3A7BF;">Cancel</button>
       <button type="button" class="next" id="btnConfirmDel" style="background: #EF4444; border-color: #DC2626; padding: 10px 22px; font-size: 14px;">Yes, Delete</button>
     </div>
+  </div>
+</div>
+
+<!-- Fullsize Photo Lightbox Modal -->
+<div id="photoLightbox" onclick="this.style.display='none'">
+  <div style="position:relative; max-width:90vw; max-height:90vh; text-align:center;">
+    <img id="lightboxImg" src="" alt="Full view" style="max-width:100%; max-height:85vh; border-radius:10px; box-shadow:0 12px 40px rgba(0,0,0,0.8); border:1px solid rgba(255,255,255,0.2);">
+    <div style="color:#E5E7EB; font-size:13px; margin-top:10px;">Click anywhere outside to close</div>
   </div>
 </div>
 
@@ -846,20 +896,27 @@ tr:hover td {
       }).join('') || '<tr><td colspan="8" style="text-align:center; padding:30px; color:#8D8099;">No student records found.</td></tr>';
     } 
     else if(currentTable === 'listings'){
-      head.innerHTML = '<th>Date</th><th>Status</th><th>Owner Name</th><th>Property</th><th>Area</th><th>Price</th><th>Location</th><th>Actions</th>';
+      head.innerHTML = '<th>Date</th><th>Status</th><th>Photo</th><th>Property Name</th><th>Owner</th><th>Type</th><th>Area</th><th>Price</th><th>Location</th><th>Actions</th>';
       body.innerHTML = rows.map(function(r){
         var dateStr = new Date(r.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
         var price = r.listed_price_ngn || (r.payload&&r.payload.rent) || 0;
         var phone = r.owner_phone || (r.payload&&r.payload.ph) || '';
         var lat = r.latitude || (r.payload && r.payload.lat);
         var lng = r.longitude || (r.payload && r.payload.lng);
+        var photoUrl = r.photo_url || (r.payload && r.payload.photo) || '';
+        var propName = esc(r.property_name || (r.payload&&r.payload.prop_name) || '');
         var mapBtn = (lat && lng) 
           ? '<a class="act-btn act-map" href="https://www.google.com/maps?q='+lat+','+lng+'" target="_blank">📍 Map</a>' 
           : '<span style="color:#6B5C7D; font-size:12px;">No pin</span>';
+        var photoCell = photoUrl
+          ? '<img class="admin-photo-thumb" src="'+esc(photoUrl)+'" alt="Property" onclick="window.openLightbox(\'' + esc(photoUrl) + '\')">'  
+          : '<span style="color:#6B5C7D;font-size:11px;">No photo</span>';
 
         return '<tr>'+
           '<td>'+esc(dateStr)+'</td>'+
           '<td>'+getStatusTag(r.status)+'</td>'+
+          '<td>'+photoCell+'</td>'+
+          '<td><b>'+(propName||'<span style="color:#6B5C7D">—</span>')+'</b></td>'+
           '<td><b>'+esc(r.owner_name || (r.payload&&r.payload.nm) || 'Owner')+'</b></td>'+
           '<td>'+esc(r.property_type || (r.payload&&r.payload.ty) || '-')+'</td>'+
           '<td>'+esc(r.area || (r.payload&&r.payload.ar) || '-')+'</td>'+
@@ -871,23 +928,28 @@ tr:hover td {
             '<button class="act-btn act-del" onclick="window.openDeleteModal(\'listings\',\''+r.id+'\')">🗑</button>'+
           '</div></td>'+
         '</tr>';
-      }).join('') || '<tr><td colspan="8" style="text-align:center; padding:30px; color:#8D8099;">No listings found.</td></tr>';
+      }).join('') || '<tr><td colspan="10" style="text-align:center; padding:30px; color:#8D8099;">No listings found.</td></tr>';
     } 
     else if(currentTable === 'scout_submissions'){
-      head.innerHTML = '<th>Date</th><th>Status</th><th>Area</th><th>Rent Paid</th><th>Vacancy</th><th>Location</th><th>Actions</th>';
+      head.innerHTML = '<th>Date</th><th>Status</th><th>Photo</th><th>Area</th><th>Rent Paid</th><th>Vacancy</th><th>Location</th><th>Actions</th>';
       body.innerHTML = rows.map(function(r){
         var dateStr = new Date(r.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
         var rent = r.rent_reported || (r.payload&&r.payload.amt) || 0;
         var phone = r.scout_phone || (r.payload&&r.payload.phone) || '';
         var lat = r.latitude || (r.payload && r.payload.lat);
         var lng = r.longitude || (r.payload && r.payload.lng);
+        var photoUrl = r.photo_url || (r.payload && r.payload.photo) || '';
         var mapBtn = (lat && lng) 
           ? '<a class="act-btn act-map" href="https://www.google.com/maps?q='+lat+','+lng+'" target="_blank">📍 Map</a>' 
           : '<span style="color:#6B5C7D; font-size:12px;">No pin</span>';
+        var photoCell = photoUrl
+          ? '<img class="admin-photo-thumb" src="'+esc(photoUrl)+'" alt="Building" onclick="window.openLightbox(\'' + esc(photoUrl) + '\')">'  
+          : '<span style="color:#6B5C7D;font-size:11px;">No photo</span>';
 
         return '<tr>'+
           '<td>'+esc(dateStr)+'</td>'+
           '<td>'+getStatusTag(r.status)+'</td>'+
+          '<td>'+photoCell+'</td>'+
           '<td><b>'+esc(r.area || (r.payload&&r.payload.area) || '-')+'</b></td>'+
           '<td><b>₦'+Number(rent).toLocaleString()+'</b></td>'+
           '<td>'+esc(r.vacancy_signal || (r.payload&&r.payload.vac) || '-')+'</td>'+
@@ -898,7 +960,7 @@ tr:hover td {
             '<button class="act-btn act-del" onclick="window.openDeleteModal(\'scout_submissions\',\''+r.id+'\')">🗑</button>'+
           '</div></td>'+
         '</tr>';
-      }).join('') || '<tr><td colspan="7" style="text-align:center; padding:30px; color:#8D8099;">No scout reports found.</td></tr>';
+      }).join('') || '<tr><td colspan="8" style="text-align:center; padding:30px; color:#8D8099;">No scout reports found.</td></tr>';
     }
   }
 
@@ -941,17 +1003,30 @@ tr:hover td {
       html += '<div class="edit-fld"><label>Budget Band</label><input type="text" id="edit_budget_band" value="'+esc(row.budget_band || p.budget || '')+'"></div>';
     } 
     else if (table === 'listings') {
+      var photoUrl = row.photo_url || p.photo || '';
+      html += '<div class="edit-fld"><label>Property Name</label><input type="text" id="edit_prop_name" value="'+esc(row.property_name || p.prop_name || '')+'" placeholder="e.g. Blessing Lodge (optional)"></div>';
       html += '<div class="edit-fld"><label>Owner Name</label><input type="text" id="edit_nm" value="'+esc(row.owner_name || p.nm || '')+'"></div>';
       html += '<div class="edit-fld"><label>Phone / WhatsApp</label><input type="tel" id="edit_ph" value="'+esc(row.owner_phone || p.ph || '')+'"></div>';
       html += '<div class="edit-fld"><label>Area / Street</label><input type="text" id="edit_ar" value="'+esc(row.area || p.ar || '')+'"></div>';
       html += '<div class="edit-fld"><label>Price (₦)</label><input type="number" id="edit_rent" value="'+esc(row.listed_price_ngn || p.rent || '')+'"></div>';
       html += '<div class="edit-fld"><label>Rooms</label><input type="text" id="edit_rm" value="'+esc(row.rooms || p.rm || '')+'"></div>';
+      if (photoUrl) {
+        html += '<div class="edit-fld" style="grid-column:1/-1"><label>Property Photo</label>'+
+                '<img class="edit-photo-preview" src="'+esc(photoUrl)+'" alt="Property photo">'+
+                '<p style="font-size:12px;color:#9A8CA8;margin-top:6px;">Photo uploaded via Cloudinary. To replace, submit a new listing.</p></div>';
+      }
     } 
     else if (table === 'scout_submissions') {
+      var scoutPhoto = row.photo_url || p.photo || '';
       html += '<div class="edit-fld"><label>Area / Street</label><input type="text" id="edit_area" value="'+esc(row.area || p.area || '')+'"></div>';
       html += '<div class="edit-fld"><label>Phone / WhatsApp</label><input type="tel" id="edit_phone" value="'+esc(row.scout_phone || p.phone || '')+'"></div>';
       html += '<div class="edit-fld"><label>Rent Paid (₦)</label><input type="number" id="edit_amt" value="'+esc(row.rent_reported || p.amt || '')+'"></div>';
       html += '<div class="edit-fld"><label>Vacancy Signal</label><input type="text" id="edit_vac" value="'+esc(row.vacancy_signal || p.vac || '')+'"></div>';
+      if (scoutPhoto) {
+        html += '<div class="edit-fld" style="grid-column:1/-1"><label>Building Photo</label>'+
+                '<img class="edit-photo-preview" src="'+esc(scoutPhoto)+'" alt="Building photo">'+
+                '<p style="font-size:12px;color:#9A8CA8;margin-top:6px;">Photo uploaded via Cloudinary.</p></div>';
+      }
     }
 
     editFieldsContainer.innerHTML = html;
@@ -979,6 +1054,7 @@ tr:hover td {
       newPayload.type = document.getElementById('edit_room_type').value.trim();
       newPayload.budget = document.getElementById('edit_budget_band').value.trim();
     } else if (table === 'listings') {
+      newPayload.prop_name = document.getElementById('edit_prop_name').value.trim();
       newPayload.nm = document.getElementById('edit_nm').value.trim();
       newPayload.ph = document.getElementById('edit_ph').value.trim();
       newPayload.ar = document.getElementById('edit_ar').value.trim();
@@ -1110,6 +1186,13 @@ tr:hover td {
   });
 
   checkAuth();
+
+  // Lightbox for photo thumbnails
+  window.openLightbox = function(url) {
+    var lb = document.getElementById('photoLightbox');
+    document.getElementById('lightboxImg').src = url;
+    lb.style.display = 'flex';
+  };
 })();
 </script>
 </body>

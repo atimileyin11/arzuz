@@ -62,6 +62,8 @@ create table if not exists listings (
   listed_price_ngn integer generated always as
                    (nullif(payload->>'rent','')::integer) stored,
 
+  property_name text generated always as (payload->>'prop_name') stored,
+  photo_url     text generated always as (payload->>'photo')     stored,
   property_type text generated always as (payload->>'ty')   stored,
   area          text generated always as (payload->>'ar')   stored,
   rooms         text generated always as (payload->>'rm')   stored,
@@ -84,6 +86,7 @@ create table if not exists scout_submissions (
   status       text not null default 'pending',
   notes        text,
 
+  photo_url      text generated always as (payload->>'photo') stored,
   area           text generated always as (payload->>'area')  stored,
   scout_phone    text generated always as (payload->>'phone') stored,
   rent_reported  integer generated always as

@@ -1,18 +1,20 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>List a property — Arzuz</title>
+<title>List Your Property — Arzuz Student Housing Malete</title>
+<meta name="description" content="List your student property in Malete on Arzuz. Reach verified students looking for rooms. Free to list, no agent required.">
+<link rel="canonical" href="https://arzuz.com/list">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
 <link rel="icon" href="assets/icons/icon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
-<meta property="og:title" content="Arzuz — student housing in Malete you can verify before you pay">
-<meta property="og:description" content="Tell us the room you need and we'll find it. Real prices, honest reviews from students who live there, no agent fees.">
-<meta property="og:image" content="assets/social/og-image.png">
+<meta property="og:title" content="List Your Property — Arzuz Student Housing Malete">
+<meta property="og:description" content="List your student property in Malete on Arzuz. Reach verified students looking for rooms.">
+<meta property="og:image" content="https://arzuz.com/assets/social/og-image.png">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="stylesheet" href="assets/arzuz.css">
@@ -35,7 +37,9 @@ Arzuz.form({
   backHref:'index.html', backLabel:'\u2190 Back to home',
   steps:[
    {k:'p', h:"About the property",
-    f:[["ty","Property type","sel",["Self-contain","Shared room","Face-me-I-face-you","Hostel","Boys quarters"]],
+    hint:"Give us a name for the property if it has one \u2014 helps students recognise it. Everything else is required.",
+    f:[["prop_name","Property name or nickname (e.g. Blessing Lodge)","text",{opt:true}],
+       ["ty","Property type","sel",["Self-contain","Shared room","Face-me-I-face-you","Hostel","Boys quarters"]],
        ["ar","Street or area name","text"],
        ["rm","Rooms available","number"]]},
    {k:'pin', h:"Where exactly is it?",
@@ -49,6 +53,10 @@ Arzuz.form({
     o:["I do, myself","A caretaker","An agent","Nobody yet"]},
    {k:'ut', h:"What does the property have?",
     hint:"Tick everything that works. We check these when we verify.", c:UTILITIES},
+   {k:'photo', h:"Add photos of the property",
+    hint:"Optional but very effective \u2014 listings with photos get 3\u00d7 more enquiries. Take them from outside the building.",
+    opt:true,
+    f:[["photo","Property photo","photo"]]},
    {k:'ow', h:"Your details",
     hint:"Students reach you on this number. It stays hidden until someone contacts you.",
     f:[["nm","Your name","text"],["ph","WhatsApp number","tel"]]},

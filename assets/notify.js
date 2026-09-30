@@ -60,6 +60,7 @@ var ArzuzNotify = (function(){
     } 
     else if (table === 'listings') {
       title = "🏠 *New Landlord Property Listing*";
+      if (p.prop_name) lines.push("• *Property Name:* " + p.prop_name);
       lines.push("• *Owner Name:* " + (p.nm || p.owner_name || "N/A"));
       lines.push("• *Property Type:* " + (p.ty || p.property_type || "N/A"));
       lines.push("• *Area/Street:* " + (p.ar || p.area || "N/A"));
@@ -68,6 +69,7 @@ var ArzuzNotify = (function(){
       lines.push("• *Negotiable:* " + (p.neg || "N/A"));
       lines.push("• *Run By:* " + (p.who || "N/A"));
       lines.push("• *WhatsApp:* " + (p.ph || p.owner_phone || "N/A"));
+      if (p.photo) lines.push("• *Photo:* [View Photo](" + p.photo + ")");
     } 
     else if (table === 'scout_submissions') {
       title = "🔍 *New Building Scout Report*";
@@ -78,6 +80,7 @@ var ArzuzNotify = (function(){
       lines.push("• *Rent Collector:* " + (p.who || "N/A"));
       lines.push("• *Vacancy Signal:* " + (p.vac || "N/A"));
       lines.push("• *WhatsApp:* " + (p.phone || "N/A"));
+      if (p.photo) lines.push("• *Photo:* [View Photo](" + p.photo + ")");
     } 
     else {
       title = "📝 *New Form Submission (" + table + ")*";

@@ -1,4 +1,9 @@
 # Arzuz — Netlify configuration
+#
+# Environment variables to set in Netlify dashboard → Site settings → Environment variables:
+#   CLOUDINARY_API_KEY    = 879621267632718
+#   CLOUDINARY_API_SECRET = 3klddUOrhMI45s_ejS9bJMywBnU
+#   CLOUDINARY_CLOUD_NAME = zrptjhes
 
 [build]
   publish = "."
