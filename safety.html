@@ -1,65 +1,171 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Your safety on Arzuz — Arzuz</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="icon" href="assets/icons/favicon.ico" sizes="any">
-<link rel="stylesheet" href="assets/arzuz.css">
-<style>
-.doc{max-width:720px;margin:0 auto;padding:34px 20px 70px}
-.doc h1{font-family:var(--display);font-size:clamp(28px,5vw,40px);font-weight:800;
-  letter-spacing:-.035em;line-height:1.08;margin-bottom:20px}
-.doc h2{font-family:var(--display);font-size:22px;font-weight:600;letter-spacing:-.02em;
-  margin:36px 0 12px;padding-top:20px;border-top:1px solid var(--line)}
-.doc h3{font-family:var(--display);font-size:17px;font-weight:600;margin:24px 0 8px}
-.doc h4{font-size:14.5px;font-weight:600;margin:18px 0 6px}
-.doc p{font-size:15.5px;line-height:1.65;color:var(--body-c);margin-bottom:14px}
-.doc ul,.doc ol{margin:0 0 16px 20px}
-.doc li{font-size:15.5px;line-height:1.6;color:var(--body-c);margin-bottom:8px}
-.doc strong{color:var(--ink)}
-.doc blockquote{background:var(--surface);border-left:3px solid var(--stamp);
-  padding:16px 20px;border-radius:0 7px 7px 0;margin:20px 0}
-.doc blockquote p{margin-bottom:10px}.doc blockquote p:last-child{margin-bottom:0}
-.doc table{width:100%;border-collapse:collapse;margin:18px 0;font-size:14px}
-.doc th{text-align:left;padding:10px;border-bottom:1.5px solid var(--line);
-  font-weight:600;color:var(--ink)}
-.doc td{padding:10px;border-bottom:1px solid var(--line);color:var(--body-c);
-  vertical-align:top;line-height:1.5}
-.doc hr{border:none;border-top:1px solid var(--line);margin:30px 0}
-.doc code{background:var(--surface);padding:2px 6px;border-radius:3px;font-size:14px}
-.doc a{color:var(--stamp)}
-.doc input[type=checkbox]{width:auto;margin-right:8px}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your safety on Arzuz — Arzuz</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap"
+    rel="stylesheet">
+  <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
+  <link rel="stylesheet" href="assets/arzuz.css">
+  <style>
+    .doc {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 34px 20px 70px
+    }
+
+    .doc h1 {
+      font-family: var(--display);
+      font-size: clamp(28px, 5vw, 40px);
+      font-weight: 800;
+      letter-spacing: -.035em;
+      line-height: 1.08;
+      margin-bottom: 20px
+    }
+
+    .doc h2 {
+      font-family: var(--display);
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -.02em;
+      margin: 36px 0 12px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line)
+    }
+
+    .doc h3 {
+      font-family: var(--display);
+      font-size: 17px;
+      font-weight: 600;
+      margin: 24px 0 8px
+    }
+
+    .doc h4 {
+      font-size: 14.5px;
+      font-weight: 600;
+      margin: 18px 0 6px
+    }
+
+    .doc p {
+      font-size: 15.5px;
+      line-height: 1.65;
+      color: var(--body-c);
+      margin-bottom: 14px
+    }
+
+    .doc ul,
+    .doc ol {
+      margin: 0 0 16px 20px
+    }
+
+    .doc li {
+      font-size: 15.5px;
+      line-height: 1.6;
+      color: var(--body-c);
+      margin-bottom: 8px
+    }
+
+    .doc strong {
+      color: var(--ink)
+    }
+
+    .doc blockquote {
+      background: var(--surface);
+      border-left: 3px solid var(--stamp);
+      padding: 16px 20px;
+      border-radius: 0 7px 7px 0;
+      margin: 20px 0
+    }
+
+    .doc blockquote p {
+      margin-bottom: 10px
+    }
+
+    .doc blockquote p:last-child {
+      margin-bottom: 0
+    }
+
+    .doc table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 18px 0;
+      font-size: 14px
+    }
+
+    .doc th {
+      text-align: left;
+      padding: 10px;
+      border-bottom: 1.5px solid var(--line);
+      font-weight: 600;
+      color: var(--ink)
+    }
+
+    .doc td {
+      padding: 10px;
+      border-bottom: 1px solid var(--line);
+      color: var(--body-c);
+      vertical-align: top;
+      line-height: 1.5
+    }
+
+    .doc hr {
+      border: none;
+      border-top: 1px solid var(--line);
+      margin: 30px 0
+    }
+
+    .doc code {
+      background: var(--surface);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 14px
+    }
+
+    .doc a {
+      color: var(--stamp)
+    }
+
+    .doc input[type=checkbox] {
+      width: auto;
+      margin-right: 8px
+    }
+  </style>
 </head>
+
 <body>
-<div class="doc">
-<h1>Your safety on Arzuz</h1>
-<p><strong>Nobody should ask you for money before you have stood in the room.</strong> Not an inspection fee, not
-a holding fee, not an agent fee. If they do, you can say no and walk away — then tell us. It
-affects whether that listing stays on Arzuz.</p>
-<p><strong>View in daylight, and take someone with you.</strong> A friend, a sibling, a parent. If you have to go
-alone, tell us before you go and we will check in with you afterwards.</p>
-<p><strong>Tell someone where you are.</strong> When you tell us you are viewing a property, we can message one
-person you choose with the address and the time, and let them know when you confirm you are back.</p>
-<p><strong>If anything feels wrong, leave.</strong> You do not owe anyone an explanation, and you do not owe
-anyone your time because they showed you a room.</p>
-<p><strong>If you are under 18</strong>, we will ask for a parent or guardian's number, and we will send them
-everything we send you. We will not arrange a viewing for you on your own.</p>
-<p><strong>If you leave a review</strong>, we never tell a landlord who wrote it. On a small compound we will
-offer to hold your review until another resident has also reviewed, so you cannot be identified
-by it. If a landlord ever penalises you for a review, tell us — the property is removed and the
-owner is barred.</p>
-<p><strong>Something went wrong?</strong> Message us on WhatsApp at <a href="https://wa.me/2349024814771" target="_blank" rel="noopener noreferrer"><strong>09024814771</strong></a> or email <a href="mailto:support@arzuz.com"><strong>support@arzuz.com</strong></a>. A person reads every one of
-these.</p>
-<hr /></div>
-<script src="assets/config.js"></script>
-<script src="assets/data.js"></script>
-<script src="assets/submit.js"></script>
-<script src="assets/app.js"></script>
-<script>Arzuz.chrome(null);Arzuz.footer();</script>
+  <div class="doc">
+    <h1>Your safety on Arzuz</h1>
+    <p><strong>Nobody should ask you for money before you have stood in the room.</strong> Not an inspection fee, not
+      a holding fee, not an agent fee. If they do, you can say no and walk away — then tell us. It
+      affects whether that listing stays on Arzuz.</p>
+    <p><strong>View in daylight, and take someone with you.</strong> A friend, a sibling, a parent. If you have to go
+      alone, tell us before you go and we will check in with you afterwards.</p>
+    <p><strong>Tell someone where you are.</strong> When you tell us you are viewing a property, we can message one
+      person you choose with the address and the time, and let them know when you confirm you are back.</p>
+    <p><strong>If anything feels wrong, leave.</strong> You do not owe anyone an explanation, and you do not owe
+      anyone your time because they showed you a room.</p>
+    <p><strong>If you are under 18</strong>, we will ask for a parent or guardian's number, and we will send them
+      everything we send you. We will not arrange a viewing for you on your own.</p>
+    <p><strong>If you leave a review</strong>, we never tell a landlord who wrote it. On a small compound we will
+      offer to hold your review until another resident has also reviewed, so you cannot be identified
+      by it. If a landlord ever penalises you for a review, tell us — the property is removed and the
+      owner is barred.</p>
+    <p><strong>Something went wrong?</strong> Message us on WhatsApp at <a href="https://wa.me/2349024814771"
+        target="_blank" rel="noopener noreferrer"><strong>09024814771</strong></a> or email <a
+        href="mailto:support@arzuz.com"><strong>support@arzuz.com</strong></a>. A person reads every one of
+      these.</p>
+    <hr />
+  </div>
+  <script src="assets/config.js"></script>
+  <script src="assets/data.js"></script>
+  <script src="assets/submit.js"></script>
+  <script src="assets/app.js"></script>
+  <script>Arzuz.chrome(null); Arzuz.footer();</script>
 </body>
+
 </html>

@@ -164,7 +164,8 @@ create index if not exists idx_scout_created  on scout_submissions (created_at d
 -- ------------------------------------------------------------
 
 -- The demand report, live. This is the number you show a landlord.
-create or replace view demand_summary as
+create or replace view demand_summary
+with (security_invoker = true) as
 select
   room_type,
   budget_band,
@@ -177,14 +178,16 @@ order by students desc;
 
 -- Under-18 accounts still missing a guardian contact.
 -- Nothing should be matched to anyone on this list.
-create or replace view minors_needing_guardian as
+create or replace view minors_needing_guardian
+with (security_invoker = true) as
 select id, created_at, first_name, phone, budget_band
 from demand_records
 where is_minor and coalesce(guardian_phone,'') = ''
 order by created_at desc;
 
 -- THE THESIS. Every landlord who moved off their opening ask.
-create or replace view price_movement as
+create or replace view price_movement
+with (security_invoker = true) as
 select
   id, created_at, area, property_type,
   opening_ask_ngn, listed_price_ngn,
@@ -198,23 +201,8 @@ order by reduction_ngn desc;
 -- What residents say they actually pay, aggregated so no single
 -- tenant can be identified. Three sources minimum — this rule is
 -- in the privacy policy, so keep it here too.
---
--- TWO RULES ABOUT THIS VIEW, AND THEY ARE NOT STYLE PREFERENCES:
---
---  1. Whatever is built on it must be PUBLIC. Never a landlord-only
---     feed, never a paid tier. A private pricing feed shared among
---     competing landlords is the mechanism the US Department of
---     Justice sued RealPage over in 2024. Public information cannot
---     function as a cartel signal; a private one can.
---
---  2. Show ranges and counts, never a single recommended price.
---     "₦150,000–₦265,000 across 14 listings" is information.
---     "Charge ₦198,000" is a pricing recommendation, and that is the
---     line. Arzuz shows landlords the consequences of their own
---     choice; it never makes the choice for them.
---
--- See Arzuz_Monetization_Analysis.md, Part 1B.
-create or replace view reported_rent_benchmark as
+create or replace view reported_rent_benchmark
+with (security_invoker = true) as
 select area,
        count(*) as reports,
        round(avg(rent_reported)) as avg_reported,
