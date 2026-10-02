@@ -58,8 +58,11 @@ exports.handler = async function (event) {
     return { statusCode: 503, body: JSON.stringify({ error: 'WhatsApp service not configured' }) };
   }
 
+  // OpenWA uses chatId format e.g. 2348012345678@c.us or 2348012345678@s.whatsapp.net
+  const chatId = to.replace(/@s\.whatsapp\.net$/, '@c.us');
+
   // Forward to OpenWA
-  const endpoint = `${OPENWA_URL.replace(/\/+$/, '')}/api/sessions/${OPENWA_SESSION}/messages/send/text`;
+  const endpoint = `${OPENWA_URL.replace(/\/+$/, '')}/api/sessions/${OPENWA_SESSION}/messages/send-text`;
 
   try {
     const response = await fetch(endpoint, {
@@ -68,7 +71,7 @@ exports.handler = async function (event) {
         'X-API-Key': OPENWA_API_KEY,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ to, text })
+      body: JSON.stringify({ chatId, text })
     });
 
     if (!response.ok) {
