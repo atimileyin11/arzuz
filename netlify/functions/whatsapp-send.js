@@ -51,7 +51,12 @@ exports.handler = async function (event) {
   // Read server-side config
   const OPENWA_URL = process.env.OPENWA_URL;
   const OPENWA_API_KEY = process.env.OPENWA_API_KEY;
-  const OPENWA_SESSION = process.env.OPENWA_SESSION || 'ARZUZ';
+  // If OPENWA_SESSION is 'waitlist-reply', OpenWA route requires the session ID (UUID)
+  let session = process.env.OPENWA_SESSION || 'a17024f9-848a-47bc-8808-f0cc359ac2ad';
+  if (session === 'waitlist-reply') {
+    session = 'a17024f9-848a-47bc-8808-f0cc359ac2ad';
+  }
+  const OPENWA_SESSION = session;
 
   if (!OPENWA_URL || !OPENWA_API_KEY) {
     console.error('[whatsapp-send] OPENWA_URL or OPENWA_API_KEY not set');
