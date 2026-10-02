@@ -515,6 +515,92 @@ tr:hover td {
   max-height: 180px;
   border: 1px solid rgba(255,255,255,0.14);
 }
+
+/* Add / Edit Apartment Media Upload UI */
+.admin-media-zone {
+  border: 2px dashed rgba(139, 92, 246, 0.45);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  background: rgba(139, 92, 246, 0.05);
+  cursor: pointer;
+  transition: all 0.25s ease;
+  position: relative;
+}
+.admin-media-zone:hover {
+  border-color: #A78BFA;
+  background: rgba(139, 92, 246, 0.12);
+}
+.admin-media-zone.uploading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+.media-preview-box {
+  position: relative;
+  margin-top: 10px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.15);
+  max-height: 200px;
+  background: #000;
+}
+.media-preview-box img, .media-preview-box video {
+  width: 100%;
+  max-height: 200px;
+  display: block;
+  object-fit: contain;
+}
+.media-remove-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(239, 68, 68, 0.85);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.media-upload-status {
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 6px;
+}
+.media-upload-status.uploading { color: #FBBF24; }
+.media-upload-status.success { color: #34D399; }
+.media-upload-status.error { color: #F87171; }
+.btn-add-apt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #7C3AED 0%, #6366F1 100%);
+  color: #fff;
+  font-family: var(--body);
+  font-size: 14px;
+  font-weight: 700;
+  padding: 9px 18px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);
+  transition: all 0.2s ease;
+}
+.btn-add-apt:hover {
+  transform: translateY(-1.5px);
+  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.5);
+}
+.apt-badge-id {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #C4B5FD;
+}
 </style>
 </head>
 <body>
@@ -579,7 +665,8 @@ tr:hover td {
       <button class="tab-btn" data-table="scout_submissions">Building Scouts</button>
     </div>
     <div class="search-box">
-      <input type="text" id="searchInput" placeholder="Search name, phone, room...">
+      <button class="btn-add-apt" id="btnOpenAddApt">✨ + Add Apartment</button>
+      <input type="text" id="searchInput" placeholder="Search name, phone, room, ID...">
       <button class="next" id="btnExport" style="padding: 10px 18px; font-size: 14px;">Export CSV</button>
     </div>
   </div>
@@ -617,6 +704,114 @@ tr:hover td {
     </div>
   </div>
 
+</div>
+
+<!-- Add Apartment Modal -->
+<div class="modal-overlay" id="addAptModal" style="display: none;">
+  <div class="modal-box" style="max-width: 680px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+      <h3 style="margin:0;">✨ Add New Apartment / Listing</h3>
+      <span class="admin-badge">Admin Creator</span>
+    </div>
+    <div class="sub">Add a verified apartment with a custom ID, details, photo, and video directly to the system.</div>
+    <form id="addAptForm">
+      <div class="edit-form-grid">
+        <div class="edit-fld">
+          <label>Apartment ID / Code *</label>
+          <input type="text" id="add_apt_id" placeholder="e.g. APT-001 or MLT-BL-01" required>
+        </div>
+        <div class="edit-fld">
+          <label>Apartment / Lodge Name *</label>
+          <input type="text" id="add_prop_name" placeholder="e.g. Blessing Lodge" required>
+        </div>
+
+        <div class="edit-fld">
+          <label>Property / Room Type *</label>
+          <select id="add_ty" required>
+            <option value="Self-contain">Self-contain</option>
+            <option value="Shared room">Shared room</option>
+            <option value="Single Room">Single Room</option>
+            <option value="Two Bedroom">Two Bedroom</option>
+            <option value="Face-me-I-face-you">Face-me-I-face-you</option>
+          </select>
+        </div>
+        <div class="edit-fld">
+          <label>Area / Location *</label>
+          <input type="text" id="add_ar" placeholder="e.g. Behind KWASU Gate, Malete" required>
+        </div>
+
+        <div class="edit-fld">
+          <label>Rent Price (₦ / Session) *</label>
+          <input type="number" id="add_rent" placeholder="e.g. 180000" required>
+        </div>
+        <div class="edit-fld">
+          <label>Available Units / Rooms</label>
+          <input type="text" id="add_rm" placeholder="e.g. 3 rooms available">
+        </div>
+
+        <div class="edit-fld">
+          <label>Landlord / Caretaker Name</label>
+          <input type="text" id="add_nm" placeholder="e.g. Alh. Kareem (or Admin Managed)">
+        </div>
+        <div class="edit-fld">
+          <label>Contact Phone / WhatsApp</label>
+          <input type="tel" id="add_ph" placeholder="e.g. 08012345678">
+        </div>
+
+        <div class="edit-fld">
+          <label>Status</label>
+          <select id="add_status">
+            <option value="active" selected>ACTIVE (Visible/Ready)</option>
+            <option value="pending">PENDING</option>
+            <option value="inactive">INACTIVE</option>
+          </select>
+        </div>
+        <div class="edit-fld">
+          <label>Verification Tier</label>
+          <select id="add_tier">
+            <option value="2" selected>Tier 2 — Verified & Inspected</option>
+            <option value="1">Tier 1 — Community Verified</option>
+            <option value="0">Tier 0 — Unverified</option>
+          </select>
+        </div>
+
+        <div class="edit-fld" style="grid-column: 1 / -1;">
+          <label>Apartment Description & Features</label>
+          <textarea id="add_desc" rows="2" placeholder="e.g. Running water, prepaid meter, paved compound, 5 mins walk to school..."></textarea>
+        </div>
+
+        <!-- Apartment Photo Upload -->
+        <div class="edit-fld" style="grid-column: 1 / -1;">
+          <label>Apartment Photo (Cloudinary)</label>
+          <div class="admin-media-zone" id="addPhotoZone">
+            <input type="file" id="addPhotoInput" accept="image/*" style="display:none;">
+            <div id="addPhotoText">📷 Click or tap to upload apartment photo</div>
+            <div id="addPhotoProgress" class="media-upload-status"></div>
+          </div>
+          <input type="hidden" id="add_photo_url">
+          <div id="addPhotoPreview" class="media-preview-box" style="display:none;"></div>
+        </div>
+
+        <!-- Apartment Video Upload -->
+        <div class="edit-fld" style="grid-column: 1 / -1;">
+          <label>Apartment Video Tour (Cloudinary / Link)</label>
+          <div class="admin-media-zone" id="addVideoZone">
+            <input type="file" id="addVideoInput" accept="video/*" style="display:none;">
+            <div id="addVideoText">🎥 Click or tap to upload apartment video tour</div>
+            <div id="addVideoProgress" class="media-upload-status"></div>
+          </div>
+          <input type="hidden" id="add_video_url">
+          <div id="addVideoPreview" class="media-preview-box" style="display:none;"></div>
+          <input type="url" id="add_video_url_manual" placeholder="Or paste direct video/tour URL (optional)" style="margin-top:6px; font-size:12.5px;">
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="bk" id="btnCancelAddApt" style="color: #B3A7BF;">Cancel</button>
+        <button type="submit" class="next" id="btnSaveAddApt" style="padding: 10px 24px; font-size: 14px;">Save Apartment</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <!-- Edit Submission Modal -->
@@ -658,6 +853,15 @@ tr:hover td {
   <div style="position:relative; max-width:90vw; max-height:90vh; text-align:center;">
     <img id="lightboxImg" src="" alt="Full view" style="max-width:100%; max-height:85vh; border-radius:10px; box-shadow:0 12px 40px rgba(0,0,0,0.8); border:1px solid rgba(255,255,255,0.2);">
     <div style="color:#E5E7EB; font-size:13px; margin-top:10px;">Click anywhere outside to close</div>
+  </div>
+</div>
+
+<!-- Fullsize Video Lightbox Modal -->
+<div id="videoLightbox" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.92); z-index:210; align-items:center; justify-content:center; padding:16px;">
+  <div style="position:relative; max-width:860px; width:100%; text-align:center; background:rgba(20,15,30,0.95); border:1px solid rgba(255,255,255,0.2); border-radius:14px; padding:16px; box-shadow:0 24px 60px rgba(0,0,0,0.8);">
+    <button type="button" onclick="window.closeVideoLightbox()" style="position:absolute; top:12px; right:12px; background:rgba(255,255,255,0.15); color:#fff; border:none; border-radius:8px; padding:6px 12px; font-weight:700; cursor:pointer;">✕ Close</button>
+    <h4 style="margin:0 0 12px; color:#fff; font-family:var(--display);">Apartment Video Tour</h4>
+    <div id="videoLightboxContainer" style="max-height:75vh; overflow:hidden; border-radius:8px; background:#000;"></div>
   </div>
 </div>
 
@@ -896,7 +1100,7 @@ tr:hover td {
       }).join('') || '<tr><td colspan="8" style="text-align:center; padding:30px; color:#8D8099;">No student records found.</td></tr>';
     } 
     else if(currentTable === 'listings'){
-      head.innerHTML = '<th>Date</th><th>Status</th><th>Photo</th><th>Property Name</th><th>Owner</th><th>Type</th><th>Area</th><th>Price</th><th>Location</th><th>Actions</th>';
+      head.innerHTML = '<th>Date</th><th>Status</th><th>Apt ID</th><th>Photo</th><th>Video</th><th>Property Name</th><th>Owner</th><th>Type</th><th>Area</th><th>Price</th><th>Location</th><th>Actions</th>';
       body.innerHTML = rows.map(function(r){
         var dateStr = new Date(r.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
         var price = r.listed_price_ngn || (r.payload&&r.payload.rent) || 0;
@@ -904,6 +1108,8 @@ tr:hover td {
         var lat = r.latitude || (r.payload && r.payload.lat);
         var lng = r.longitude || (r.payload && r.payload.lng);
         var photoUrl = r.photo_url || (r.payload && r.payload.photo) || '';
+        var videoUrl = (r.payload && (r.payload.video || r.payload.video_url)) || '';
+        var aptId = (r.payload && (r.payload.apt_id || r.payload.custom_id)) || (r.id ? r.id.substring(0,8) : '');
         var propName = esc(r.property_name || (r.payload&&r.payload.prop_name) || '');
         var mapBtn = (lat && lng) 
           ? '<a class="act-btn act-map" href="https://www.google.com/maps?q='+lat+','+lng+'" target="_blank">📍 Map</a>' 
@@ -911,11 +1117,16 @@ tr:hover td {
         var photoCell = photoUrl
           ? '<img class="admin-photo-thumb" src="'+esc(photoUrl)+'" alt="Property" onclick="window.openLightbox(\'' + esc(photoUrl) + '\')">'  
           : '<span style="color:#6B5C7D;font-size:11px;">No photo</span>';
+        var videoCell = videoUrl
+          ? '<button type="button" class="act-btn" style="background:rgba(236,72,153,0.18);color:#F472B6;border-color:rgba(236,72,153,0.35);font-size:11.5px;padding:3px 8px;" onclick="window.openVideoLightbox(\'' + esc(videoUrl) + '\')">🎥 Play</button>'
+          : '<span style="color:#6B5C7D;font-size:11px;">No video</span>';
 
         return '<tr>'+
           '<td>'+esc(dateStr)+'</td>'+
           '<td>'+getStatusTag(r.status)+'</td>'+
+          '<td><span class="apt-badge-id">'+esc(aptId)+'</span></td>'+
           '<td>'+photoCell+'</td>'+
+          '<td>'+videoCell+'</td>'+
           '<td><b>'+(propName||'<span style="color:#6B5C7D">—</span>')+'</b></td>'+
           '<td><b>'+esc(r.owner_name || (r.payload&&r.payload.nm) || 'Owner')+'</b></td>'+
           '<td>'+esc(r.property_type || (r.payload&&r.payload.ty) || '-')+'</td>'+
@@ -928,7 +1139,7 @@ tr:hover td {
             '<button class="act-btn act-del" onclick="window.openDeleteModal(\'listings\',\''+r.id+'\')">🗑</button>'+
           '</div></td>'+
         '</tr>';
-      }).join('') || '<tr><td colspan="10" style="text-align:center; padding:30px; color:#8D8099;">No listings found.</td></tr>';
+      }).join('') || '<tr><td colspan="12" style="text-align:center; padding:30px; color:#8D8099;">No listings found.</td></tr>';
     } 
     else if(currentTable === 'scout_submissions'){
       head.innerHTML = '<th>Date</th><th>Status</th><th>Photo</th><th>Area</th><th>Rent Paid</th><th>Vacancy</th><th>Location</th><th>Actions</th>';
@@ -1004,17 +1215,44 @@ tr:hover td {
     } 
     else if (table === 'listings') {
       var photoUrl = row.photo_url || p.photo || '';
-      html += '<div class="edit-fld"><label>Property Name</label><input type="text" id="edit_prop_name" value="'+esc(row.property_name || p.prop_name || '')+'" placeholder="e.g. Blessing Lodge (optional)"></div>';
-      html += '<div class="edit-fld"><label>Owner Name</label><input type="text" id="edit_nm" value="'+esc(row.owner_name || p.nm || '')+'"></div>';
+      var videoUrl = (p && (p.video || p.video_url)) || '';
+      var aptId = (p && (p.apt_id || p.custom_id)) || (row.id ? row.id.substring(0,8) : '');
+
+      html += '<div class="edit-fld"><label>Apartment ID / Code</label><input type="text" id="edit_apt_id" value="'+esc(aptId)+'" placeholder="e.g. APT-001"></div>';
+      html += '<div class="edit-fld"><label>Property Name</label><input type="text" id="edit_prop_name" value="'+esc(row.property_name || p.prop_name || '')+'" placeholder="e.g. Blessing Lodge"></div>';
+      html += '<div class="edit-fld"><label>Owner / Caretaker Name</label><input type="text" id="edit_nm" value="'+esc(row.owner_name || p.nm || '')+'"></div>';
       html += '<div class="edit-fld"><label>Phone / WhatsApp</label><input type="tel" id="edit_ph" value="'+esc(row.owner_phone || p.ph || '')+'"></div>';
       html += '<div class="edit-fld"><label>Area / Street</label><input type="text" id="edit_ar" value="'+esc(row.area || p.ar || '')+'"></div>';
-      html += '<div class="edit-fld"><label>Price (₦)</label><input type="number" id="edit_rent" value="'+esc(row.listed_price_ngn || p.rent || '')+'"></div>';
-      html += '<div class="edit-fld"><label>Rooms</label><input type="text" id="edit_rm" value="'+esc(row.rooms || p.rm || '')+'"></div>';
-      if (photoUrl) {
-        html += '<div class="edit-fld" style="grid-column:1/-1"><label>Property Photo</label>'+
-                '<img class="edit-photo-preview" src="'+esc(photoUrl)+'" alt="Property photo">'+
-                '<p style="font-size:12px;color:#9A8CA8;margin-top:6px;">Photo uploaded via Cloudinary. To replace, submit a new listing.</p></div>';
-      }
+      html += '<div class="edit-fld"><label>Price (₦ / Session)</label><input type="number" id="edit_rent" value="'+esc(row.listed_price_ngn || p.rent || '')+'"></div>';
+      html += '<div class="edit-fld"><label>Available Rooms</label><input type="text" id="edit_rm" value="'+esc(row.rooms || p.rm || '')+'"></div>';
+      html += '<div class="edit-fld"><label>Property Type</label><input type="text" id="edit_ty" value="'+esc(row.property_type || p.ty || 'Self-contain')+'"></div>';
+
+      // Photo upload & preview in edit modal
+      html += '<div class="edit-fld" style="grid-column:1/-1"><label>Property Photo</label>'+
+              '<div class="admin-media-zone" id="editPhotoZone">'+
+                '<input type="file" id="editPhotoInput" accept="image/*" style="display:none;">'+
+                '<div id="editPhotoText">📷 Click to upload or replace photo</div>'+
+                '<div id="editPhotoProgress" class="media-upload-status"></div>'+
+              '</div>'+
+              '<input type="hidden" id="edit_photo" value="'+esc(photoUrl)+'">'+
+              '<div id="editPhotoPreview" class="media-preview-box" style="'+(photoUrl ? '' : 'display:none;')+'">'+
+                (photoUrl ? '<img src="'+esc(photoUrl)+'" alt="Property"><button type="button" class="media-remove-btn" onclick="window.clearEditMedia(\'edit_photo\',\'editPhotoPreview\')">✕ Remove</button>' : '')+
+              '</div>'+
+              '</div>';
+
+      // Video upload & preview in edit modal
+      html += '<div class="edit-fld" style="grid-column:1/-1"><label>Property Video Tour</label>'+
+              '<div class="admin-media-zone" id="editVideoZone">'+
+                '<input type="file" id="editVideoInput" accept="video/*" style="display:none;">'+
+                '<div id="editVideoText">🎥 Click to upload or replace video tour</div>'+
+                '<div id="editVideoProgress" class="media-upload-status"></div>'+
+              '</div>'+
+              '<input type="hidden" id="edit_video" value="'+esc(videoUrl)+'">'+
+              '<div id="editVideoPreview" class="media-preview-box" style="'+(videoUrl ? '' : 'display:none;')+'">'+
+                (videoUrl ? '<video src="'+esc(videoUrl)+'" controls></video><button type="button" class="media-remove-btn" onclick="window.clearEditMedia(\'edit_video\',\'editVideoPreview\')">✕ Remove</button>' : '')+
+              '</div>'+
+              '<input type="url" id="edit_video_manual" value="'+esc(videoUrl)+'" placeholder="Or paste direct video URL" style="margin-top:6px; font-size:12.5px;">'+
+              '</div>';
     } 
     else if (table === 'scout_submissions') {
       var scoutPhoto = row.photo_url || p.photo || '';
@@ -1031,7 +1269,66 @@ tr:hover td {
 
     editFieldsContainer.innerHTML = html;
     editModal.style.display = 'flex';
+
+    // Hook upload dropzones inside edit modal if listings table
+    if (table === 'listings') {
+      initEditUploaders();
+    }
   };
+
+  window.clearEditMedia = function(inputId, previewId){
+    var inp = document.getElementById(inputId);
+    var prev = document.getElementById(previewId);
+    if (inp) inp.value = '';
+    if (prev) { prev.innerHTML = ''; prev.style.display = 'none'; }
+  };
+
+  function initEditUploaders(){
+    var photoZone = document.getElementById('editPhotoZone');
+    var photoInput = document.getElementById('editPhotoInput');
+    if (photoZone && photoInput) {
+      photoZone.onclick = function(){ photoInput.click(); };
+      photoInput.onchange = function(){
+        if (!photoInput.files || !photoInput.files[0]) return;
+        uploadMediaToCloudinary(photoInput.files[0], 'image', document.getElementById('editPhotoProgress'), function(url){
+          document.getElementById('edit_photo').value = url;
+          var prev = document.getElementById('editPhotoPreview');
+          prev.innerHTML = '<img src="'+url+'" alt="Photo"><button type="button" class="media-remove-btn" onclick="window.clearEditMedia(\'edit_photo\',\'editPhotoPreview\')">✕ Remove</button>';
+          prev.style.display = 'block';
+        });
+      };
+    }
+
+    var videoZone = document.getElementById('editVideoZone');
+    var videoInput = document.getElementById('editVideoInput');
+    var videoManual = document.getElementById('edit_video_manual');
+    if (videoZone && videoInput) {
+      videoZone.onclick = function(){ videoInput.click(); };
+      videoInput.onchange = function(){
+        if (!videoInput.files || !videoInput.files[0]) return;
+        uploadMediaToCloudinary(videoInput.files[0], 'video', document.getElementById('editVideoProgress'), function(url){
+          document.getElementById('edit_video').value = url;
+          if (videoManual) videoManual.value = url;
+          var prev = document.getElementById('editVideoPreview');
+          prev.innerHTML = '<video src="'+url+'" controls></video><button type="button" class="media-remove-btn" onclick="window.clearEditMedia(\'edit_video\',\'editVideoPreview\')">✕ Remove</button>';
+          prev.style.display = 'block';
+        });
+      };
+    }
+    if (videoManual) {
+      videoManual.oninput = function(){
+        var url = videoManual.value.trim();
+        document.getElementById('edit_video').value = url;
+        var prev = document.getElementById('editVideoPreview');
+        if (url) {
+          prev.innerHTML = '<video src="'+url+'" controls></video><button type="button" class="media-remove-btn" onclick="window.clearEditMedia(\'edit_video\',\'editVideoPreview\')">✕ Remove</button>';
+          prev.style.display = 'block';
+        } else {
+          prev.style.display = 'none';
+        }
+      };
+    }
+  }
 
   document.getElementById('btnCancelEdit').addEventListener('click', function(){
     editModal.style.display = 'none';
@@ -1054,12 +1351,21 @@ tr:hover td {
       newPayload.type = document.getElementById('edit_room_type').value.trim();
       newPayload.budget = document.getElementById('edit_budget_band').value.trim();
     } else if (table === 'listings') {
+      newPayload.apt_id = (document.getElementById('edit_apt_id') ? document.getElementById('edit_apt_id').value.trim() : '');
       newPayload.prop_name = document.getElementById('edit_prop_name').value.trim();
       newPayload.nm = document.getElementById('edit_nm').value.trim();
       newPayload.ph = document.getElementById('edit_ph').value.trim();
       newPayload.ar = document.getElementById('edit_ar').value.trim();
       newPayload.rent = document.getElementById('edit_rent').value.trim();
       newPayload.rm = document.getElementById('edit_rm').value.trim();
+      if (document.getElementById('edit_ty')) {
+        newPayload.ty = document.getElementById('edit_ty').value.trim();
+      }
+      var photoVal = document.getElementById('edit_photo') ? document.getElementById('edit_photo').value.trim() : '';
+      if (photoVal) newPayload.photo = photoVal;
+      var videoVal = document.getElementById('edit_video') ? document.getElementById('edit_video').value.trim() : '';
+      newPayload.video = videoVal;
+      newPayload.video_url = videoVal;
     } else if (table === 'scout_submissions') {
       newPayload.area = document.getElementById('edit_area').value.trim();
       newPayload.phone = document.getElementById('edit_phone').value.trim();
@@ -1113,85 +1419,253 @@ tr:hover td {
     });
   });
 
-  // ================= DELETE CONFIRMATION FUNCTIONALITY =================
-  var delModal = document.getElementById('delModal');
+  // ================= ADD APARTMENT / LISTING MODAL =================
+  var addAptModal = document.getElementById('addAptModal');
+  var addAptForm = document.getElementById('addAptForm');
+  var btnOpenAddApt = document.getElementById('btnOpenAddApt');
+  var btnCancelAddApt = document.getElementById('btnCancelAddApt');
 
-  window.openDeleteModal = function(table, id){
-    pendingDelete = { table: table, id: id };
-    delModal.style.display = 'flex';
-  };
+  btnOpenAddApt.addEventListener('click', function(){
+    addAptForm.reset();
+    document.getElementById('add_photo_url').value = '';
+    document.getElementById('add_video_url').value = '';
+    document.getElementById('addPhotoPreview').style.display = 'none';
+    document.getElementById('addPhotoPreview').innerHTML = '';
+    document.getElementById('addVideoPreview').style.display = 'none';
+    document.getElementById('addVideoPreview').innerHTML = '';
+    document.getElementById('addPhotoProgress').textContent = '';
+    document.getElementById('addVideoProgress').textContent = '';
 
-  document.getElementById('btnCancelDel').addEventListener('click', function(){
-    delModal.style.display = 'none';
-    pendingDelete = null;
+    // Auto-generate suggestion for apartment ID
+    var nextNum = (loadedData.listings.length + 1).toString().padStart(3, '0');
+    document.getElementById('add_apt_id').value = 'APT-' + nextNum;
+
+    addAptModal.style.display = 'flex';
   });
 
-  document.getElementById('btnConfirmDel').addEventListener('click', function(){
-    if (!pendingDelete) return;
-    var table = pendingDelete.table;
-    var id = pendingDelete.id;
+  btnCancelAddApt.addEventListener('click', function(){
+    addAptModal.style.display = 'none';
+  });
 
-    var btn = document.getElementById('btnConfirmDel');
-    btn.textContent = 'Deleting...';
-    btn.disabled = true;
+  // Generic Cloudinary Upload Helper (supports images and videos)
+  function uploadMediaToCloudinary(file, resourceType, statusEl, onDone){
+    if (statusEl) {
+      statusEl.className = 'media-upload-status uploading';
+      statusEl.textContent = '⏳ Preparing signed upload...';
+    }
 
-    var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/' + table + '?id=eq.' + id;
+    fetch('/api/cloudinary-sign', { method: 'POST' })
+      .then(function(r){
+        if (!r.ok) throw new Error('Could not get upload signature (HTTP ' + r.status + ')');
+        return r.json();
+      })
+      .then(function(sig){
+        if (statusEl) {
+          statusEl.textContent = '📤 Uploading ' + (resourceType === 'video' ? 'video tour' : 'photo') + '...';
+        }
+
+        var fd = new FormData();
+        fd.append('file', file);
+        fd.append('api_key', sig.api_key);
+        fd.append('timestamp', sig.timestamp);
+        fd.append('signature', sig.signature);
+        fd.append('folder', sig.folder);
+        if (resourceType !== 'video' && sig.eager) {
+          fd.append('eager', sig.eager);
+        }
+
+        var uploadEndpoint = 'https://api.cloudinary.com/v1_1/' + sig.cloud_name + '/' + (resourceType === 'video' ? 'video' : 'image') + '/upload';
+        return fetch(uploadEndpoint, { method: 'POST', body: fd }).then(function(res){
+          if (!res.ok) {
+            return res.text().then(function(t){ throw new Error('Cloudinary error: ' + t); });
+          }
+          return res.json();
+        });
+      })
+      .then(function(data){
+        if (statusEl) {
+          statusEl.className = 'media-upload-status success';
+          statusEl.textContent = '✅ ' + (resourceType === 'video' ? 'Video' : 'Photo') + ' uploaded!';
+        }
+        onDone(data.secure_url);
+      })
+      .catch(function(err){
+        if (statusEl) {
+          statusEl.className = 'media-upload-status error';
+          statusEl.textContent = '❌ Upload failed: ' + err.message;
+        }
+        alert('Upload failed: ' + err.message);
+      });
+  }
+
+  // Setup Add Apartment upload dropzones
+  var addPhotoZone = document.getElementById('addPhotoZone');
+  var addPhotoInput = document.getElementById('addPhotoInput');
+  addPhotoZone.onclick = function(){ addPhotoInput.click(); };
+  addPhotoInput.onchange = function(){
+    if (!addPhotoInput.files || !addPhotoInput.files[0]) return;
+    uploadMediaToCloudinary(addPhotoInput.files[0], 'image', document.getElementById('addPhotoProgress'), function(url){
+      document.getElementById('add_photo_url').value = url;
+      var prev = document.getElementById('addPhotoPreview');
+      prev.innerHTML = '<img src="'+url+'" alt="Apartment photo"><button type="button" class="media-remove-btn" onclick="window.clearAddMedia(\'photo\')">✕ Remove</button>';
+      prev.style.display = 'block';
+    });
+  };
+
+  var addVideoZone = document.getElementById('addVideoZone');
+  var addVideoInput = document.getElementById('addVideoInput');
+  var addVideoManual = document.getElementById('add_video_url_manual');
+  addVideoZone.onclick = function(){ addVideoInput.click(); };
+  addVideoInput.onchange = function(){
+    if (!addVideoInput.files || !addVideoInput.files[0]) return;
+    uploadMediaToCloudinary(addVideoInput.files[0], 'video', document.getElementById('addVideoProgress'), function(url){
+      document.getElementById('add_video_url').value = url;
+      if (addVideoManual) addVideoManual.value = url;
+      var prev = document.getElementById('addVideoPreview');
+      prev.innerHTML = '<video src="'+url+'" controls></video><button type="button" class="media-remove-btn" onclick="window.clearAddMedia(\'video\')">✕ Remove</button>';
+      prev.style.display = 'block';
+    });
+  };
+
+  if (addVideoManual) {
+    addVideoManual.oninput = function(){
+      var url = addVideoManual.value.trim();
+      document.getElementById('add_video_url').value = url;
+      var prev = document.getElementById('addVideoPreview');
+      if (url) {
+        prev.innerHTML = '<video src="'+url+'" controls></video><button type="button" class="media-remove-btn" onclick="window.clearAddMedia(\'video\')">✕ Remove</button>';
+        prev.style.display = 'block';
+      } else {
+        prev.style.display = 'none';
+      }
+    };
+  }
+
+  window.clearAddMedia = function(type){
+    if (type === 'photo') {
+      document.getElementById('add_photo_url').value = '';
+      var prev = document.getElementById('addPhotoPreview');
+      prev.innerHTML = '';
+      prev.style.display = 'none';
+      document.getElementById('addPhotoProgress').textContent = '';
+    } else {
+      document.getElementById('add_video_url').value = '';
+      if (addVideoManual) addVideoManual.value = '';
+      var prev = document.getElementById('addVideoPreview');
+      prev.innerHTML = '';
+      prev.style.display = 'none';
+      document.getElementById('addVideoProgress').textContent = '';
+    }
+  };
+
+  // Add Apartment Form Submit
+  addAptForm.addEventListener('submit', function(e){
+    e.preventDefault();
+
+    var aptId = document.getElementById('add_apt_id').value.trim();
+    var propName = document.getElementById('add_prop_name').value.trim();
+    var ty = document.getElementById('add_ty').value;
+    var ar = document.getElementById('add_ar').value.trim();
+    var rent = document.getElementById('add_rent').value.trim();
+    var rm = document.getElementById('add_rm').value.trim();
+    var nm = document.getElementById('add_nm').value.trim();
+    var ph = document.getElementById('add_ph').value.trim();
+    var status = document.getElementById('add_status').value;
+    var tier = parseInt(document.getElementById('add_tier').value, 10) || 2;
+    var desc = document.getElementById('add_desc').value.trim();
+    var photoUrl = document.getElementById('add_photo_url').value.trim();
+    var videoUrl = document.getElementById('add_video_url').value.trim();
+
+    var payload = {
+      apt_id: aptId,
+      custom_id: aptId,
+      prop_name: propName,
+      ty: ty,
+      ar: ar,
+      rent: rent,
+      rm: rm,
+      nm: nm,
+      ph: ph,
+      desc: desc,
+      photo: photoUrl,
+      video: videoUrl,
+      video_url: videoUrl,
+      who: 'admin',
+      created_by: 'admin'
+    };
+
+    var newListing = {
+      session: cfg.SESSION || '2026/2027',
+      env: cfg.ENV || 'production',
+      source: 'admin_dashboard',
+      status: status,
+      tier: tier,
+      notes: 'Added via Admin Dashboard (' + aptId + ')',
+      payload: payload
+    };
+
+    var btnSave = document.getElementById('btnSaveAddApt');
+    btnSave.textContent = 'Saving Apartment...';
+    btnSave.disabled = true;
+
+    var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/listings';
     fetch(url, {
-      method: 'DELETE',
+      method: 'POST',
       headers: {
         'apikey': cfg.SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + cfg.SUPABASE_ANON_KEY
-      }
+        'Authorization': 'Bearer ' + cfg.SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(newListing)
     })
     .then(function(r){
-      if (!r.ok) throw new Error('Delete failed: ' + r.status);
-      // Remove from local data
-      loadedData[table] = loadedData[table].filter(function(r){ return r.id !== id; });
+      if (!r.ok) throw new Error('Insertion failed: ' + r.status);
+      return r.json();
+    })
+    .then(function(createdRows){
+      var inserted = (createdRows && createdRows[0]) ? createdRows[0] : newListing;
+      loadedData.listings.unshift(inserted);
       updateMetrics();
+
+      // Switch to Landlord Listings tab to display new apartment
+      document.querySelectorAll('.tab-btn').forEach(function(t){ t.classList.remove('active'); });
+      var listingTab = document.querySelector('.tab-btn[data-table="listings"]');
+      if (listingTab) listingTab.classList.add('active');
+      currentTable = 'listings';
+
       renderTable();
-      delModal.style.display = 'none';
-      ArzuzSubmit.showToast('Record deleted.', 'info');
+      addAptModal.style.display = 'none';
+      ArzuzSubmit.showToast('Apartment ' + aptId + ' added successfully!', 'success');
     })
     .catch(function(err){
-      alert('Could not delete record: ' + err.message + '\nMake sure the Supabase DELETE policy is applied.');
+      alert('Could not add apartment: ' + err.message + '\nMake sure the Supabase INSERT policy on listings allows requests.');
     })
     .finally(function(){
-      btn.textContent = 'Yes, Delete';
-      btn.disabled = false;
-      pendingDelete = null;
+      btnSave.textContent = 'Save Apartment';
+      btnSave.disabled = false;
     });
   });
 
-  // CSV Exporter
-  document.getElementById('btnExport').addEventListener('click', function(){
-    var rows = loadedData[currentTable] || [];
-    if(!rows.length){ alert('No data to export.'); return; }
-    var keys = Object.keys(rows[0]);
-    var csvContent = "data:text/csv;charset=utf-8," + 
-      keys.join(",") + "\n" +
-      rows.map(function(e){
-        return keys.map(function(k){
-          var val = typeof e[k] === 'object' ? JSON.stringify(e[k]) : e[k];
-          return '"' + String(val||'').replace(/"/g, '""') + '"';
-        }).join(",");
-      }).join("\n");
-
-    var encodedUri = encodeURI(csvContent);
-    var link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", currentTable + "_export.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  });
-
-  checkAuth();
-
-  // Lightbox for photo thumbnails
+  // Lightbox for photo & video
   window.openLightbox = function(url) {
     var lb = document.getElementById('photoLightbox');
     document.getElementById('lightboxImg').src = url;
     lb.style.display = 'flex';
+  };
+
+  window.openVideoLightbox = function(videoUrl) {
+    var lb = document.getElementById('videoLightbox');
+    var container = document.getElementById('videoLightboxContainer');
+    container.innerHTML = '<video src="'+videoUrl+'" controls autoplay style="width:100%; max-height:70vh; display:block;"></video>';
+    lb.style.display = 'flex';
+  };
+
+  window.closeVideoLightbox = function() {
+    var lb = document.getElementById('videoLightbox');
+    var container = document.getElementById('videoLightboxContainer');
+    if (container) container.innerHTML = '';
+    lb.style.display = 'none';
   };
 })();
 </script>

@@ -27,9 +27,17 @@ exports.handler = async function (event) {
     return { statusCode: 405, headers: CORS, body: JSON.stringify({ error: 'Method not allowed' }) };
   }
 
-  const API_KEY    = process.env.CLOUDINARY_API_KEY    || '879621267632718';
-  const API_SECRET = process.env.CLOUDINARY_API_SECRET || '3klddUOrhMI45s_ejS9bJMywBnU';
-  const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME || 'zrptjhes';
+  const API_KEY    = process.env.CLOUDINARY_API_KEY;
+  const API_SECRET = process.env.CLOUDINARY_API_SECRET;
+  const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME;
+
+  if (!API_KEY || !API_SECRET || !CLOUD_NAME) {
+    return {
+      statusCode: 500,
+      headers: CORS,
+      body: JSON.stringify({ error: 'Cloudinary environment variables not configured on server' })
+    };
+  }
 
   const timestamp  = Math.floor(Date.now() / 1000);
   const folder     = 'arzuz-buildings';
