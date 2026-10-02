@@ -601,6 +601,90 @@ tr:hover td {
   border-radius: 4px;
   color: #C4B5FD;
 }
+/* Amenities Chip Selector & Badges */
+.admin-chips-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.admin-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #B3A7BF;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+.admin-chip:hover {
+  background: rgba(139, 92, 246, 0.15);
+  border-color: rgba(139, 92, 246, 0.35);
+  color: #fff;
+}
+.admin-chip.active {
+  background: rgba(124, 58, 237, 0.3);
+  border-color: #8B5CF6;
+  color: #E9D5FF;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+}
+.admin-chip input {
+  display: none;
+}
+.table-amenity-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(139, 92, 246, 0.15);
+  color: #C4B5FD;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin: 1px;
+  white-space: nowrap;
+}
+.act-view {
+  background: rgba(52, 211, 153, 0.14);
+  color: #6EE7B7;
+  border-color: rgba(52, 211, 153, 0.3);
+}
+.act-view:hover {
+  background: rgba(52, 211, 153, 0.28);
+  color: #fff;
+  transform: translateY(-1px);
+}
+.details-kv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.details-kv-item {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.details-kv-lbl {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: #A79BB5;
+  margin-bottom: 4px;
+}
+.details-kv-val {
+  font-size: 14px;
+  color: #fff;
+  font-weight: 600;
+  word-break: break-word;
+}
 </style>
 </head>
 <body>
@@ -780,6 +864,14 @@ tr:hover td {
           <textarea id="add_desc" rows="2" placeholder="e.g. Running water, prepaid meter, paved compound, 5 mins walk to school..."></textarea>
         </div>
 
+        <!-- Hostel Amenities & Utilities (Synced with website forms) -->
+        <div class="edit-fld" style="grid-column: 1 / -1;">
+          <label>Hostel Amenities & Utilities (Tick all that apply)</label>
+          <div class="admin-chips-wrap" id="addAptUtilitiesWrap">
+            <!-- Populated dynamically via UTILITIES or fallback -->
+          </div>
+        </div>
+
         <!-- Apartment Photo Upload -->
         <div class="edit-fld" style="grid-column: 1 / -1;">
           <label>Apartment Photo (Cloudinary)</label>
@@ -811,6 +903,24 @@ tr:hover td {
         <button type="submit" class="next" id="btnSaveAddApt" style="padding: 10px 24px; font-size: 14px;">Save Apartment</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- View Full Record Details Modal -->
+<div class="modal-overlay" id="detailsModal" style="display: none;">
+  <div class="modal-box" style="max-width: 640px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+      <h3 id="detailsModalTitle" style="margin:0;">Record Details</h3>
+      <span class="admin-badge" id="detailsModalBadge">Details</span>
+    </div>
+    <div class="sub" id="detailsModalSub">Comprehensive overview of all submission fields and metadata.</div>
+    <div id="detailsModalContent">
+      <!-- Injected dynamically -->
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="bk" id="btnCloseDetails" style="color: #B3A7BF;">Close</button>
+      <button type="button" class="next" id="btnEditFromDetails" style="padding: 10px 20px; font-size: 14px;">✎ Edit Record</button>
+    </div>
   </div>
 </div>
 
@@ -1079,7 +1189,7 @@ tr:hover td {
     var body = document.getElementById('tableBody');
 
     if(currentTable === 'demand_records'){
-      head.innerHTML = '<th>Date</th><th>Status</th><th>Name</th><th>Room Type</th><th>Budget</th><th>Distance</th><th>Contact</th><th>Actions</th>';
+      head.innerHTML = '<th>Date</th><th>Status</th><th>Name</th><th>Room Type</th><th>Budget</th><th>Distance</th><th>Timing</th><th>Contact</th><th>Actions</th>';
       body.innerHTML = rows.map(function(r){
         var dateStr = new Date(r.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
         var phone = r.phone || (r.payload && r.payload.phone) || '';
@@ -1091,16 +1201,18 @@ tr:hover td {
           '<td>'+esc(r.room_type || (r.payload&&r.payload.type) || '-')+'</td>'+
           '<td>'+esc(r.budget_band || (r.payload&&r.payload.budget) || '-')+'</td>'+
           '<td>'+esc(r.distance || (r.payload&&r.payload.dist) || '-')+'</td>'+
+          '<td>'+esc(r.timing || (r.payload&&r.payload.when) || '-')+'</td>'+
           '<td>'+waLink+'</td>'+
           '<td><div class="cell-actions">'+
+            '<button class="act-btn act-view" onclick="window.openDetailsModal(\'demand_records\',\''+r.id+'\')">👁 View</button>'+
             '<button class="act-btn act-edit" onclick="window.openEditModal(\'demand_records\',\''+r.id+'\')">✎ Edit</button>'+
             '<button class="act-btn act-del" onclick="window.openDeleteModal(\'demand_records\',\''+r.id+'\')">🗑</button>'+
           '</div></td>'+
         '</tr>';
-      }).join('') || '<tr><td colspan="8" style="text-align:center; padding:30px; color:#8D8099;">No student records found.</td></tr>';
+      }).join('') || '<tr><td colspan="9" style="text-align:center; padding:30px; color:#8D8099;">No student records found.</td></tr>';
     } 
     else if(currentTable === 'listings'){
-      head.innerHTML = '<th>Date</th><th>Status</th><th>Apt ID</th><th>Photo</th><th>Video</th><th>Property Name</th><th>Owner</th><th>Type</th><th>Area</th><th>Price</th><th>Location</th><th>Actions</th>';
+      head.innerHTML = '<th>Date</th><th>Status</th><th>Apt ID</th><th>Photo</th><th>Video</th><th>Property Name</th><th>Amenities</th><th>Type</th><th>Area</th><th>Price</th><th>Location</th><th>Actions</th>';
       body.innerHTML = rows.map(function(r){
         var dateStr = new Date(r.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
         var price = r.listed_price_ngn || (r.payload&&r.payload.rent) || 0;
@@ -1121,6 +1233,13 @@ tr:hover td {
           ? '<button type="button" class="act-btn" style="background:rgba(236,72,153,0.18);color:#F472B6;border-color:rgba(236,72,153,0.35);font-size:11.5px;padding:3px 8px;" onclick="window.openVideoLightbox(\'' + esc(videoUrl) + '\')">🎥 Play</button>'
           : '<span style="color:#6B5C7D;font-size:11px;">No video</span>';
 
+        // Display top utilities as mini chips
+        var utList = (r.payload && (r.payload.ut || r.payload.utilities)) || [];
+        if (typeof utList === 'string') utList = utList.split(',').map(function(s){ return s.trim(); });
+        var amenitiesHtml = (Array.isArray(utList) && utList.length)
+          ? utList.slice(0, 3).map(function(u){ return '<span class="table-amenity-tag">'+esc(u)+'</span>'; }).join('') + (utList.length > 3 ? '<span class="table-amenity-tag" style="opacity:0.7;">+'+(utList.length - 3)+'</span>' : '')
+          : '<span style="color:#6B5C7D;font-size:11px;">—</span>';
+
         return '<tr>'+
           '<td>'+esc(dateStr)+'</td>'+
           '<td>'+getStatusTag(r.status)+'</td>'+
@@ -1128,12 +1247,13 @@ tr:hover td {
           '<td>'+photoCell+'</td>'+
           '<td>'+videoCell+'</td>'+
           '<td><b>'+(propName||'<span style="color:#6B5C7D">—</span>')+'</b></td>'+
-          '<td><b>'+esc(r.owner_name || (r.payload&&r.payload.nm) || 'Owner')+'</b></td>'+
+          '<td><div style="max-width:180px; display:flex; flex-wrap:wrap; gap:2px;">'+amenitiesHtml+'</div></td>'+
           '<td>'+esc(r.property_type || (r.payload&&r.payload.ty) || '-')+'</td>'+
           '<td>'+esc(r.area || (r.payload&&r.payload.ar) || '-')+'</td>'+
           '<td><b>₦'+Number(price).toLocaleString()+'</b></td>'+
           '<td>'+mapBtn+'</td>'+
           '<td><div class="cell-actions">'+
+            '<button class="act-btn act-view" onclick="window.openDetailsModal(\'listings\',\''+r.id+'\')">👁 View</button>'+
             (phone ? '<a class="wa-btn" href="https://wa.me/'+phone.replace(/\+/g,'')+'" target="_blank">WA</a>' : '')+
             '<button class="act-btn act-edit" onclick="window.openEditModal(\'listings\',\''+r.id+'\')">✎ Edit</button>'+
             '<button class="act-btn act-del" onclick="window.openDeleteModal(\'listings\',\''+r.id+'\')">🗑</button>'+
@@ -1142,7 +1262,7 @@ tr:hover td {
       }).join('') || '<tr><td colspan="12" style="text-align:center; padding:30px; color:#8D8099;">No listings found.</td></tr>';
     } 
     else if(currentTable === 'scout_submissions'){
-      head.innerHTML = '<th>Date</th><th>Status</th><th>Photo</th><th>Area</th><th>Rent Paid</th><th>Vacancy</th><th>Location</th><th>Actions</th>';
+      head.innerHTML = '<th>Date</th><th>Status</th><th>Photo</th><th>Area</th><th>Rent Paid</th><th>Vacancy</th><th>Utilities</th><th>Location</th><th>Actions</th>';
       body.innerHTML = rows.map(function(r){
         var dateStr = new Date(r.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
         var rent = r.rent_reported || (r.payload&&r.payload.amt) || 0;
@@ -1157,6 +1277,12 @@ tr:hover td {
           ? '<img class="admin-photo-thumb" src="'+esc(photoUrl)+'" alt="Building" onclick="window.openLightbox(\'' + esc(photoUrl) + '\')">'  
           : '<span style="color:#6B5C7D;font-size:11px;">No photo</span>';
 
+        var utList = (r.payload && (r.payload.ut || r.payload.utilities)) || [];
+        if (typeof utList === 'string') utList = utList.split(',').map(function(s){ return s.trim(); });
+        var amenitiesHtml = (Array.isArray(utList) && utList.length)
+          ? utList.slice(0, 2).map(function(u){ return '<span class="table-amenity-tag">'+esc(u)+'</span>'; }).join('') + (utList.length > 2 ? '<span class="table-amenity-tag" style="opacity:0.7;">+'+(utList.length - 2)+'</span>' : '')
+          : '<span style="color:#6B5C7D;font-size:11px;">—</span>';
+
         return '<tr>'+
           '<td>'+esc(dateStr)+'</td>'+
           '<td>'+getStatusTag(r.status)+'</td>'+
@@ -1164,14 +1290,16 @@ tr:hover td {
           '<td><b>'+esc(r.area || (r.payload&&r.payload.area) || '-')+'</b></td>'+
           '<td><b>₦'+Number(rent).toLocaleString()+'</b></td>'+
           '<td>'+esc(r.vacancy_signal || (r.payload&&r.payload.vac) || '-')+'</td>'+
+          '<td><div style="max-width:140px; display:flex; flex-wrap:wrap; gap:2px;">'+amenitiesHtml+'</div></td>'+
           '<td>'+mapBtn+'</td>'+
           '<td><div class="cell-actions">'+
+            '<button class="act-btn act-view" onclick="window.openDetailsModal(\'scout_submissions\',\''+r.id+'\')">👁 View</button>'+
             (phone ? '<a class="wa-btn" href="https://wa.me/'+phone.replace(/\+/g,'')+'" target="_blank">WA</a>' : '')+
             '<button class="act-btn act-edit" onclick="window.openEditModal(\'scout_submissions\',\''+r.id+'\')">✎ Edit</button>'+
             '<button class="act-btn act-del" onclick="window.openDeleteModal(\'scout_submissions\',\''+r.id+'\')">🗑</button>'+
           '</div></td>'+
         '</tr>';
-      }).join('') || '<tr><td colspan="8" style="text-align:center; padding:30px; color:#8D8099;">No scout reports found.</td></tr>';
+      }).join('') || '<tr><td colspan="9" style="text-align:center; padding:30px; color:#8D8099;">No scout reports found.</td></tr>';
     }
   }
 
@@ -1226,6 +1354,25 @@ tr:hover td {
       html += '<div class="edit-fld"><label>Price (₦ / Session)</label><input type="number" id="edit_rent" value="'+esc(row.listed_price_ngn || p.rent || '')+'"></div>';
       html += '<div class="edit-fld"><label>Available Rooms</label><input type="text" id="edit_rm" value="'+esc(row.rooms || p.rm || '')+'"></div>';
       html += '<div class="edit-fld"><label>Property Type</label><input type="text" id="edit_ty" value="'+esc(row.property_type || p.ty || 'Self-contain')+'"></div>';
+
+      // Description field
+      html += '<div class="edit-fld" style="grid-column:1/-1"><label>Apartment Description & Features</label><textarea id="edit_desc" rows="2" placeholder="Running water, prepaid meter...">'+esc(p.desc || p.description || '')+'</textarea></div>';
+
+      // Hostel amenities chips
+      var curUtilities = p.ut || p.utilities || [];
+      if (typeof curUtilities === 'string') curUtilities = curUtilities.split(',').map(function(s){ return s.trim(); });
+      var allUtils = (typeof UTILITIES !== 'undefined' && UTILITIES.length) ? UTILITIES : [
+        "Borehole water","Pipe-borne water","NEPA connection","Generator backup",
+        "Private bathroom","Flush toilet","Security gate","Perimeter fence","Kitchen access"
+      ];
+      var editChipsHtml = allUtils.map(function(u){
+        var isChk = Array.isArray(curUtilities) && curUtilities.indexOf(u) !== -1;
+        return '<label class="admin-chip'+(isChk ? ' active' : '')+'">'+
+                 '<input type="checkbox" name="edit_ut" value="'+esc(u)+'"'+(isChk ? ' checked' : '')+' onchange="this.parentElement.classList.toggle(\'active\', this.checked)">'+
+                 '<span>'+(isChk ? '✓ ' : '+ ')+esc(u)+'</span>'+
+               '</label>';
+      }).join('');
+      html += '<div class="edit-fld" style="grid-column:1/-1"><label>Hostel Amenities & Utilities</label><div class="admin-chips-wrap">'+editChipsHtml+'</div></div>';
 
       // Photo upload & preview in edit modal
       html += '<div class="edit-fld" style="grid-column:1/-1"><label>Property Photo</label>'+
@@ -1361,6 +1508,16 @@ tr:hover td {
       if (document.getElementById('edit_ty')) {
         newPayload.ty = document.getElementById('edit_ty').value.trim();
       }
+      if (document.getElementById('edit_desc')) {
+        newPayload.desc = document.getElementById('edit_desc').value.trim();
+      }
+      var selectedUt = [];
+      document.querySelectorAll('input[name="edit_ut"]:checked').forEach(function(ck){
+        selectedUt.push(ck.value);
+      });
+      newPayload.ut = selectedUt;
+      newPayload.utilities = selectedUt;
+
       var photoVal = document.getElementById('edit_photo') ? document.getElementById('edit_photo').value.trim() : '';
       if (photoVal) newPayload.photo = photoVal;
       var videoVal = document.getElementById('edit_video') ? document.getElementById('edit_video').value.trim() : '';
@@ -1439,6 +1596,21 @@ tr:hover td {
     // Auto-generate suggestion for apartment ID
     var nextNum = (loadedData.listings.length + 1).toString().padStart(3, '0');
     document.getElementById('add_apt_id').value = 'APT-' + nextNum;
+
+    // Populate utilities chips
+    var wrap = document.getElementById('addAptUtilitiesWrap');
+    if (wrap) {
+      var allUtils = (typeof UTILITIES !== 'undefined' && UTILITIES.length) ? UTILITIES : [
+        "Borehole water","Pipe-borne water","NEPA connection","Generator backup",
+        "Private bathroom","Flush toilet","Security gate","Perimeter fence","Kitchen access"
+      ];
+      wrap.innerHTML = allUtils.map(function(u){
+        return '<label class="admin-chip">'+
+                 '<input type="checkbox" name="add_ut" value="'+esc(u)+'" onchange="this.parentElement.classList.toggle(\'active\', this.checked)">'+
+                 '<span>+ '+esc(u)+'</span>'+
+               '</label>';
+      }).join('');
+    }
 
     addAptModal.style.display = 'flex';
   });
@@ -1576,6 +1748,11 @@ tr:hover td {
     var photoUrl = document.getElementById('add_photo_url').value.trim();
     var videoUrl = document.getElementById('add_video_url').value.trim();
 
+    var selectedUt = [];
+    document.querySelectorAll('input[name="add_ut"]:checked').forEach(function(ck){
+      selectedUt.push(ck.value);
+    });
+
     var payload = {
       apt_id: aptId,
       custom_id: aptId,
@@ -1590,6 +1767,8 @@ tr:hover td {
       photo: photoUrl,
       video: videoUrl,
       video_url: videoUrl,
+      ut: selectedUt,
+      utilities: selectedUt,
       who: 'admin',
       created_by: 'admin'
     };
@@ -1667,6 +1846,209 @@ tr:hover td {
     if (container) container.innerHTML = '';
     lb.style.display = 'none';
   };
+
+  // ================= VIEW RECORD DETAILS MODAL =================
+  var detailsModal = document.getElementById('detailsModal');
+  var detailsModalContent = document.getElementById('detailsModalContent');
+  var currentDetailRecord = null;
+
+  window.openDetailsModal = function(table, id){
+    var row = (loadedData[table] || []).find(function(r){ return r.id === id; });
+    if (!row) return;
+    currentDetailRecord = { table: table, id: id, row: row };
+
+    var p = row.payload || {};
+    var dateStr = new Date(row.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    document.getElementById('detailsModalTitle').textContent = (table === 'demand_records' ? 'Student Need Details' : (table === 'listings' ? 'Apartment & Hostel Details' : 'Scout Submission Details'));
+    document.getElementById('detailsModalBadge').textContent = (row.status || 'open').toUpperCase();
+
+    var html = '<div class="details-kv-grid">';
+    html += '<div class="details-kv-item"><div class="details-kv-lbl">Record ID</div><div class="details-kv-val" style="font-family:var(--mono);font-size:12px;">'+esc(row.id)+'</div></div>';
+    html += '<div class="details-kv-item"><div class="details-kv-lbl">Created At</div><div class="details-kv-val">'+esc(dateStr)+'</div></div>';
+    html += '<div class="details-kv-item"><div class="details-kv-lbl">Status</div><div class="details-kv-val">'+getStatusTag(row.status)+'</div></div>';
+
+    if (row.notes) {
+      html += '<div class="details-kv-item" style="grid-column:1/-1;"><div class="details-kv-lbl">Admin Notes</div><div class="details-kv-val">'+esc(row.notes)+'</div></div>';
+    }
+
+    if (table === 'demand_records') {
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Student Name</div><div class="details-kv-val">'+esc(row.first_name || p.first || '-')+'</div></div>';
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Phone / WhatsApp</div><div class="details-kv-val">'+esc(row.phone || p.phone || '-')+'</div></div>';
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Room Type Needed</div><div class="details-kv-val">'+esc(row.room_type || p.type || '-')+'</div></div>';
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Budget Band</div><div class="details-kv-val">'+esc(row.budget_band || p.budget || '-')+'</div></div>';
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Distance to Campus</div><div class="details-kv-val">'+esc(row.distance || p.dist || '-')+'</div></div>';
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Needed When</div><div class="details-kv-val">'+esc(row.timing || p.when || '-')+'</div></div>';
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Age Group</div><div class="details-kv-val">'+esc(row.age_band || p.age || '-')+'</div></div>';
+      if (p.g_phone) {
+        html += '<div class="details-kv-item"><div class="details-kv-lbl">Guardian Contact</div><div class="details-kv-val">'+esc((p.g_name || 'Guardian') + ' — ' + p.g_phone)+'</div></div>';
+      }
+      if (p.pain) {
+        html += '<div class="details-kv-item" style="grid-column:1/-1;"><div class="details-kv-lbl">Current Housing Feedback</div><div class="details-kv-val">'+esc(p.pain)+'</div></div>';
+      }
+    } else if (table === 'listings') {
+      var aptId = (p && (p.apt_id || p.custom_id)) || (row.id ? row.id.substring(0,8) : '');
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Apartment ID</div><div class="details-kv-val"><span class="apt-badge-id">'+esc(aptId)+'</span></div></div>';
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Property / Lodge Name</div><div class="details-kv-val">'+esc(row.property_name || p.prop_name || '-')+'</div></div>';
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Owner / Caretaker</div><div class="details-kv-val">'+esc(row.owner_name || p.nm || '-')+'</div></div>';
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Contact Phone</div><div class="details-kv-val">'+esc(row.owner_phone || p.ph || '-')+'</div></div>';
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Property Type</div><div class="details-kv-val">'+esc(row.property_type || p.ty || '-')+'</div></div>';
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Area / Street</div><div class="details-kv-val">'+esc(row.area || p.ar || '-')+'</div></div>';
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Price / Session</div><div class="details-kv-val">₦'+Number(row.listed_price_ngn || p.rent || 0).toLocaleString()+'</div></div>';
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Units Available</div><div class="details-kv-val">'+esc(row.rooms || p.rm || '-')+'</div></div>';
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Managed By</div><div class="details-kv-val">'+esc(row.run_by || p.who || '-')+'</div></div>';
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Tier</div><div class="details-kv-val">Tier '+esc(row.tier !== undefined ? row.tier : 0)+'</div></div>';
+
+      var utList = p.ut || p.utilities || [];
+      if (typeof utList === 'string') utList = utList.split(',').map(function(s){ return s.trim(); });
+      if (Array.isArray(utList) && utList.length) {
+        html += '<div class="details-kv-item" style="grid-column:1/-1;"><div class="details-kv-lbl">Verified Utilities & Amenities</div><div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">'+
+          utList.map(function(u){ return '<span class="admin-chip active" style="font-size:11.5px; padding:3px 10px;">✓ '+esc(u)+'</span>'; }).join('')+
+          '</div></div>';
+      }
+
+      if (p.desc || p.description) {
+        html += '<div class="details-kv-item" style="grid-column:1/-1;"><div class="details-kv-lbl">Description</div><div class="details-kv-val">'+esc(p.desc || p.description)+'</div></div>';
+      }
+
+      var photoUrl = row.photo_url || p.photo;
+      if (photoUrl) {
+        html += '<div class="details-kv-item" style="grid-column:1/-1;"><div class="details-kv-lbl">Photo</div><img src="'+esc(photoUrl)+'" style="max-width:100%; max-height:220px; border-radius:8px; display:block; margin-top:6px; cursor:pointer;" onclick="window.openLightbox(\''+esc(photoUrl)+'\')"></div>';
+      }
+
+      var videoUrl = p.video || p.video_url;
+      if (videoUrl) {
+        html += '<div class="details-kv-item" style="grid-column:1/-1;"><div class="details-kv-lbl">Video Tour</div><button type="button" class="act-btn" style="background:rgba(236,72,153,0.2);color:#F472B6;padding:8px 14px;border-radius:6px;margin-top:6px;cursor:pointer;" onclick="window.openVideoLightbox(\''+esc(videoUrl)+'\')">🎥 Play Video Tour</button></div>';
+      }
+    } else if (table === 'scout_submissions') {
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Area / Street</div><div class="details-kv-val">'+esc(row.area || p.area || '-')+'</div></div>';
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Rent Paid</div><div class="details-kv-val">₦'+Number(row.rent_reported || p.amt || 0).toLocaleString()+'</div></div>';
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Scout Phone</div><div class="details-kv-val">'+esc(row.scout_phone || p.phone || '-')+'</div></div>';
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Vacancy Signal</div><div class="details-kv-val">'+esc(row.vacancy_signal || p.vac || '-')+'</div></div>';
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Collected By</div><div class="details-kv-val">'+esc(row.rent_collected_by || p.who || '-')+'</div></div>';
+      var photoUrl = row.photo_url || p.photo;
+      if (photoUrl) {
+        html += '<div class="details-kv-item" style="grid-column:1/-1;"><div class="details-kv-lbl">Building Photo</div><img src="'+esc(photoUrl)+'" style="max-width:100%; max-height:220px; border-radius:8px; display:block; margin-top:6px; cursor:pointer;" onclick="window.openLightbox(\''+esc(photoUrl)+'\')"></div>';
+      }
+    }
+
+    html += '</div>';
+    detailsModalContent.innerHTML = html;
+    detailsModal.style.display = 'flex';
+  };
+
+  document.getElementById('btnCloseDetails').addEventListener('click', function(){
+    detailsModal.style.display = 'none';
+  });
+
+  document.getElementById('btnEditFromDetails').addEventListener('click', function(){
+    if (currentDetailRecord) {
+      detailsModal.style.display = 'none';
+      window.openEditModal(currentDetailRecord.table, currentDetailRecord.id);
+    }
+  });
+
+  // ================= DELETE MODAL FUNCTIONALITY =================
+  var delModal = document.getElementById('delModal');
+  var btnCancelDel = document.getElementById('btnCancelDel');
+  var btnConfirmDel = document.getElementById('btnConfirmDel');
+
+  window.openDeleteModal = function(table, id){
+    pendingDelete = { table: table, id: id };
+    delModal.style.display = 'flex';
+  };
+
+  btnCancelDel.addEventListener('click', function(){
+    delModal.style.display = 'none';
+    pendingDelete = null;
+  });
+
+  btnConfirmDel.addEventListener('click', function(){
+    if (!pendingDelete) return;
+    var table = pendingDelete.table;
+    var id = pendingDelete.id;
+
+    btnConfirmDel.textContent = 'Deleting...';
+    btnConfirmDel.disabled = true;
+
+    var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/' + table + '?id=eq.' + id;
+    fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'apikey': cfg.SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + cfg.SUPABASE_ANON_KEY
+      }
+    })
+    .then(function(res){
+      if (!res.ok) throw new Error('Deletion failed (HTTP ' + res.status + ')');
+      loadedData[table] = (loadedData[table] || []).filter(function(r){ return r.id !== id; });
+      updateMetrics();
+      renderTable();
+      delModal.style.display = 'none';
+      pendingDelete = null;
+      ArzuzSubmit.showToast('Record deleted successfully.', 'info');
+    })
+    .catch(function(err){
+      alert('Could not delete record: ' + err.message + '\nMake sure the Supabase DELETE policy is configured.');
+    })
+    .finally(function(){
+      btnConfirmDel.textContent = 'Yes, Delete';
+      btnConfirmDel.disabled = false;
+    });
+  });
+
+  // ================= CSV EXPORT FUNCTIONALITY =================
+  var btnExport = document.getElementById('btnExport');
+  if (btnExport) {
+    btnExport.addEventListener('click', function(){
+      var rows = loadedData[currentTable] || [];
+      if (!rows.length) {
+        alert('No data available to export in ' + currentTable);
+        return;
+      }
+
+      // Collect all keys
+      var keysSet = new Set();
+      rows.forEach(function(r){
+        Object.keys(r).forEach(function(k){ if (k !== 'payload') keysSet.add(k); });
+        if (r.payload) {
+          Object.keys(r.payload).forEach(function(pk){ keysSet.add('payload_' + pk); });
+        }
+      });
+      var headers = Array.from(keysSet);
+
+      var csvLines = [];
+      csvLines.push(headers.map(function(h){ return '"' + h.replace(/"/g, '""') + '"'; }).join(','));
+
+      rows.forEach(function(r){
+        var rowValues = headers.map(function(h){
+          var val = '';
+          if (h.indexOf('payload_') === 0) {
+            var pk = h.substring(8);
+            val = (r.payload && r.payload[pk] !== undefined) ? r.payload[pk] : '';
+          } else {
+            val = r[h] !== undefined ? r[h] : '';
+          }
+          if (typeof val === 'object') val = JSON.stringify(val);
+          return '"' + String(val).replace(/"/g, '""') + '"';
+        });
+        csvLines.push(rowValues.join(','));
+      });
+
+      var blob = new Blob([csvLines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'arzuz_' + currentTable + '_' + new Date().toISOString().slice(0,10) + '.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      ArzuzSubmit.showToast('CSV export downloaded!', 'success');
+    });
+  }
+
+  // Initial Auth Check
+  checkAuth();
 })();
 </script>
 </body>
