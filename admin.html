@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
 <link rel="stylesheet" href="assets/arzuz.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 /* ================= Private Admin Dashboard Specific Styles ================= */
 body {
@@ -788,6 +789,26 @@ tr:hover td {
     </div>
   </div>
 
+  <!-- Amenities & Utilities Manager -->
+  <div class="settings-panel" style="margin-top: 24px;">
+    <h3 style="margin-bottom: 6px;">🏠 Hostel Amenities & Utilities Manager</h3>
+    <p style="color: #B3A7BF; font-size: 14px; margin-bottom: 18px;">
+      Add custom amenity options here (e.g. <em>Solar panels</em>, <em>Security cameras</em>, <em>Swimming pool</em>).
+      They instantly appear in <b>Add Apartment</b>, the <b>Edit modal</b>, and all public listing forms automatically.
+    </p>
+    <!-- Existing options -->
+    <div style="margin-bottom: 14px;">
+      <div style="font-size: 12px; font-weight: 700; color: #9A8CA8; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px;">Current Amenities</div>
+      <div class="admin-chips-wrap" id="amenitiesManagerList" style="gap: 8px;"></div>
+    </div>
+    <!-- Add new option -->
+    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+      <input type="text" id="newAmenityInput" placeholder="e.g. Solar panels, Security cameras..." style="flex: 1; min-width: 220px; font-size: 14px;">
+      <button class="next" id="btnAddAmenity" style="padding: 10px 18px; font-size: 14px; white-space: nowrap;">+ Add Amenity</button>
+    </div>
+    <div id="amenityFeedback" style="margin-top: 8px; font-size: 13px; color: #34D399; display:none;"></div>
+  </div>
+
 </div>
 
 <!-- Add Apartment Modal -->
@@ -870,6 +891,28 @@ tr:hover td {
           <div class="admin-chips-wrap" id="addAptUtilitiesWrap">
             <!-- Populated dynamically via UTILITIES or fallback -->
           </div>
+        </div>
+
+        <!-- Map Location Pin -->
+        <div class="edit-fld" style="grid-column: 1 / -1;">
+          <label style="display:flex; align-items:center; gap:8px;">📍 Map Location Pin <span style="font-size:11px; font-weight:400; color:#9A8CA8;">(Satellite + Street — tap to pin exact gate)</span></label>
+          <div style="background: rgba(124,58,237,0.08); border: 1px solid rgba(124,58,237,0.3); border-radius: 10px; padding: 10px; margin-bottom:8px; font-size:13px; color:#C4B5FD;">
+            🛰️ <b>Satellite view is active.</b> Zoom in and tap the exact gate of the compound to drop a pin.
+          </div>
+          <div style="position:relative;">
+            <div id="admin-leaflet-map" style="height: 280px; border-radius: 10px; overflow:hidden; border: 1px solid rgba(255,255,255,0.12);"></div>
+            <div style="position:absolute; top:10px; right:10px; z-index:500; display:flex; gap:6px;">
+              <button type="button" id="adminBtnLayerSat" style="background:rgba(22,17,32,0.92);color:#C4B5FD;border:1px solid rgba(196,181,253,0.4);padding:5px 10px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:700;">🛰 Satellite</button>
+              <button type="button" id="adminBtnLayerStreet" style="background:rgba(22,17,32,0.85);color:#9A8CA8;border:1px solid rgba(255,255,255,0.15);padding:5px 10px;border-radius:6px;font-size:12px;cursor:pointer;">🗺 Street</button>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:8px; flex-wrap:wrap; gap:8px;">
+            <span id="adminMapCoordsText" style="font-size:13px; color:#9A8CA8; background:rgba(255,255,255,0.05); padding:5px 10px; border-radius:6px;">📍 Tap map or drag marker to the gate</span>
+            <button type="button" id="adminBtnLocateMe" style="background:rgba(52,211,153,0.15);color:#34D399;border:1px solid rgba(52,211,153,0.4);padding:7px 14px;border-radius:8px;font-size:13px;cursor:pointer;font-weight:600;">🎯 Use GPS</button>
+          </div>
+          <input type="hidden" id="add_lat">
+          <input type="hidden" id="add_lng">
+          <input type="hidden" id="add_pin">
         </div>
 
         <!-- Apartment Photo Upload -->
@@ -1126,7 +1169,72 @@ tr:hover td {
       });
   });
 
-  // Tab switching
+  // ================= AMENITIES MANAGER =================
+  function renderAmenitiesManager(){
+    var list = document.getElementById('amenitiesManagerList');
+    if (!list) return;
+    var allUtils = (typeof UTILITIES !== 'undefined' && UTILITIES.length) ? UTILITIES : [];
+    list.innerHTML = allUtils.map(function(u, idx){
+      var isDefault = (typeof _DEFAULT_UTILITIES !== 'undefined') && _DEFAULT_UTILITIES.indexOf(u) !== -1;
+      return '<label class="admin-chip active" style="position:relative; padding-right:30px;">'+
+               '<span>✓ '+esc(u)+'</span>'+
+               (!isDefault
+                 ? '<button type="button" onclick="window.removeAmenity(\''+esc(u).replace(/'/g,"\\'")+'\')" style="position:absolute;top:3px;right:6px;background:none;border:none;color:#F87171;cursor:pointer;font-size:13px;padding:0;line-height:1;" title="Remove">✕</button>'
+                 : '<span style="position:absolute;top:3px;right:6px;font-size:10px;color:#6B5C7D;cursor:help;" title="Built-in — cannot remove">🔒</span>')+
+             '</label>';
+    }).join('') || '<span style="color:#6B5C7D;font-size:13px;">No amenities defined yet.</span>';
+  }
+
+  window.removeAmenity = function(name){
+    if (typeof _DEFAULT_UTILITIES !== 'undefined' && _DEFAULT_UTILITIES.indexOf(name) !== -1) {
+      alert('Built-in amenity "' + name + '" cannot be removed.'); return;
+    }
+    var current = (typeof UTILITIES !== 'undefined' && UTILITIES) ? UTILITIES.slice() : [];
+    var idx = current.indexOf(name);
+    if (idx !== -1) current.splice(idx, 1);
+    window.UTILITIES = current;
+    // Persist custom additions only (filter out defaults)
+    var defaults = (typeof _DEFAULT_UTILITIES !== 'undefined') ? _DEFAULT_UTILITIES : [];
+    var customs = current.filter(function(u){ return defaults.indexOf(u) === -1; });
+    localStorage.setItem('arzuz_utilities', JSON.stringify(customs));
+    renderAmenitiesManager();
+    ArzuzSubmit.showToast('Amenity "' + name + '" removed.', 'info');
+  };
+
+  var newAmenityInput = document.getElementById('newAmenityInput');
+  var btnAddAmenity = document.getElementById('btnAddAmenity');
+  var amenityFeedback = document.getElementById('amenityFeedback');
+
+  if (btnAddAmenity) {
+    btnAddAmenity.addEventListener('click', function(){
+      var val = (newAmenityInput ? newAmenityInput.value.trim() : '');
+      if (!val) return;
+      var current = (typeof UTILITIES !== 'undefined' && UTILITIES) ? UTILITIES.slice() : [];
+      if (current.indexOf(val) !== -1) {
+        if (amenityFeedback) { amenityFeedback.style.color='#F59E0B'; amenityFeedback.textContent='⚠️ "'+val+'" already exists.'; amenityFeedback.style.display='block'; }
+        return;
+      }
+      current.push(val);
+      window.UTILITIES = current;
+      // Save all non-default items to localStorage
+      var defaults = (typeof _DEFAULT_UTILITIES !== 'undefined') ? _DEFAULT_UTILITIES : [];
+      var customs = current.filter(function(u){ return defaults.indexOf(u) === -1; });
+      localStorage.setItem('arzuz_utilities', JSON.stringify(customs));
+      if (newAmenityInput) newAmenityInput.value = '';
+      if (amenityFeedback) { amenityFeedback.style.color='#34D399'; amenityFeedback.textContent='✅ "'+val+'" added! It now appears in all forms and the Add Apartment modal.'; amenityFeedback.style.display='block'; }
+      renderAmenitiesManager();
+      setTimeout(function(){ if(amenityFeedback) amenityFeedback.style.display='none'; }, 4000);
+    });
+  }
+
+  if (newAmenityInput) {
+    newAmenityInput.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); btnAddAmenity.click(); } });
+  }
+
+  // Initial render of amenities manager
+  renderAmenitiesManager();
+
+
   document.querySelectorAll('.tab-btn').forEach(function(b){
     b.addEventListener('click', function(){
       document.querySelectorAll('.tab-btn').forEach(function(t){ t.classList.remove('active'); });
@@ -1189,15 +1297,18 @@ tr:hover td {
     var body = document.getElementById('tableBody');
 
     if(currentTable === 'demand_records'){
-      head.innerHTML = '<th>Date</th><th>Status</th><th>Name</th><th>Room Type</th><th>Budget</th><th>Distance</th><th>Timing</th><th>Contact</th><th>Actions</th>';
+      head.innerHTML = '<th>Date</th><th>Status</th><th>First Name</th><th>Last Name</th><th>Room Type</th><th>Budget</th><th>Distance</th><th>Timing</th><th>Contact</th><th>Actions</th>';
       body.innerHTML = rows.map(function(r){
         var dateStr = new Date(r.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
         var phone = r.phone || (r.payload && r.payload.phone) || '';
         var waLink = phone ? '<a class="wa-btn" href="https://wa.me/'+phone.replace(/\+/g,'')+'" target="_blank">WhatsApp</a>' : '-';
+        var firstName = esc(r.first_name || (r.payload&&r.payload.first) || 'Student');
+        var lastName = esc((r.payload&&r.payload.last) || '');
         return '<tr>'+
           '<td>'+esc(dateStr)+'</td>'+
           '<td>'+getStatusTag(r.status)+'</td>'+
-          '<td><b>'+esc(r.first_name || (r.payload&&r.payload.first) || 'Student')+'</b></td>'+
+          '<td><b>'+firstName+'</b></td>'+
+          '<td>'+(lastName||'<span style="color:#6B5C7D">—</span>')+'</td>'+
           '<td>'+esc(r.room_type || (r.payload&&r.payload.type) || '-')+'</td>'+
           '<td>'+esc(r.budget_band || (r.payload&&r.payload.budget) || '-')+'</td>'+
           '<td>'+esc(r.distance || (r.payload&&r.payload.dist) || '-')+'</td>'+
@@ -1209,7 +1320,7 @@ tr:hover td {
             '<button class="act-btn act-del" onclick="window.openDeleteModal(\'demand_records\',\''+r.id+'\')">🗑</button>'+
           '</div></td>'+
         '</tr>';
-      }).join('') || '<tr><td colspan="9" style="text-align:center; padding:30px; color:#8D8099;">No student records found.</td></tr>';
+      }).join('') || '<tr><td colspan="10" style="text-align:center; padding:30px; color:#8D8099;">No student records found.</td></tr>';
     } 
     else if(currentTable === 'listings'){
       head.innerHTML = '<th>Date</th><th>Status</th><th>Apt ID</th><th>Photo</th><th>Video</th><th>Property Name</th><th>Amenities</th><th>Type</th><th>Area</th><th>Price</th><th>Location</th><th>Actions</th>';
@@ -1336,7 +1447,8 @@ tr:hover td {
     html += '<div class="edit-fld"><label>Admin Notes</label><input type="text" id="edit_notes" value="'+esc(row.notes||'')+'" placeholder="Internal notes..."></div>';
 
     if (table === 'demand_records') {
-      html += '<div class="edit-fld"><label>Student Name</label><input type="text" id="edit_first" value="'+esc(row.first_name || p.first || '')+'"></div>';
+      html += '<div class="edit-fld"><label>First Name</label><input type="text" id="edit_first" value="'+esc(row.first_name || p.first || '')+'"></div>';
+      html += '<div class="edit-fld"><label>Last Name</label><input type="text" id="edit_last" value="'+esc(p.last || '')+'"></div>';
       html += '<div class="edit-fld"><label>Phone / WhatsApp</label><input type="tel" id="edit_phone" value="'+esc(row.phone || p.phone || '')+'"></div>';
       html += '<div class="edit-fld"><label>Room Type</label><input type="text" id="edit_room_type" value="'+esc(row.room_type || p.type || '')+'"></div>';
       html += '<div class="edit-fld"><label>Budget Band</label><input type="text" id="edit_budget_band" value="'+esc(row.budget_band || p.budget || '')+'"></div>';
@@ -1494,6 +1606,7 @@ tr:hover td {
 
     if (table === 'demand_records') {
       newPayload.first = document.getElementById('edit_first').value.trim();
+      newPayload.last = document.getElementById('edit_last') ? document.getElementById('edit_last').value.trim() : (newPayload.last || '');
       newPayload.phone = document.getElementById('edit_phone').value.trim();
       newPayload.type = document.getElementById('edit_room_type').value.trim();
       newPayload.budget = document.getElementById('edit_budget_band').value.trim();
@@ -1586,6 +1699,9 @@ tr:hover td {
     addAptForm.reset();
     document.getElementById('add_photo_url').value = '';
     document.getElementById('add_video_url').value = '';
+    document.getElementById('add_lat').value = '';
+    document.getElementById('add_lng').value = '';
+    document.getElementById('add_pin').value = '';
     document.getElementById('addPhotoPreview').style.display = 'none';
     document.getElementById('addPhotoPreview').innerHTML = '';
     document.getElementById('addVideoPreview').style.display = 'none';
@@ -1597,7 +1713,7 @@ tr:hover td {
     var nextNum = (loadedData.listings.length + 1).toString().padStart(3, '0');
     document.getElementById('add_apt_id').value = 'APT-' + nextNum;
 
-    // Populate utilities chips
+    // Populate utilities chips from current UTILITIES (merged with localStorage custom ones)
     var wrap = document.getElementById('addAptUtilitiesWrap');
     if (wrap) {
       var allUtils = (typeof UTILITIES !== 'undefined' && UTILITIES.length) ? UTILITIES : [
@@ -1613,6 +1729,9 @@ tr:hover td {
     }
 
     addAptModal.style.display = 'flex';
+
+    // Initialise Leaflet map inside the modal after it's visible
+    setTimeout(function(){ initAdminMap(); }, 200);
   });
 
   btnCancelAddApt.addEventListener('click', function(){
@@ -1730,6 +1849,86 @@ tr:hover td {
     }
   };
 
+  // ================= ADMIN MAP (Add Apartment modal) =================
+  var adminMap = null;
+  var adminMarker = null;
+  var adminActiveTile = null;
+
+  function initAdminMap(){
+    var MALETE_LAT = 8.7113, MALETE_LNG = 4.4697;
+    var mapEl = document.getElementById('admin-leaflet-map');
+    if (!mapEl) return;
+
+    // Only load Leaflet JS if not already loaded
+    function buildMap(){
+      if (adminMap) { try { adminMap.remove(); } catch(e){} adminMap = null; adminMarker = null; adminActiveTile = null; }
+
+      adminMap = L.map('admin-leaflet-map', { zoomControl: true }).setView([MALETE_LAT, MALETE_LNG], 16);
+
+      var LAYERS = {
+        sat: { url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', opt:{ maxZoom:19, attribution:'Esri' } },
+        street: { url:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', opt:{ maxZoom:19, attribution:'&copy; OpenStreetMap contributors' } }
+      };
+
+      adminActiveTile = L.tileLayer(LAYERS.sat.url, LAYERS.sat.opt).addTo(adminMap);
+
+      var pinIcon = L.divIcon({
+        className:'',
+        html:'<div class="map-pin-custom"><div class="map-pin-ring"></div><div class="map-pin-dot"></div></div>',
+        iconSize:[32,42], iconAnchor:[16,42]
+      });
+
+      adminMarker = L.marker([MALETE_LAT, MALETE_LNG], { draggable:true, icon:pinIcon }).addTo(adminMap);
+
+      function setPin(lat, lng, msg){
+        document.getElementById('add_lat').value = lat;
+        document.getElementById('add_lng').value = lng;
+        document.getElementById('add_pin').value = lat.toFixed(6)+','+lng.toFixed(6);
+        var badge = document.getElementById('adminMapCoordsText');
+        if (badge) { badge.textContent = '\uD83D\uDCCD '+lat.toFixed(5)+', '+lng.toFixed(5); badge.style.color='#34D399'; }
+      }
+
+      adminMarker.on('dragend', function(){ var p=adminMarker.getLatLng(); setPin(p.lat,p.lng,'Marker moved'); });
+      adminMap.on('click', function(e){ adminMarker.setLatLng(e.latlng); setPin(e.latlng.lat,e.latlng.lng,'Tapped'); });
+
+      var btnSat = document.getElementById('adminBtnLayerSat');
+      var btnStr = document.getElementById('adminBtnLayerStreet');
+      function swLayer(k){
+        if(adminActiveTile) adminMap.removeLayer(adminActiveTile);
+        adminActiveTile = L.tileLayer(LAYERS[k].url, LAYERS[k].opt).addTo(adminMap);
+        if(adminMarker) adminMarker.bringToFront();
+        if(btnSat) { btnSat.style.color = k==='sat' ? '#C4B5FD' : '#9A8CA8'; btnSat.style.borderColor = k==='sat' ? 'rgba(196,181,253,0.4)' : 'rgba(255,255,255,0.15)'; }
+        if(btnStr) { btnStr.style.color = k==='street' ? '#C4B5FD' : '#9A8CA8'; btnStr.style.borderColor = k==='street' ? 'rgba(196,181,253,0.4)' : 'rgba(255,255,255,0.15)'; }
+      }
+      if(btnSat) btnSat.onclick = function(){ swLayer('sat'); };
+      if(btnStr) btnStr.onclick = function(){ swLayer('street'); };
+
+      var btnGPS = document.getElementById('adminBtnLocateMe');
+      if(btnGPS) btnGPS.onclick = function(){
+        if(!navigator.geolocation){ alert('GPS not supported in this browser.'); return; }
+        btnGPS.textContent='⏳ Locating...';
+        navigator.geolocation.getCurrentPosition(function(pos){
+          var lat=pos.coords.latitude, lng=pos.coords.longitude;
+          adminMarker.setLatLng([lat,lng]);
+          adminMap.setView([lat,lng],18);
+          setPin(lat,lng,'GPS');
+          btnGPS.textContent='🌍 GPS Locked';
+        }, function(){ btnGPS.textContent='🎯 Use GPS'; }, { enableHighAccuracy:true, timeout:10000, maximumAge:0 });
+      };
+
+      setTimeout(function(){ if(adminMap) adminMap.invalidateSize(); }, 300);
+    }
+
+    if (typeof L === 'undefined') {
+      var s = document.createElement('script');
+      s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      s.onload = buildMap;
+      document.head.appendChild(s);
+    } else {
+      buildMap();
+    }
+  }
+
   // Add Apartment Form Submit
   addAptForm.addEventListener('submit', function(e){
     e.preventDefault();
@@ -1753,6 +1952,10 @@ tr:hover td {
       selectedUt.push(ck.value);
     });
 
+    var addLat = document.getElementById('add_lat').value.trim();
+    var addLng = document.getElementById('add_lng').value.trim();
+    var addPin = document.getElementById('add_pin').value.trim();
+
     var payload = {
       apt_id: aptId,
       custom_id: aptId,
@@ -1769,6 +1972,9 @@ tr:hover td {
       video_url: videoUrl,
       ut: selectedUt,
       utilities: selectedUt,
+      lat: addLat || null,
+      lng: addLng || null,
+      pin: addPin || null,
       who: 'admin',
       created_by: 'admin'
     };
@@ -1872,7 +2078,9 @@ tr:hover td {
     }
 
     if (table === 'demand_records') {
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Student Name</div><div class="details-kv-val">'+esc(row.first_name || p.first || '-')+'</div></div>';
+      var studentFirst = esc(row.first_name || p.first || '-');
+      var studentLast = esc(p.last || '');
+      html += '<div class="details-kv-item"><div class="details-kv-lbl">Full Name</div><div class="details-kv-val"><b>'+studentFirst+(studentLast ? ' '+studentLast : '')+'</b></div></div>';
       html += '<div class="details-kv-item"><div class="details-kv-lbl">Phone / WhatsApp</div><div class="details-kv-val">'+esc(row.phone || p.phone || '-')+'</div></div>';
       html += '<div class="details-kv-item"><div class="details-kv-lbl">Room Type Needed</div><div class="details-kv-val">'+esc(row.room_type || p.type || '-')+'</div></div>';
       html += '<div class="details-kv-item"><div class="details-kv-lbl">Budget Band</div><div class="details-kv-val">'+esc(row.budget_band || p.budget || '-')+'</div></div>';

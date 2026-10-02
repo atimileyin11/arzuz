@@ -93,7 +93,7 @@ var Arzuz = (function(){
   function isFieldRequired(field, step){
     if (step.opt) return false;
     var name = field[0];
-    if (['first', 'nm', 'g_name', 'phone', 'ph', 'g_phone', 'area', 'ar', 'rent', 'amt', 'type', 'ty'].indexOf(name) !== -1) {
+    if (['first', 'last', 'nm', 'g_name', 'phone', 'ph', 'g_phone', 'area', 'ar', 'rent', 'amt', 'type', 'ty'].indexOf(name) !== -1) {
       return true;
     }
     return !field[3] || !field[3].opt;
@@ -665,7 +665,7 @@ var Arzuz = (function(){
 
         if (val) {
           // Name validation
-          if (['first', 'nm', 'g_name'].indexOf(id) !== -1) {
+          if (['first', 'last', 'nm', 'g_name'].indexOf(id) !== -1) {
             if (!isValidName(val)) {
               setFieldError(id, 'Please enter a valid full name (at least 2 characters).');
             }

@@ -37,7 +37,9 @@ var ArzuzWhatsApp = (function(){
   /* ---------- message templates ---------- */
 
   function studentMessage(a){
-    var name = a.first || a.first_name || 'there';
+    var first = a.first || a.first_name || 'there';
+    var last = a.last || a.last_name || '';
+    var name = last ? (first + ' ' + last) : first;
     var room = a.type || a.room_type || 'your preferred room';
     var budget = a.budget || a.budget_band || '';
     return (
@@ -51,7 +53,9 @@ var ArzuzWhatsApp = (function(){
   }
 
   function landlordMessage(a){
-    var name = a.nm || a.owner_name || 'there';
+    var first = a.nm || a.owner_name || 'there';
+    var last = a.last || a.last_name || '';
+    var name = last ? (first + ' ' + last) : first;
     var prop = a.prop_name ? ('"' + a.prop_name + '" \u2014 ') : '';
     var type = a.ty || a.property_type || 'Property';
     var area = a.ar || a.area || '';
@@ -66,7 +70,9 @@ var ArzuzWhatsApp = (function(){
   }
 
   function scoutMessage(a){
-    var name = a.first || a.first_name || 'there';
+    var first = a.first || a.first_name || 'there';
+    var last = a.last || a.last_name || '';
+    var name = last ? (first + ' ' + last) : first;
     var area = a.area || 'your building';
     return (
       '\u2705 *Report received, ' + name + '!*\n\n' +

@@ -38,5 +38,28 @@ var DEMAND_TOTAL = CEILINGS.length;
 /* option lists used by the forms */
 var ROOM_TYPES = ["Self-contain","Shared room","Face-me-I-face-you","Hostel bunk"];
 
-var UTILITIES = ["Borehole water","Pipe-borne water","NEPA connection","Generator backup",
- "Private bathroom","Flush toilet","Security gate","Perimeter fence","Kitchen access"];
+/* Default amenities — admin can extend this list via the dashboard.
+   Custom additions are stored in localStorage key 'arzuz_utilities'
+   and merged here so all forms stay in sync automatically.          */
+var _DEFAULT_UTILITIES = [
+ "Borehole water","Pipe-borne water","NEPA connection","Generator backup",
+ "Private bathroom","Flush toilet","Security gate","Perimeter fence","Kitchen access"
+];
+
+(function(){
+  try {
+    var stored = JSON.parse(localStorage.getItem('arzuz_utilities') || 'null');
+    if (Array.isArray(stored) && stored.length) {
+      // Merge: keep defaults order, append any custom ones not already present
+      var merged = _DEFAULT_UTILITIES.slice();
+      stored.forEach(function(item){
+        if (merged.indexOf(item) === -1) merged.push(item);
+      });
+      window.UTILITIES = merged;
+    } else {
+      window.UTILITIES = _DEFAULT_UTILITIES.slice();
+    }
+  } catch(e) {
+    window.UTILITIES = _DEFAULT_UTILITIES.slice();
+  }
+})();
