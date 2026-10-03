@@ -146,14 +146,14 @@ select * from reported_rent_benchmark;     -- what residents say they really pay
 
 ## Before you share the link publicly
 
-- [ ] Schema run (`supabase-schema.sql` or `supabase-hardening.sql`), and anon **cannot** read
-      rows — the check queries are commented at the bottom of either file
+- [x] Schema run (`supabase-schema.sql` or `supabase-hardening.sql`), and anon **cannot** read
+      rows — verified 3 Oct 2026: anon SELECT returns 401 on all three tables
 - [ ] Test submission arrives in the Table Editor
 - [ ] Offline queue tested with airplane mode — one row, not two (`client_ref` makes retries safe)
 - [ ] `ENV` switched from `test` to `production`, and test rows deleted
-- [ ] Admin user created in Supabase Auth, sign-ups off, dashboard signs in
-- [ ] `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` set in Netlify; test alert received
-- [ ] Cloudinary API secret rotated and the new value in Netlify
+- [x] Admin user created in Supabase Auth, sign-ups off, dashboard signs in
+- [x] `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` set in Netlify; test alert received
+- [x] Cloudinary API secret rotated and the new value in Netlify
 - [ ] **Safeguarding lead named** in the safeguarding policy, number in the team group
 - [ ] `safety.html`, `privacy.html` and `terms.html` published (operator address in privacy and
       terms is Abuja — update it if that changes)

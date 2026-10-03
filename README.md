@@ -114,11 +114,12 @@ Everything else in this system can be policy. That one cannot.
 
 ## Before this becomes the live site
 
-- [ ] `supabase-hardening.sql` (or `supabase-schema.sql` on a new project) run, and anon can no
-      longer read rows — the checks are commented at the bottom of either file
-- [ ] Supabase Auth admin user created, public sign-ups turned off, dashboard signed in
-- [ ] `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` set in Netlify; test alert received
-- [ ] Cloudinary API secret rotated (it once sat in a code comment) and the new value in Netlify
+- [x] `supabase-hardening.sql` (or `supabase-schema.sql` on a new project) run, and anon can no
+      longer read rows — verified 3 Oct 2026: anon SELECT on the three tables returns 401
+- [x] Supabase Auth admin user created, public sign-ups turned off, dashboard signed in
+      (sign-up endpoint verified returning 422)
+- [x] `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` set in Netlify; test alert received
+- [x] Cloudinary API secret rotated (it once sat in a code comment) and the new value in Netlify
 - [ ] Self-host the two fonts, or drop to system fonts on the product pages
 - [ ] Outline the `az` mark to SVG so the logo does not depend on a webfont loading on 3G
 - [ ] Test on a sub-₦30,000 Android on real 3G
