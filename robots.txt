@@ -1,8 +1,16 @@
-﻿User-agent: *
+# Arzuz — robots.txt
+# Plain UTF-8, no byte-order mark: a BOM here makes Search Console
+# reject the file (the same thing that broke the sitemap once).
+
+User-agent: *
 Allow: /
 
-Sitemap: https://arzuz.com/sitemap.xml
-
-# Keep admin and owner-list private from crawlers
+# The admin dashboard is never for crawlers. Netlify also sends
+# X-Robots-Tag: noindex on this path, in case a crawler ignores us.
 Disallow: /admin.html
-Disallow: /owner-list.html
+
+# /owner-list.html is the landlord form; it carries a canonical link
+# to /list, which stays indexable — "list your property in Malete"
+# is a landing page worth ranking.
+
+Sitemap: https://arzuz.com/sitemap.xml

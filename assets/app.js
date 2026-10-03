@@ -26,6 +26,13 @@ var Arzuz = (function(){
     return CEILINGS.filter(function(c){ return c >= price; }).length;
   }
 
+  /* The budget band with the most students in it — used instead of
+     quoting a price range that no record supports. */
+  function deepestBand(){
+    if (typeof BANDS === 'undefined' || !BANDS.length) return null;
+    return BANDS.reduce(function(a, b){ return b[2] > a[2] ? b : a; });
+  }
+
   /* Nigerian Phone Number Validation (e.g. 08012345678, +2348012345678) */
   function isValidNigerianPhone(raw){
     if (!raw) return false;
@@ -120,9 +127,10 @@ var Arzuz = (function(){
     h += '<h2 class="qh">'+s.h+'</h2>';
     if(s.hint) h += '<div class="qhint">'+s.hint+'</div>';
 
-    if(s.ctx) h += '<div class="ctxbox">'+ (isReal()
-      ? '<b>'+(typeof DEMAND_TOTAL !== 'undefined' ? DEMAND_TOTAL : '61')+' students</b> are looking in Malete this session. '+
-        'Most can pay between \u20A6100,000 and \u20A6200,000.'
+    var band = deepestBand();
+    if(s.ctx) h += '<div class="ctxbox">'+ (isReal() && band && typeof DEMAND_TOTAL !== 'undefined'
+      ? '<b>'+DEMAND_TOTAL+' students</b> are looking in Malete this session. '+
+        'Most can pay between '+ng(band[0])+' and '+ng(band[1])+'.'
       : 'We will show you exactly how many students are looking in your area, and what '+
         'they can pay, as soon as your listing is in.') +'</div>';
 
@@ -289,7 +297,7 @@ var Arzuz = (function(){
           if (!out) return;
           if(!v){ out.innerHTML = 'Type a price and we will show how many students can reach you.'; return; }
           var r = reach(v);
-          var totalDemand = typeof DEMAND_TOTAL !== 'undefined' ? DEMAND_TOTAL : 61;
+          var totalDemand = typeof DEMAND_TOTAL !== 'undefined' ? DEMAND_TOTAL : 0;
           out.innerHTML = isReal()
             ? '<b>'+r+'</b> of the '+totalDemand+' students looking in Malete can afford this.'+
               (v > 200000 ? ' Drop to \u20A6200,000 and '+(reach(200000)-r)+' more can see you.' : '')
@@ -559,6 +567,7 @@ var Arzuz = (function(){
         fd.append('signature',  sig.signature);
         fd.append('folder',     sig.folder);
         fd.append('eager',      sig.eager);
+        if (sig.max_file_size) fd.append('max_file_size', sig.max_file_size);
 
         var url = 'https://api.cloudinary.com/v1_1/' + sig.cloud_name + '/image/upload';
         return fetch(url, { method: 'POST', body: fd }).then(function(r){

@@ -1,14 +1,18 @@
 -- ============================================================
--- ARZUZ — database schema
+-- ARZUZ — database schema (fresh install)
 -- Paste this whole file into Supabase → SQL Editor → Run.
 --
--- Security model: the public site can INSERT and nothing else.
--- Anonymous visitors cannot read, update or delete any row.
--- You read your data from the Supabase dashboard, which uses a
--- different key that never touches the website.
+-- Security model:
+--   * The public site can INSERT and nothing else.
+--   * Anonymous visitors cannot read, update or delete any row.
+--     The anon key is public (it ships in assets/config.js), so
+--     every privilege it holds is a privilege every visitor has.
+--   * The admin dashboard reads and writes as an authenticated
+--     Supabase Auth user (assets/auth.js). Nothing else can.
 --
--- Do not skip the RLS section. Without it the anon key can read
--- back every phone number you have ever collected.
+-- Upgrading a database that was created from an older version of
+-- this file? Run supabase-hardening.sql instead — it does the same
+-- job without recreating your tables.
 -- ============================================================
 
 
@@ -17,11 +21,14 @@
 -- payload holds the raw form answers as JSON, so the form can
 -- change without a migration. The generated columns pull the
 -- fields you will filter and sort on into real columns.
+-- client_ref is a UUID the browser generates once per submission:
+-- it makes retries from the offline queue idempotent.
 -- ------------------------------------------------------------
 
 create table if not exists demand_records (
   id           uuid primary key default gen_random_uuid(),
   created_at   timestamptz not null default now(),
+  client_ref   uuid unique,
   payload      jsonb not null,
   session      text,
   env          text default 'production',
@@ -45,6 +52,7 @@ create table if not exists demand_records (
 create table if not exists listings (
   id           uuid primary key default gen_random_uuid(),
   created_at   timestamptz not null default now(),
+  client_ref   uuid unique,
   payload      jsonb not null,
   session      text,
   env          text default 'production',
@@ -77,6 +85,7 @@ create table if not exists listings (
 create table if not exists scout_submissions (
   id           uuid primary key default gen_random_uuid(),
   created_at   timestamptz not null default now(),
+  client_ref   uuid unique,
   payload      jsonb not null,
   session      text,
   env          text default 'production',
@@ -97,54 +106,86 @@ create table if not exists scout_submissions (
   longitude      double precision generated always as (nullif(payload->>'lng','')::double precision) stored
 );
 
+-- Custom amenity labels. The built-in list lives in assets/data.js;
+-- this table only holds what the admin dashboard added, so a new
+-- amenity appears on every browser instead of only yours.
+create table if not exists amenities (
+  id         uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  name       text not null unique
+);
+
 
 -- ------------------------------------------------------------
--- 2. ROW LEVEL SECURITY  — the part that protects your users
+-- 2. ROW LEVEL SECURITY — the part that protects your users
 -- ------------------------------------------------------------
 
 alter table demand_records    enable row level security;
 alter table listings          enable row level security;
 alter table scout_submissions enable row level security;
+alter table amenities         enable row level security;
 
--- The website may add a row and read rows for dashboard display.
+-- INSERT: the public site, and the admin dashboard.
 create policy "public can submit demand"
-  on demand_records for insert to anon with check (true);
+  on demand_records for insert to anon, authenticated with check (true);
 
 create policy "public can submit listings"
-  on listings for insert to anon with check (true);
+  on listings for insert to anon, authenticated with check (true);
 
 create policy "public can submit scout reports"
-  on scout_submissions for insert to anon with check (true);
+  on scout_submissions for insert to anon, authenticated with check (true);
 
--- Enable select access for admin dashboard display
-create policy "allow select demand"
-  on demand_records for select to anon using (true);
+-- SELECT / UPDATE / DELETE: the signed-in admin only.
+-- There is deliberately no anon read policy anywhere: the anon key
+-- is published in the page source, so anyone holding it could
+-- otherwise download every phone number ever collected.
+create policy "admin can read demand"
+  on demand_records for select to authenticated using (true);
 
-create policy "allow select listings"
-  on listings for select to anon using (true);
+create policy "admin can read listings"
+  on listings for select to authenticated using (true);
 
-create policy "allow select scout reports"
-  on scout_submissions for select to anon using (true);
+create policy "admin can read scout reports"
+  on scout_submissions for select to authenticated using (true);
 
--- Enable update access for admin dashboard editing
-create policy "allow update demand"
-  on demand_records for update to anon using (true) with check (true);
+create policy "admin can update demand"
+  on demand_records for update to authenticated using (true) with check (true);
 
-create policy "allow update listings"
-  on listings for update to anon using (true) with check (true);
+create policy "admin can update listings"
+  on listings for update to authenticated using (true) with check (true);
 
-create policy "allow update scout reports"
-  on scout_submissions for update to anon using (true) with check (true);
+create policy "admin can update scout reports"
+  on scout_submissions for update to authenticated using (true) with check (true);
 
--- Enable delete access for admin dashboard
-create policy "allow delete demand"
-  on demand_records for delete to anon using (true);
+create policy "admin can delete demand"
+  on demand_records for delete to authenticated using (true);
 
-create policy "allow delete listings"
-  on listings for delete to anon using (true);
+create policy "admin can delete listings"
+  on listings for delete to authenticated using (true);
 
-create policy "allow delete scout reports"
-  on scout_submissions for delete to anon using (true);
+create policy "admin can delete scout reports"
+  on scout_submissions for delete to authenticated using (true);
+
+-- Amenities: everyone may read the labels, only the admin may change them.
+create policy "public can read amenities"
+  on amenities for select to anon, authenticated using (true);
+
+create policy "admin can add amenities"
+  on amenities for insert to authenticated with check (true);
+
+create policy "admin can remove amenities"
+  on amenities for delete to authenticated using (true);
+
+
+-- ------------------------------------------------------------
+-- 2b. TABLE GRANTS — RLS decides which rows, grants decide which
+-- operations are even possible. Belt and braces: a policy typo
+-- must not hand anon a read of the phone numbers.
+-- ------------------------------------------------------------
+
+revoke all on demand_records, listings, scout_submissions from anon;
+grant  insert on demand_records, listings, scout_submissions to anon;
+grant  select on amenities to anon;
 
 
 -- ------------------------------------------------------------
@@ -161,6 +202,9 @@ create index if not exists idx_scout_created  on scout_submissions (created_at d
 
 -- ------------------------------------------------------------
 -- 4. VIEWS — what you will actually look at each day
+-- security_invoker = true means each view runs with the caller's
+-- privileges: anonymous callers see nothing, because they cannot
+-- read the underlying tables at all.
 -- ------------------------------------------------------------
 
 -- The demand report, live. This is the number you show a landlord.
@@ -216,8 +260,21 @@ having count(*) >= 3;
 
 -- ------------------------------------------------------------
 -- 5. CHECK IT WORKED
--- Run this after inserting a test record from the live site.
 -- ------------------------------------------------------------
--- select count(*) from demand_records;
--- select * from demand_summary;
--- select * from minors_needing_guardian;
+-- From the browser console on your live site, using the anon key
+-- that is in assets/config.js:
+--
+--   // must come back [] — anon cannot read rows any more
+--   fetch(SUPABASE_URL + '/rest/v1/demand_records?select=id',
+--     { headers: { apikey: ANON_KEY, Authorization: 'Bearer ' + ANON_KEY } })
+--     .then(r => r.json()).then(console.log)
+--
+--   // must fail — anon cannot update rows
+--   fetch(SUPABASE_URL + '/rest/v1/demand_records?limit=1',
+--     { method: 'PATCH', headers: { apikey: ANON_KEY,
+--       Authorization: 'Bearer ' + ANON_KEY,
+--       'Content-Type': 'application/json', Prefer: 'return=representation' },
+--       body: JSON.stringify({ status: 'open' }) }).then(r => console.log(r.status))
+--
+-- Then submit a test record from the live site and confirm the row
+-- appears, and that the admin dashboard still reads it after signing in.

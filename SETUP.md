@@ -1,7 +1,8 @@
 # GOING LIVE
 ## Netlify + Supabase, start to finish
 
-About 40 minutes. No servers, no backend code, and both services are free at your scale.
+About 40 minutes. No servers to run — three small Netlify Functions handle the sending, and both
+services are free at your scale.
 
 ---
 
@@ -35,12 +36,17 @@ the label and the wording switch to live automatically.
 ## Step 2 — Create the tables
 
 1. Left sidebar → **SQL Editor** → **New query**
-2. Open `supabase-schema.sql`, copy the whole file, paste it in
+2. **New project?** Paste all of `supabase-schema.sql`. **Already have data?** Paste
+   `supabase-hardening.sql` instead — it does the same job without touching your rows.
 3. Press **Run**
 
 You should see *Success. No rows returned.*
 
-**Do not skip this file or write your own tables.** It contains the row-level security rules that stop your public site from being able to read data back. Without them, anyone who views your page source could download every phone number you have collected. With them, the site can add a record and nothing else.
+**Do not skip this file or write your own tables.** It contains the row-level security rules that
+stop your public site from being able to read data back. The anon key is published in every page
+you serve, so anything it is allowed to do, every visitor is allowed to do. With these rules the
+site can **add a record and nothing else**: no reads, no updates, no deletes. Reads, updates and
+deletes are granted only to a signed-in admin (Step 4b).
 
 ## Step 3 — Get your keys
 
@@ -63,7 +69,34 @@ ENV: 'production',
 SUPPORT_WHATSAPP: '234...'      // your number, no + or spaces
 ```
 
-Set `ENV` to `'test'` while you are trying things out. Every view in the database filters to `production`, so your test rows will not pollute the numbers you show a landlord.
+That is the whole file now. The Telegram bot token, the Cloudinary secret, the OpenWA key and the
+admin login **do not live in the browser** — if a value can be abused by whoever reads the page
+source, it belongs to the server. Next step.
+
+Set `ENV` to `'test'` while you are trying things out. Every view in the database filters to
+`production`, so your test rows will not pollute the numbers you show a landlord.
+
+## Step 4b — Netlify environment variables
+
+**Site configuration → Environment variables**, then set:
+
+| Variable | What it is |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | From @BotFather. Alerts go out through `/api/notify` with it |
+| `TELEGRAM_CHAT_ID` | Yours. Get it from the admin dashboard → Auto-Detect Chat ID |
+| `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` / `CLOUDINARY_CLOUD_NAME` | Signed photo uploads |
+| `OPENWA_URL` / `OPENWA_API_KEY` / `OPENWA_SESSION` | WhatsApp confirmations |
+
+## Step 4c — Create the admin login
+
+The dashboard at `/admin.html` signs in with **Supabase Auth**, not a passcode — a passcode in a
+web page is a passcode in everyone's hands.
+
+1. Supabase → **Authentication → Users → Add user** → email + a long password you have not used
+   anywhere else. Save it in your password manager.
+2. Turn **off** public sign-ups (Authentication → Settings). You are the only account.
+3. Open `/admin.html`, sign in, confirm the three tabs fill up. Signing out or closing the tab
+   ends the session.
 
 ## Step 5 — Deploy
 
@@ -113,12 +146,17 @@ select * from reported_rent_benchmark;     -- what residents say they really pay
 
 ## Before you share the link publicly
 
-- [ ] `supabase-schema.sql` run, and RLS confirmed on all three tables
+- [ ] Schema run (`supabase-schema.sql` or `supabase-hardening.sql`), and anon **cannot** read
+      rows — the check queries are commented at the bottom of either file
 - [ ] Test submission arrives in the Table Editor
-- [ ] Offline queue tested with airplane mode
+- [ ] Offline queue tested with airplane mode — one row, not two (`client_ref` makes retries safe)
 - [ ] `ENV` switched from `test` to `production`, and test rows deleted
+- [ ] Admin user created in Supabase Auth, sign-ups off, dashboard signs in
+- [ ] `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` set in Netlify; test alert received
+- [ ] Cloudinary API secret rotated and the new value in Netlify
 - [ ] **Safeguarding lead named** in the safeguarding policy, number in the team group
-- [ ] `safety.html`, `privacy.html` and `terms.html` published — the footer already links to them, so those links are currently broken
+- [ ] `safety.html`, `privacy.html` and `terms.html` published (operator address in privacy and
+      terms is Abuja — update it if that changes)
 - [ ] Support WhatsApp number set in `config.js`
 - [ ] Session set to the correct academic year
 - [ ] Opened on a real Android phone on real mobile data
@@ -133,7 +171,10 @@ The free tier gives you 500MB of database and 50,000 monthly active users. At Ma
 
 What changes later, not now:
 
-**An admin page.** Right now you read data in the Supabase dashboard, which is fine for one person. When you have a field team, build a login-protected page.
+**A team in the admin page.** `/admin.html` exists and signs in with Supabase Auth, but it is one
+login and it can read and delete everything. When a field team arrives, give each person their own
+Supabase Auth account, add roles (who may delete, who may only read), and log who changed what —
+right now the single shared login cannot tell you which of you deleted a row.
 
 **Real columns instead of JSON.** The schema stores raw answers in `payload` and pulls out the important fields as generated columns, so you can change the form without a migration. When the form settles after a session of real use, promote the rest.
 

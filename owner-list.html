@@ -32,6 +32,7 @@
 <script>
 
 Arzuz.chrome('owner');
+ArzuzData.ready.then(function(){
 Arzuz.form({
   table:'listings',
   backHref:'index.html', backLabel:'\u2190 Back to home',
@@ -67,9 +68,15 @@ Arzuz.form({
   done:
    '<div class="done"><div class="m"><span>az</span></div><h3>Your listing is in.</h3>'+
    '<p>We review it within 24 hours and message you on WhatsApp.</p>'+
-   '<div class="live" style="text-align:left"><b>61</b> students looking in Malete right now match '+
-   'this property. They see it the moment it goes live.</div>'+
+   '<div class="live" style="text-align:left">'+
+   (Arzuz.isReal()
+     ? '<b>'+DEMAND_TOTAL+'</b> students looking in Malete right now match this property. '+
+       'They see it the moment it goes live.'
+     : 'As soon as your listing is live we will send you the real number of students looking in '+
+       'Malete for this property \u2014 we never show a count we cannot trace to a record.')+
+   '</div>'+
    '<div class="nav"><a class="next" href="index.html">Done</a></div></div>'
+});
 });
 
 Arzuz.footer();

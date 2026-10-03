@@ -61,10 +61,11 @@ var ArzuzWhatsApp = (function(){
     var area = a.ar || a.area || '';
     var rent = Number(a.rent || a.listed_price_ngn || 0).toLocaleString();
     return (
-      '\u2705 *Your listing is live, ' + name + '!*\n\n' +
+      '\u2705 *Your listing is in, ' + name + '!*\n\n' +
       prop + type + (area ? ' at ' + area : '') +
       (rent !== '0' ? ' \u2022 \u20A6' + rent + '/session' : '') + '\n\n' +
-      'We\u2019re matching you with students now. Expect messages here when interested students come through.\n' +
+      'We review it within 24 hours, then start matching you with students. Expect messages here ' +
+      'when interested students come through.\n' +
       '\u2014 Arzuz'
     );
   }

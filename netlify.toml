@@ -1,13 +1,14 @@
 # Arzuz — Netlify configuration
-#
-# Configure environment variables in Netlify Dashboard:
-# Site settings -> Environment variables:
+## Configure environment variables in Netlify Dashboard:
+#   Site settings -> Environment variables:
 #   CLOUDINARY_API_KEY
 #   CLOUDINARY_API_SECRET
 #   CLOUDINARY_CLOUD_NAME
 #   OPENWA_URL
 #   OPENWA_API_KEY
 #   OPENWA_SESSION
+#   TELEGRAM_BOT_TOKEN     (never added to any page source)
+#   TELEGRAM_CHAT_ID       (get it from /api/notify → action: detect)
 
 [build]
   publish = "."
@@ -50,6 +51,13 @@
   status = 200
 
 # Never cache config — you will change the session and keys.
+# The dashboard is private: not indexed, never cached.
+[[headers]]
+  for = "/admin.html"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+    Cache-Control = "no-store"
+
 [[headers]]
   for = "/assets/config.js"
   [headers.values]

@@ -38,28 +38,103 @@ var DEMAND_TOTAL = CEILINGS.length;
 /* option lists used by the forms */
 var ROOM_TYPES = ["Self-contain","Shared room","Face-me-I-face-you","Hostel bunk"];
 
-/* Default amenities — admin can extend this list via the dashboard.
-   Custom additions are stored in localStorage key 'arzuz_utilities'
-   and merged here so all forms stay in sync automatically.          */
+/* Default amenities. The admin dashboard can add more, and those live
+   in the `amenities` table in Supabase so every browser sees them —
+   not just the browser that added them. localStorage is only the
+   offline fallback.                                                   */
 var _DEFAULT_UTILITIES = [
  "Borehole water","Pipe-borne water","NEPA connection","Generator backup",
  "Private bathroom","Flush toilet","Security gate","Perimeter fence","Kitchen access"
 ];
 
-(function(){
-  try {
-    var stored = JSON.parse(localStorage.getItem('arzuz_utilities') || 'null');
-    if (Array.isArray(stored) && stored.length) {
-      // Merge: keep defaults order, append any custom ones not already present
-      var merged = _DEFAULT_UTILITIES.slice();
-      stored.forEach(function(item){
-        if (merged.indexOf(item) === -1) merged.push(item);
-      });
-      window.UTILITIES = merged;
-    } else {
-      window.UTILITIES = _DEFAULT_UTILITIES.slice();
-    }
-  } catch(e) {
-    window.UTILITIES = _DEFAULT_UTILITIES.slice();
+var ArzuzData = (function(){
+
+  var STORE_KEY = 'arzuz_utilities';
+  var customs = null;   // null = not loaded yet / unavailable
+
+  function cfg(){ return window.ARZUZ_CONFIG || {}; }
+
+  function readStored(){
+    try {
+      var v = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+      return Array.isArray(v) ? v : [];
+    } catch(e){ return []; }
   }
+
+  function writeStored(list){
+    try {
+      if (list && list.length) localStorage.setItem(STORE_KEY, JSON.stringify(list));
+      else localStorage.removeItem(STORE_KEY);
+    } catch(e){}
+  }
+
+  /* defaults first, then whatever custom labels are available */
+  function merge(){
+    var out = _DEFAULT_UTILITIES.slice();
+    var extra = customs || readStored();
+    extra.forEach(function(item){
+      if (item && out.indexOf(item) === -1) out.push(item);
+    });
+    window.UTILITIES = out;
+    return out;
+  }
+
+  function fetchCustoms(){
+    var c = cfg();
+    if (!c.SUPABASE_URL || !c.SUPABASE_ANON_KEY) return Promise.resolve(undefined);
+    var url = c.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/amenities?select=name&order=name';
+    return fetch(url, {
+      headers: {
+        'apikey': c.SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + c.SUPABASE_ANON_KEY
+      }
+    }).then(function(r){
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function(rows){
+      return (rows || []).map(function(x){ return x.name; }).filter(Boolean);
+    });
+  }
+
+  function reload(){
+    return fetchCustoms().then(function(names){
+      if (names === undefined) return merge();   // not configured
+      customs = names;
+      writeStored(names);
+      return merge();
+    }).catch(function(){
+      // offline or table missing: keep the stored copy so forms still work
+      return merge();
+    });
+  }
+
+  /* Never let a slow connection hold the form hostage: if the amenity
+     table has not answered within 4 seconds, open the form with what
+     we have and refresh when the answer lands. */
+  function withTimeout(promise, ms){
+    return new Promise(function(resolve){
+      var settled = false;
+      var timer = setTimeout(function(){
+        if (!settled){ settled = true; resolve(merge()); }
+      }, ms);
+      promise.then(function(v){
+        if (!settled){ settled = true; clearTimeout(timer); resolve(v); }
+      }, function(){
+        if (!settled){ settled = true; clearTimeout(timer); resolve(merge()); }
+      });
+    });
+  }
+
+  /* Set UTILITIES synchronously so forms built immediately still have
+     options, then refresh from the database in the background. */
+  merge();
+
+  var ready = withTimeout(reload(), 4000);
+
+  return {
+    ready:   ready,          // promise: resolves once the first load is done
+    reload:  reload,         // promise: re-reads the amenity table
+    merge:   merge,
+    customs: function(){ return customs || []; }
+  };
 })();

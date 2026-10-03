@@ -25,6 +25,8 @@
   <meta name="twitter:title" content="KWASU Hostels & Off-Campus Housing in Malete — Arzuz">
   <meta name="twitter:description" content="Real KWASU hostel prices and off-campus accommodation in Malete. Verified by students, zero agent fees.">
   <meta name="twitter:image" content="https://arzuz.com/assets/social/og-image.png">
+<!-- priceRange in the JSON-LD below must match BANDS in assets/data.js:
+     lowest lower bound - highest upper bound (currently NGN 60,000 - NGN 320,000). -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -58,7 +60,7 @@
           }
         ],
         "serviceType": "KWASU Student Accommodation & Hostels",
-        "priceRange": "₦100,000 – ₦250,000 per session"
+        "priceRange": "₦60,000 – ₦320,000 per session"
       }
     ]
   }
@@ -995,7 +997,7 @@
         <div class="h-tier rv" style="padding: 24px; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid var(--line);">
           <h3 style="font-size: 18px; margin-bottom: 8px;">How much is a hostel in Malete?</h3>
           <p style="font-size: 14.5px; line-height: 1.55; color: var(--body-c);">
-            Self-contain rooms near KWASU typically range between <strong>₦140,000 and ₦260,000</strong> per academic session, depending on borehole backup, inverter power, and proximity to campus gates. Shared rooms and flats range between <strong>₦80,000 and ₦150,000</strong> per person.
+            Self-contain rooms near KWASU typically sit between <strong id="faqLo">&mdash;</strong> and <strong id="faqHi">&mdash;</strong> per academic session, depending on borehole backup, inverter power, and proximity to campus gates. The largest group of students registering for this session can pay between <strong id="faqMidLo">&mdash;</strong> and <strong id="faqMidHi">&mdash;</strong>.
           </p>
         </div>
 
@@ -1013,6 +1015,7 @@
           </p>
         </div>
       </div>
+      <p id="faqNote" class="rv" style="margin-top: 18px; font-size: 13.5px; color: #9A8CA8; line-height: 1.55;"></p>
     </div>
   </section>
 
@@ -1057,6 +1060,26 @@
       ['Residents keep it honest', 'Only students with a verified number can review. Landlords can reply to any review. They cannot delete one.']];
     document.getElementById('steps').innerHTML = STEPS.map((s, i) =>
       `<div class="h-step rv"><span class="n">${i + 1}</span><div><h3>${s[0]}</h3><p>${s[1]}</p></div></div>`).join('');
+
+    /* ---------- FAQ figures, from the same source as everything else ---------- */
+    (() => {
+      const lo = BANDS[0][0], hi = BANDS[BANDS.length - 1][1];
+      const mid = BANDS.reduce((a, b) => b[2] > a[2] ? b : a);
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+      set('faqLo', Arzuz.ng(lo));
+      set('faqHi', Arzuz.ng(hi));
+      set('faqMidLo', Arzuz.ng(mid[0]));
+      set('faqMidHi', Arzuz.ng(mid[1]));
+      const note = document.getElementById('faqNote');
+      if (note) {
+        note.textContent = Arzuz.isReal()
+          ? `From ${DEMAND_TOTAL} registrations for the ${(window.ARZUZ_CONFIG || {}).SESSION || ''} session, ` +
+            `updated ${Arzuz.STAMP_DATE}. Every figure on this page traces back to a record.`
+          : 'Illustrative figures — the shape of the demand register, not yet our own records. Real ' +
+            'numbers replace these the moment registrations come in, and we never show a count we ' +
+            'cannot trace to a record.';
+      }
+    })();
 
     /* ---------- demand curve interactive slider ---------- */
     const bars = document.getElementById('bars');

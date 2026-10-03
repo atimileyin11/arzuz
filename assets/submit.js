@@ -10,6 +10,21 @@
 var ArzuzSubmit = (function(){
 
   var QUEUE_KEY = 'arzuz_queue_v1';
+  var QUEUE_MAX = 200;   // how many submissions localStorage will hold
+
+  /* One id per submission. Supabase stores it in client_ref (unique),
+     so a retry after a dropped connection is ignored instead of
+     written twice — see supabase-hardening.sql. */
+  function uuid(){
+    try {
+      if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
+    } catch(e){}
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){
+      var r = Math.random() * 16 | 0;
+      var v = (c === 'x') ? r : ((r & 0x3) | 0x8);
+      return v.toString(16);
+    });
+  }
 
   /* Always read live from window.ARZUZ_CONFIG */
   function cfg(){ return window.ARZUZ_CONFIG || {}; }
@@ -46,8 +61,17 @@ var ArzuzSubmit = (function(){
   }
 
   function writeQueue(q){
-    try { localStorage.setItem(QUEUE_KEY, JSON.stringify(q.slice(-60))); }
-    catch(e){ /* storage limit */ }
+    var capped = q.slice(-QUEUE_MAX);
+    var dropped = q.length - capped.length;
+    if (dropped > 0) {
+      // Never lose a submission quietly — the person filling the form
+      // is the only one who can re-enter it.
+      console.error('[ArzuzSubmit] Offline queue is full — ' + dropped + ' submission(s) dropped:',
+        q.slice(0, dropped).map(function(i){ return i.table; }));
+      showToast('Offline queue is full — ' + dropped + ' submission(s) were lost. Please submit again.', 'queued');
+    }
+    try { localStorage.setItem(QUEUE_KEY, JSON.stringify(capped)); }
+    catch(e){ showToast('This device cannot store more submissions offline.', 'queued'); }
   }
 
   function enqueue(item){
@@ -56,11 +80,12 @@ var ArzuzSubmit = (function(){
     writeQueue(q);
   }
 
-  /* POST request to Supabase REST API */
+  /* POST request to Supabase REST API, keyed on client_ref so a retry
+     can never duplicate a row. */
   function post(table, row){
     if (!configured()) return Promise.reject(new Error('Supabase configuration missing'));
     var c = cfg();
-    var url = c.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/' + table;
+    var base = c.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/' + table;
     var key = c.SUPABASE_ANON_KEY;
 
     // Build headers — support both classic JWT anon keys (eyJ…)
@@ -69,24 +94,56 @@ var ArzuzSubmit = (function(){
       'apikey': key,
       'Authorization': 'Bearer ' + key,
       'Content-Type': 'application/json',
-      'Prefer': 'return=minimal'
+      'Prefer': row.client_ref
+        ? 'resolution=ignore-duplicates,return=minimal'
+        : 'return=minimal'
     };
     if (key && key.indexOf('sb_publishable') === 0) {
       headers['sb-anon-key'] = key;
     }
 
+    var url = row.client_ref ? base + '?on_conflict=client_ref' : base;
+
     console.log('[ArzuzSubmit] POSTing to:', url, '\nPayload:', JSON.stringify(row, null, 2));
+
     return fetch(url, { method: 'POST', headers: headers, body: JSON.stringify(row) })
       .then(function(r){
-        if (!r.ok) {
-          return r.text().then(function(body){
-            console.error('[ArzuzSubmit] ❌ Supabase error', r.status, body);
-            throw new Error('HTTP ' + r.status + ' — ' + body);
-          });
+        if (r.ok) {
+          console.log('[ArzuzSubmit] ✅ Row saved to', table);
+          return true;
         }
-        console.log('[ArzuzSubmit] ✅ Row saved to', table);
-        return true;
+        return r.text().then(function(body){
+          // client_ref is missing: the hardening SQL has not been run yet.
+          // Losing retry safety beats losing the submission entirely.
+          if (row.client_ref && /client_ref/.test(body)) {
+            console.warn('[ArzuzSubmit] client_ref column missing — run supabase-hardening.sql. Retrying without it.');
+            var plain = {};
+            Object.keys(row).forEach(function(k){ if (k !== 'client_ref') plain[k] = row[k]; });
+            var retryHeaders = {};
+            Object.keys(headers).forEach(function(k){ if (k !== 'Prefer') retryHeaders[k] = headers[k]; });
+            return fetch(base, { method: 'POST', headers: retryHeaders, body: JSON.stringify(plain) })
+              .then(function(r2){
+                if (!r2.ok) return r2.text().then(function(t2){ throw new Error('HTTP ' + r2.status + ' — ' + t2); });
+                console.log('[ArzuzSubmit] ✅ Row saved to', table, '(without client_ref)');
+                return true;
+              });
+          }
+          console.error('[ArzuzSubmit] ❌ Supabase error', r.status, body);
+          throw new Error('HTTP ' + r.status + ' — ' + body);
+        });
       });
+  }
+
+  /* Called only once a row is confirmed saved. Telling someone they are
+     "on the list" before the insert has succeeded is a promise the
+     database never agreed to. */
+  function deliver(table, row){
+    try {
+      if (typeof ArzuzNotify !== 'undefined') ArzuzNotify.dispatch(table, row.payload);
+    } catch(e){ console.warn('[ArzuzSubmit] notify failed:', e.message); }
+    try {
+      if (typeof ArzuzWhatsApp !== 'undefined') ArzuzWhatsApp.sendConfirmation(table, row.payload);
+    } catch(e){ console.warn('[ArzuzSubmit] WhatsApp confirmation failed:', e.message); }
   }
 
   function decorate(answers){
@@ -104,18 +161,9 @@ var ArzuzSubmit = (function(){
   /* Public submission handler */
   function send(table, answers){
     var row = decorate(answers);
+    row.client_ref = uuid();
 
     console.log('[ArzuzSubmit] Submitting to table:', table, '\nAnswers:', answers);
-
-    // Trigger instant Telegram/Email notification dispatch
-    if (typeof ArzuzNotify !== 'undefined') {
-      ArzuzNotify.dispatch(table, answers);
-    }
-
-    // Send WhatsApp confirmation to the submitter
-    if (typeof ArzuzWhatsApp !== 'undefined') {
-      ArzuzWhatsApp.sendConfirmation(table, answers);
-    }
 
     if(!configured()){
       console.warn('[ArzuzSubmit] Supabase not configured — stored locally for preview.', table, row);
@@ -125,10 +173,11 @@ var ArzuzSubmit = (function(){
     }
 
     return post(table, row)
-      .then(function(){ 
-        flush(); 
+      .then(function(){
+        deliver(table, row);           // saved first, told second
+        flush();
         showToast('Successfully saved to database!', 'success');
-        return {ok:true, queued:false}; 
+        return {ok:true, queued:false};
       })
       .catch(function(err){
         console.warn('[ArzuzSubmit] Submission queued for retry:', err.message);
@@ -138,14 +187,17 @@ var ArzuzSubmit = (function(){
       });
   }
 
-  /* Flush queued items when back online */
+  /* Flush queued items when back online — notifications fire only for
+     the rows that actually made it into the database. */
   function flush(){
     if(!configured()) return;
     var q = readQueue();
     if(!q.length) return;
-    writeQueue([]);                       
+    writeQueue([]);
     q.forEach(function(item){
-      post(item.table, item.row).catch(function(){ enqueue(item); });
+      post(item.table, item.row)
+        .then(function(){ deliver(item.table, item.row); })
+        .catch(function(){ enqueue(item); });
     });
   }
 

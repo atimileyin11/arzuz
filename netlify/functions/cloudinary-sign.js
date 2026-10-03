@@ -4,10 +4,12 @@
    Returns a short-lived signed upload signature so the browser
    can POST directly to Cloudinary without exposing the API secret.
 
-   Environment variables (set in Netlify dashboard):
-     CLOUDINARY_API_KEY    – 879621267632718
-     CLOUDINARY_API_SECRET – 3klddUOrhMI45s_ejS9bJMywBnU
-     CLOUDINARY_CLOUD_NAME – zrptjhes
+   Environment variables (set in Netlify dashboard — Site settings
+   → Environment variables). Values never appear in this file or
+   in any page source:
+     CLOUDINARY_API_KEY    – your cloud's API key
+     CLOUDINARY_API_SECRET – your cloud's API secret (keep it here only)
+     CLOUDINARY_CLOUD_NAME – your cloud name
    ============================================================ */
 
 const crypto = require('crypto');
@@ -39,12 +41,18 @@ exports.handler = async function (event) {
     };
   }
 
-  const timestamp  = Math.floor(Date.now() / 1000);
-  const folder     = 'arzuz-buildings';
-  const eager      = 'c_limit,w_1600,q_auto,f_auto';   // auto-compress on upload
+  const timestamp    = Math.floor(Date.now() / 1000);
+  const folder       = 'arzuz-buildings';
+  const eager        = 'c_limit,w_1600,q_auto,f_auto';   // auto-compress on upload
+  const maxFileSize  = 10 * 1024 * 1024;                 // 10 MB, matches the form copy
 
-  // Build the string-to-sign exactly as Cloudinary expects
-  const paramsToSign = `eager=${eager}&folder=${folder}&timestamp=${timestamp}${API_SECRET}`;
+  // Build the string-to-sign exactly as Cloudinary expects:
+  // signable params in alphabetical order, secret appended last.
+  // max_file_size is part of the signature, so an oversized file
+  // is rejected by Cloudinary itself — the signature cannot be
+  // reused for something bigger than what we approved.
+  const paramsToSign =
+    `eager=${eager}&folder=${folder}&max_file_size=${maxFileSize}&timestamp=${timestamp}${API_SECRET}`;
   const signature    = crypto.createHash('sha1').update(paramsToSign).digest('hex');
 
   return {
@@ -53,10 +61,11 @@ exports.handler = async function (event) {
     body: JSON.stringify({
       signature,
       timestamp,
-      api_key:    API_KEY,
-      cloud_name: CLOUD_NAME,
+      api_key:      API_KEY,
+      cloud_name:   CLOUD_NAME,
       folder,
       eager,
+      max_file_size: maxFileSize,
     }),
   };
 };

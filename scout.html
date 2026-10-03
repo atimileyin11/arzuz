@@ -45,6 +45,7 @@
 <script>
 
 Arzuz.chrome('student');
+ArzuzData.ready.then(function(){
 Arzuz.form({
   table:'scout_submissions',
   backHref:'index.html', backLabel:'\u2190 Back to home',
@@ -79,6 +80,7 @@ Arzuz.form({
    '<p class="sm">What you pay is stored privately and only ever shown combined with other tenants. '+
    'Your name is never attached to it.</p>'+
    '<div class="nav"><a class="next" href="index.html">Done</a></div></div>'
+});
 });
 
 Arzuz.footer();

@@ -690,16 +690,17 @@ tr:hover td {
 </head>
 <body>
 
-<!-- Passcode Gate Modal -->
+<!-- Sign-in Gate (Supabase Auth) -->
 <div class="gate-wrap" id="gateModal">
   <div class="gate-card">
     <div class="m"><span>az</span></div>
     <h2>Arzuz Admin</h2>
-    <p>Private Owner Dashboard. Enter your passcode to view, edit, or manage form submissions.</p>
-    <div class="lockout-msg" id="lockoutMsg">Too many incorrect attempts. Please wait.</div>
-    <input type="password" id="passInput" placeholder="••••••••" autofocus autocomplete="current-password">
-    <button class="next" id="btnUnlock">Unlock Dashboard</button>
-    <p style="margin-top: 14px; font-size: 13px; color: #8D8099;">Passcode protected with SHA-256 security</p>
+    <p>Private Owner Dashboard. Sign in to view, edit, or manage form submissions.</p>
+    <div class="lockout-msg" id="gateErr"></div>
+    <input type="email" id="gateEmail" placeholder="you@example.com" autofocus autocomplete="username" style="letter-spacing: normal; text-align: left;">
+    <input type="password" id="gatePass" placeholder="Password" autocomplete="current-password">
+    <button class="next" id="btnUnlock">Sign in</button>
+    <p style="margin-top: 14px; font-size: 13px; color: #8D8099;">Signed in with Supabase Auth · the session ends when you close this tab</p>
   </div>
 </div>
 
@@ -711,8 +712,9 @@ tr:hover td {
   </a>
   <div class="head-actions">
     <span class="admin-badge" id="envBadge">Production DB</span>
+    <span class="admin-badge" id="whoBadge" style="display:none;"></span>
     <button class="bk" id="btnRefresh" style="color: #C4B5FD; padding: 6px 12px; font-size: 13.5px;">↻ Refresh</button>
-    <button class="bk" id="btnLock" style="color: #F87171; padding: 6px 12px; font-size: 13.5px;">Lock</button>
+    <button class="bk" id="btnLock" style="color: #F87171; padding: 6px 12px; font-size: 13.5px;">Sign out</button>
   </div>
 </header>
 
@@ -766,27 +768,29 @@ tr:hover td {
     </div>
   </div>
 
-  <!-- Telegram Bot & Instant Notification Settings Panel -->
+  <!-- Telegram Instant Alert Settings — the bot token lives only in Netlify -->
   <div class="settings-panel">
-    <h3>Telegram & Email Instant Alert Settings</h3>
+    <h3>Telegram Instant Alerts</h3>
     <p style="color: #B3A7BF; font-size: 14px; margin-bottom: 18px;">
-      Whenever a student or landlord submits a form, an instant notification is sent to your Telegram Bot and Email.
+      Every student, landlord and scout submission sends an alert to your Telegram. The bot token is
+      held by Netlify as <b>TELEGRAM_BOT_TOKEN</b> and is never sent to the browser.
+      <span id="tgStatus" style="display:block; margin-top:8px; color:#C4B5FD;"></span>
     </p>
     <div class="settings-grid">
       <div class="fld">
-        <label style="color: #C4B5FD; font-size: 12.5px; font-weight: 700;">Telegram Bot Token</label>
-        <input type="text" id="tgToken" placeholder="123456789:ABCdefGhIJKlm...">
-      </div>
-      <div class="fld">
-        <label style="color: #C4B5FD; font-size: 12.5px; font-weight: 700;">Telegram Chat ID</label>
-        <input type="text" id="tgChat" placeholder="987654321 or @channel">
+        <label style="color: #C4B5FD; font-size: 12.5px; font-weight: 700;">Telegram Chat ID <span style="color:#9A8CA8; font-weight:400;">(stored in Netlify as TELEGRAM_CHAT_ID)</span></label>
+        <input type="text" id="tgChat" placeholder="Run Auto-Detect to fill this in" readonly>
       </div>
     </div>
     <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-      <button class="next" id="btnSaveNotify" style="max-width: 180px; font-size: 14px; padding: 10px 16px;">Save Settings</button>
+      <button class="next" id="btnCopyChat" style="max-width: 200px; font-size: 14px; padding: 10px 16px;">Copy Chat ID</button>
       <button class="h-btn h-s" id="btnAutoDetect" style="color: #34D399; border-color: rgba(52, 211, 153, 0.4); font-size: 13.5px; padding: 8px 14px;">Auto-Detect Chat ID</button>
       <button class="h-btn h-s" id="btnTestNotify" style="color: #C4B5FD; border-color: rgba(196, 181, 253, 0.4); font-size: 13.5px; padding: 8px 14px;">Send Test Alert</button>
     </div>
+    <p style="color: #9A8CA8; font-size: 12.5px; margin-top: 12px; line-height: 1.5;">
+      Once you have a chat ID, paste it into Netlify → Site configuration → Environment variables →
+      <b>TELEGRAM_CHAT_ID</b> and redeploy. Nothing about the bot is stored in this page.
+    </p>
   </div>
 
   <!-- Amenities & Utilities Manager -->
@@ -1019,6 +1023,7 @@ tr:hover td {
 </div>
 
 <script src="assets/config.js"></script>
+<script src="assets/auth.js"></script>
 <script src="assets/data.js"></script>
 <script src="assets/notify.js"></script>
 <script src="assets/submit.js"></script>
@@ -1040,133 +1045,121 @@ tr:hover td {
       .replace(/'/g, '&#039;');
   }
 
-  // SHA-256 Hash Computation
-  async function computeSha256(text){
-    var buffer = new TextEncoder().encode(text);
-    var digest = await crypto.subtle.digest('SHA-256', buffer);
-    var hashArray = Array.from(new Uint8Array(digest));
-    return hashArray.map(function(b){ return b.toString(16).padStart(2, '0'); }).join('');
+  // ---------- Supabase Auth gate ----------
+  // Reads, updates and deletes in Supabase are granted `to authenticated`,
+  // so signing in is the only way into the data. There is no passcode
+  // left in this page: nothing in the page source can open it.
+  var gateModal = document.getElementById('gateModal');
+  var gateEmail  = document.getElementById('gateEmail');
+  var gatePass   = document.getElementById('gatePass');
+  var gateErr    = document.getElementById('gateErr');
+  var btnUnlock  = document.getElementById('btnUnlock');
+
+  function showGate(msg){
+    gateModal.style.display = 'flex';
+    if (msg) { gateErr.textContent = msg; gateErr.style.display = 'block'; }
+    else { gateErr.style.display = 'none'; }
   }
 
-  // Passcode Gate & Security Lockout Logic
-  var gateModal = document.getElementById('gateModal');
-  var passInput = document.getElementById('passInput');
-  var btnUnlock = document.getElementById('btnUnlock');
-  var lockoutMsg = document.getElementById('lockoutMsg');
-
-  function checkLockout(){
-    var lockUntil = parseInt(localStorage.getItem('arzuz_admin_lockout') || '0', 10);
-    var now = Date.now();
-    if (lockUntil > now) {
-      var remainingSec = Math.ceil((lockUntil - now) / 1000);
-      lockoutMsg.textContent = 'Too many failed attempts. Locked for ' + remainingSec + 's.';
-      lockoutMsg.style.display = 'block';
-      passInput.disabled = true;
-      btnUnlock.disabled = true;
-      setTimeout(checkLockout, 1000);
-      return true;
-    } else {
-      lockoutMsg.style.display = 'none';
-      passInput.disabled = false;
-      btnUnlock.disabled = false;
-      return false;
+  function hideGate(){
+    gateErr.style.display = 'none';
+    gateModal.style.display = 'none';
+    var who = document.getElementById('whoBadge');
+    if (who) {
+      who.textContent = 'Signed in' + (ArzuzAuth.email() ? ' · ' + ArzuzAuth.email() : '');
+      who.style.display = '';
     }
+  }
+
+  // A rejected request means the session is gone: back to the gate.
+  function onAuthError(err){
+    ArzuzAuth.clear();
+    showGate('Your session has expired. Please sign in again.');
+    console.warn('[Arzuz Admin]', err && err.message);
   }
 
   function checkAuth(){
-    var isAuth = sessionStorage.getItem('arzuz_admin_auth') === 'true';
-    var authTime = parseInt(sessionStorage.getItem('arzuz_admin_auth_time') || '0', 10);
-    // 2-Hour Session Expiry
-    if (isAuth && (Date.now() - authTime < 2 * 60 * 60 * 1000)) {
-      gateModal.style.display = 'none';
-      fetchData();
-    } else {
-      sessionStorage.removeItem('arzuz_admin_auth');
-      gateModal.style.display = 'flex';
-      checkLockout();
-    }
+    ArzuzAuth.restore().then(function(s){
+      if (s) { hideGate(); fetchData(); }
+      else showGate();
+    }).catch(function(){ showGate(); });
   }
 
-  btnUnlock.addEventListener('click', async function(){
-    if (checkLockout()) return;
-    var pass = passInput.value.trim();
-    if (!pass) return;
-
-    var inputHash = await computeSha256(pass);
-    var expectedHash = cfg.ADMIN_PASSCODE_HASH || 'f22e934da8474776e9142c041f0daea4b43eaafb089bf41e8f2b6d86a19628f1';
-    var plainFallback = cfg.ADMIN_PASSCODE || 'arzuz2026';
-
-    if (inputHash === expectedHash || pass === plainFallback) {
-      localStorage.removeItem('arzuz_admin_fails');
-      sessionStorage.setItem('arzuz_admin_auth', 'true');
-      sessionStorage.setItem('arzuz_admin_auth_time', Date.now().toString());
-      gateModal.style.display = 'none';
-      fetchData();
-    } else {
-      var fails = parseInt(localStorage.getItem('arzuz_admin_fails') || '0', 10) + 1;
-      localStorage.setItem('arzuz_admin_fails', fails.toString());
-      if (fails >= 5) {
-        localStorage.setItem('arzuz_admin_lockout', (Date.now() + 300000).toString()); // 5 mins lockout
-        checkLockout();
-      } else {
-        alert('Incorrect passcode. ' + (5 - fails) + ' attempt(s) remaining.');
-      }
-    }
+  btnUnlock.addEventListener('click', function(){
+    var email = gateEmail.value.trim();
+    var pass  = gatePass.value;
+    if (!email || !pass) { showGate('Enter your email and password.'); return; }
+    btnUnlock.disabled = true;
+    btnUnlock.textContent = 'Signing in…';
+    ArzuzAuth.signIn(email, pass)
+      .then(function(){
+        btnUnlock.textContent = 'Sign in';
+        btnUnlock.disabled = false;
+        gatePass.value = '';
+        hideGate();
+        fetchData();
+      })
+      .catch(function(err){
+        btnUnlock.textContent = 'Sign in';
+        btnUnlock.disabled = false;
+        showGate(err.message);
+      });
   });
 
-  passInput.addEventListener('keydown', function(e){
-    if (e.key === 'Enter') btnUnlock.click();
-  });
+  function gateKey(e){ if (e.key === 'Enter') btnUnlock.click(); }
+  gateEmail.addEventListener('keydown', gateKey);
+  gatePass.addEventListener('keydown', gateKey);
 
   document.getElementById('btnLock').addEventListener('click', function(){
-    sessionStorage.removeItem('arzuz_admin_auth');
-    sessionStorage.removeItem('arzuz_admin_auth_time');
-    location.reload();
+    ArzuzAuth.signOut().then(function(){ location.reload(); });
   });
 
-  // Telegram settings prefill & save
-  var tgTokenEl = document.getElementById('tgToken');
-  var tgChatEl = document.getElementById('tgChat');
-  tgTokenEl.value = cfg.TELEGRAM_BOT_TOKEN || localStorage.getItem('arzuz_tg_token') || '';
-  tgChatEl.value = cfg.TELEGRAM_CHAT_ID || localStorage.getItem('arzuz_tg_chat') || '';
+  // ---------- Telegram alerts — the bot token lives only in Netlify ----------
+  var tgChatEl  = document.getElementById('tgChat');
+  var tgStatusEl = document.getElementById('tgStatus');
 
-  document.getElementById('btnSaveNotify').addEventListener('click', function(){
-    cfg.TELEGRAM_BOT_TOKEN = tgTokenEl.value.trim();
-    cfg.TELEGRAM_CHAT_ID = tgChatEl.value.trim();
-    localStorage.setItem('arzuz_tg_token', cfg.TELEGRAM_BOT_TOKEN);
-    localStorage.setItem('arzuz_tg_chat', cfg.TELEGRAM_CHAT_ID);
-    alert('Notification settings saved!');
-  });
+  // Ask the function what it has configured — never the token itself.
+  ArzuzNotify.status()
+    .then(function(st){
+      if (!tgStatusEl) return;
+      tgStatusEl.textContent = (st.token ? '✓ Bot token configured.' : '⚠ TELEGRAM_BOT_TOKEN is not set in Netlify.') +
+        '  ' + (st.chatId ? '✓ Chat ID configured.' : '⚠ TELEGRAM_CHAT_ID is not set yet.');
+      tgStatusEl.style.color = (st.token && st.chatId) ? '#34D399' : '#FBBF24';
+      if (st.chatId && tgChatEl) tgChatEl.value = 'Configured in Netlify (hidden)';
+    })
+    .catch(function(){
+      if (tgStatusEl) { tgStatusEl.textContent = '⚠ Could not reach /api/notify — has this site been deployed with the function?'; tgStatusEl.style.color = '#FBBF24'; }
+    });
 
   document.getElementById('btnAutoDetect').addEventListener('click', function(){
-    var token = tgTokenEl.value.trim() || cfg.TELEGRAM_BOT_TOKEN;
-    if (!token) { alert('Please enter a Bot Token first.'); return; }
-    ArzuzNotify.autoDetectChatId(token).then(function(id){
-      if(id){
-        tgChatEl.value = id;
-        cfg.TELEGRAM_CHAT_ID = id;
-        localStorage.setItem('arzuz_tg_chat', id);
-        alert('Detected Chat ID: ' + id + '! Sending test message...');
-        ArzuzNotify.sendTelegram("🔔 *Auto-Connected to Arzuz Admin!*\nYour Telegram Bot is now linked successfully.");
-      } else {
-        alert('No recent chat found. Please open Telegram, search for @arzuzwaitlist_bot, send any message (e.g. /start), and click Auto-Detect again!');
-      }
-    }).catch(function(err){
-      alert('Error detecting Chat ID: ' + err.message);
-    });
+    var btn = this; btn.disabled = true;
+    ArzuzNotify.detect()
+      .then(function(st){
+        if (!st.chatId) {
+          alert('No recent chat found. Open Telegram, search for @arzuzwaitlist_bot, send it any message (e.g. /start), then click Auto-Detect again.');
+          return;
+        }
+        tgChatEl.value = st.chatId;
+        alert('Detected Chat ID: ' + st.chatId + '\n\nCopy it into Netlify → Site configuration → Environment variables → TELEGRAM_CHAT_ID, then redeploy.');
+      })
+      .catch(function(err){ alert('Could not detect a chat ID: ' + err.message); })
+      .finally(function(){ btn.disabled = false; });
+  });
+
+  document.getElementById('btnCopyChat').addEventListener('click', function(){
+    var v = (tgChatEl.value || '').trim();
+    if (!v || v.indexOf('Configured') === 0) { alert('Click Auto-Detect Chat ID first.'); return; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(v).then(function(){ alert('Copied: ' + v); }).catch(function(){ alert(v); });
+    } else { alert(v); }
   });
 
   document.getElementById('btnTestNotify').addEventListener('click', function(){
-    var token = tgTokenEl.value.trim() || cfg.TELEGRAM_BOT_TOKEN;
-    var chat = tgChatEl.value.trim() || cfg.TELEGRAM_CHAT_ID;
-    if(!token){ alert('Please enter a valid Telegram Bot Token first.'); return; }
-    cfg.TELEGRAM_BOT_TOKEN = token;
-    cfg.TELEGRAM_CHAT_ID = chat;
-    ArzuzNotify.sendTelegram("🔔 *Test Alert from Arzuz Admin Dashboard*\nYour Telegram notification is working perfectly!")
-      .then(function(ok){
-        if(ok) alert('Test alert sent to Telegram!');
-        else alert('Failed to send test alert. Make sure you messaged @arzuzwaitlist_bot on Telegram or click Auto-Detect.');
-      });
+    var btn = this; btn.disabled = true;
+    ArzuzNotify.test()
+      .then(function(){ alert('Test alert sent to Telegram!'); })
+      .catch(function(err){ alert('Failed to send test alert: ' + err.message); })
+      .finally(function(){ btn.disabled = false; });
   });
 
   // ================= AMENITIES MANAGER =================
@@ -1189,16 +1182,19 @@ tr:hover td {
     if (typeof _DEFAULT_UTILITIES !== 'undefined' && _DEFAULT_UTILITIES.indexOf(name) !== -1) {
       alert('Built-in amenity "' + name + '" cannot be removed.'); return;
     }
-    var current = (typeof UTILITIES !== 'undefined' && UTILITIES) ? UTILITIES.slice() : [];
-    var idx = current.indexOf(name);
-    if (idx !== -1) current.splice(idx, 1);
-    window.UTILITIES = current;
-    // Persist custom additions only (filter out defaults)
-    var defaults = (typeof _DEFAULT_UTILITIES !== 'undefined') ? _DEFAULT_UTILITIES : [];
-    var customs = current.filter(function(u){ return defaults.indexOf(u) === -1; });
-    localStorage.setItem('arzuz_utilities', JSON.stringify(customs));
-    renderAmenitiesManager();
-    ArzuzSubmit.showToast('Amenity "' + name + '" removed.', 'info');
+    ArzuzAuth.headers().then(function(h){
+      var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/amenities?name=eq.' + encodeURIComponent(name);
+      return fetch(url, { method: 'DELETE', headers: h });
+    }).then(function(r){
+      if (r.status === 401 || r.status === 403) { onAuthError(new Error('Amenity delete rejected (HTTP ' + r.status + ')')); throw new Error('Your session has expired.'); }
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return ArzuzData.reload();
+    }).then(function(){
+      renderAmenitiesManager();
+      ArzuzSubmit.showToast('Amenity "' + name + '" removed.', 'info');
+    }).catch(function(err){
+      alert('Could not remove amenity: ' + err.message);
+    });
   };
 
   var newAmenityInput = document.getElementById('newAmenityInput');
@@ -1214,16 +1210,22 @@ tr:hover td {
         if (amenityFeedback) { amenityFeedback.style.color='#F59E0B'; amenityFeedback.textContent='⚠️ "'+val+'" already exists.'; amenityFeedback.style.display='block'; }
         return;
       }
-      current.push(val);
-      window.UTILITIES = current;
-      // Save all non-default items to localStorage
-      var defaults = (typeof _DEFAULT_UTILITIES !== 'undefined') ? _DEFAULT_UTILITIES : [];
-      var customs = current.filter(function(u){ return defaults.indexOf(u) === -1; });
-      localStorage.setItem('arzuz_utilities', JSON.stringify(customs));
-      if (newAmenityInput) newAmenityInput.value = '';
-      if (amenityFeedback) { amenityFeedback.style.color='#34D399'; amenityFeedback.textContent='✅ "'+val+'" added! It now appears in all forms and the Add Apartment modal.'; amenityFeedback.style.display='block'; }
-      renderAmenitiesManager();
-      setTimeout(function(){ if(amenityFeedback) amenityFeedback.style.display='none'; }, 4000);
+      ArzuzAuth.headers().then(function(h){
+        h['Prefer'] = 'return=representation';
+        var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/amenities';
+        return fetch(url, { method: 'POST', headers: h, body: JSON.stringify({ name: val }) });
+      }).then(function(r){
+        if (r.status === 401 || r.status === 403) { onAuthError(new Error('Amenity insert rejected (HTTP ' + r.status + ')')); throw new Error('Your session has expired.'); }
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return ArzuzData.reload();
+      }).then(function(){
+        if (newAmenityInput) newAmenityInput.value = '';
+        if (amenityFeedback) { amenityFeedback.style.color='#34D399'; amenityFeedback.textContent='✅ "'+val+'" added! It now appears in all forms and the Add Apartment modal.'; amenityFeedback.style.display='block'; }
+        renderAmenitiesManager();
+        setTimeout(function(){ if(amenityFeedback) amenityFeedback.style.display='none'; }, 4000);
+      }).catch(function(err){
+        if (amenityFeedback) { amenityFeedback.style.color='#F87171'; amenityFeedback.textContent='⚠️ Could not save: ' + err.message; amenityFeedback.style.display='block'; }
+      });
     });
   }
 
@@ -1231,8 +1233,8 @@ tr:hover td {
     newAmenityInput.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); btnAddAmenity.click(); } });
   }
 
-  // Initial render of amenities manager
-  renderAmenitiesManager();
+  // Initial render — after the amenity list has loaded from the database
+  ArzuzData.ready.then(renderAmenitiesManager);
 
 
   document.querySelectorAll('.tab-btn').forEach(function(b){
@@ -1247,21 +1249,23 @@ tr:hover td {
   document.getElementById('searchInput').addEventListener('input', renderTable);
   document.getElementById('btnRefresh').addEventListener('click', fetchData);
 
-  // Fetch data from Supabase
+  // Fetch data from Supabase — as the signed-in admin, never as anon.
   function fetchData(){
     if(!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY){
       return;
     }
-    var tables = ['demand_records', 'listings', 'scout_submissions'];
-    var promises = tables.map(function(tbl){
-      var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/' + tbl + '?select=*&order=created_at.desc';
-      return fetch(url, {
-        headers: {
-          'apikey': cfg.SUPABASE_ANON_KEY,
-          'Authorization': 'Bearer ' + cfg.SUPABASE_ANON_KEY
-        }
-      }).then(function(r){ return r.ok ? r.json() : []; }).catch(function(){ return []; });
-    });
+    ArzuzAuth.headers().then(function(h){
+      var tables = ['demand_records', 'listings', 'scout_submissions'];
+      var promises = tables.map(function(tbl){
+        var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/' + tbl + '?select=*&order=created_at.desc';
+        return fetch(url, { headers: h }).then(function(r){
+          if (r.status === 401 || r.status === 403) throw Object.assign(new Error('Not authorised (HTTP ' + r.status + ')'), { auth: true });
+          return r.ok ? r.json() : [];
+        }).catch(function(e){
+          if (e && e.auth) onAuthError(e);
+          return [];
+        });
+      });
 
     Promise.all(promises).then(function(results){
       loadedData.demand_records = results[0] || [];
@@ -1269,6 +1273,10 @@ tr:hover td {
       loadedData.scout_submissions = results[2] || [];
       updateMetrics();
       renderTable();
+    });
+    }).catch(function(err){
+      // headers() rejects when there is no valid session
+      onAuthError(err);
     });
   }
 
@@ -1653,18 +1661,20 @@ tr:hover td {
     btnSave.textContent = 'Saving...';
     btnSave.disabled = true;
 
-    var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/' + table + '?id=eq.' + id;
-    fetch(url, {
-      method: 'PATCH',
-      headers: {
-        'apikey': cfg.SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + cfg.SUPABASE_ANON_KEY,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation'
-      },
-      body: JSON.stringify(patchBody)
+    ArzuzAuth.headers().then(function(h){
+      h['Prefer'] = 'return=representation';
+      var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/' + table + '?id=eq.' + id;
+      return fetch(url, {
+        method: 'PATCH',
+        headers: h,
+        body: JSON.stringify(patchBody)
+      });
     })
     .then(function(r){
+      if(r.status === 401 || r.status === 403){
+        onAuthError(new Error('Update rejected (HTTP ' + r.status + ')'));
+        throw new Error('Your session has expired.');
+      }
       if(!r.ok) throw new Error('Update failed: ' + r.status);
       return r.json();
     })
@@ -1681,7 +1691,7 @@ tr:hover td {
       ArzuzSubmit.showToast('Record updated successfully!', 'success');
     })
     .catch(function(err){
-      alert('Could not update record: ' + err.message + '\nMake sure the Supabase UPDATE policy is applied.');
+      alert('Could not update record: ' + err.message + '\nSign out and in again if it keeps happening.');
     })
     .finally(function(){
       btnSave.textContent = 'Save Changes';
@@ -1993,18 +2003,20 @@ tr:hover td {
     btnSave.textContent = 'Saving Apartment...';
     btnSave.disabled = true;
 
-    var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/listings';
-    fetch(url, {
-      method: 'POST',
-      headers: {
-        'apikey': cfg.SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + cfg.SUPABASE_ANON_KEY,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation'
-      },
-      body: JSON.stringify(newListing)
+    ArzuzAuth.headers().then(function(h){
+      h['Prefer'] = 'return=representation';
+      var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/listings';
+      return fetch(url, {
+        method: 'POST',
+        headers: h,
+        body: JSON.stringify(newListing)
+      });
     })
     .then(function(r){
+      if(r.status === 401 || r.status === 403){
+        onAuthError(new Error('Insert rejected (HTTP ' + r.status + ')'));
+        throw new Error('Your session has expired.');
+      }
       if (!r.ok) throw new Error('Insertion failed: ' + r.status);
       return r.json();
     })
@@ -2024,7 +2036,7 @@ tr:hover td {
       ArzuzSubmit.showToast('Apartment ' + aptId + ' added successfully!', 'success');
     })
     .catch(function(err){
-      alert('Could not add apartment: ' + err.message + '\nMake sure the Supabase INSERT policy on listings allows requests.');
+      alert('Could not add apartment: ' + err.message + '\nSign out and in again if it keeps happening.');
     })
     .finally(function(){
       btnSave.textContent = 'Save Apartment';
@@ -2178,15 +2190,18 @@ tr:hover td {
     btnConfirmDel.textContent = 'Deleting...';
     btnConfirmDel.disabled = true;
 
-    var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/' + table + '?id=eq.' + id;
-    fetch(url, {
-      method: 'DELETE',
-      headers: {
-        'apikey': cfg.SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + cfg.SUPABASE_ANON_KEY
-      }
+    ArzuzAuth.headers().then(function(h){
+      var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/' + table + '?id=eq.' + id;
+      return fetch(url, {
+        method: 'DELETE',
+        headers: h
+      });
     })
     .then(function(res){
+      if (res.status === 401 || res.status === 403){
+        onAuthError(new Error('Delete rejected (HTTP ' + res.status + ')'));
+        throw new Error('Your session has expired.');
+      }
       if (!res.ok) throw new Error('Deletion failed (HTTP ' + res.status + ')');
       loadedData[table] = (loadedData[table] || []).filter(function(r){ return r.id !== id; });
       updateMetrics();
@@ -2196,7 +2211,7 @@ tr:hover td {
       ArzuzSubmit.showToast('Record deleted successfully.', 'info');
     })
     .catch(function(err){
-      alert('Could not delete record: ' + err.message + '\nMake sure the Supabase DELETE policy is configured.');
+      alert('Could not delete record: ' + err.message + '\nSign out and in again if it keeps happening.');
     })
     .finally(function(){
       btnConfirmDel.textContent = 'Yes, Delete';

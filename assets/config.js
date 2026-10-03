@@ -1,22 +1,19 @@
 /* ============================================================
    Arzuz — configuration
-   Live Supabase connection details and notification settings.
+
+   Only public values live here. The anon key and the WhatsApp
+   support number are meant to be in the page source; everything
+   that can be abused — the Telegram bot token, the Cloudinary
+   secret, the admin login — lives on the server or in Supabase
+   Auth, never in this file.
    ============================================================ */
 
 window.ARZUZ_CONFIG = window.ARZUZ_CONFIG || {
 
-  // Live Supabase API connection
+  // Live Supabase API connection (anon key is public by design —
+  // row-level security in supabase-schema.sql decides what it may do)
   SUPABASE_URL: 'https://nihdbhjecdkpvzvjifrm.supabase.co',
   SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5paGRiaGplY2RrcHZ6dmppZnJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0MjExODksImV4cCI6MjEwNDk5NzE4OX0.td0jfbv02T_LMufhurMEl8Qx00UDACYIvLG7XtdXWRM',
-
-  // Instant Notification Settings (Telegram Bot & Email)
-  TELEGRAM_BOT_TOKEN: '8526070493:AAHuH9dAfy4EcyJkPuUWl2Ruy3EtWUbALVE',
-  TELEGRAM_CHAT_ID: '',     // e.g. '987654321' or '@arzuzwaitlist_bot' (Auto-detected if empty when you message the bot)
-  NOTIFICATION_EMAIL: 'support@arzuz.com',
-
-  // Admin Dashboard Security Passcode (SHA-256 Hash of 'arzuz2026')
-  ADMIN_PASSCODE_HASH: 'f22e934da8474776e9142c041f0daea4b43eaafb089bf41e8f2b6d86a19628f1',
-  ADMIN_PASSCODE: 'arzuz2026', // Fallback for backward compatibility
 
   // The academic session currently collecting for
   SESSION: '2026/2027',
