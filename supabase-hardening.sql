@@ -213,11 +213,15 @@ having count(*) >= 3;
 -- and only columns that hold nothing personal: owner names and
 -- phone numbers stay in the base table, which anon cannot read.
 -- The contact path is the support WhatsApp, so no number leaks.
--- (security_invoker is implicit on views created after PG15; the
--- explicit grant is what lets the website read it.)
+--
+-- Deliberately a plain (definer) view: this file revokes anon's
+-- SELECT on listings, so a security_invoker view would fail with
+-- "permission denied" for the website. The definer view exposes
+-- exactly the filtered rows and columns defined here — nothing
+-- more. payload is scrubbed of owner identity keys (nm/ph/who).
 
-create or replace view public_listings
-with (security_invoker = true) as
+drop view if exists public_listings;
+create view public_listings as
 select
   id,
   created_at,
@@ -230,7 +234,7 @@ select
   property_type,
   area,
   rooms,
-  payload
+  payload - 'nm' - 'ph' - 'who' as payload
 from listings
 where status = 'active'
   and tier >= 1

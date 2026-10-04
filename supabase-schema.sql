@@ -266,8 +266,14 @@ having count(*) >= 3;
 -- phone numbers stay in the base table, which anon cannot read.
 -- The contact path is the support WhatsApp, so no number leaks.
 
-create or replace view public_listings
-with (security_invoker = true) as
+-- Deliberately a plain (definer) view: hardening revokes anon's
+-- SELECT on listings, so a security_invoker view would fail with
+-- "permission denied" for the website. The definer view exposes
+-- exactly the filtered rows and columns defined here — nothing
+-- more. payload is scrubbed of owner identity keys (nm/ph/who).
+
+drop view if exists public_listings;
+create view public_listings as
 select
   id,
   created_at,
@@ -280,14 +286,12 @@ select
   property_type,
   area,
   rooms,
-  payload
+  payload - 'nm' - 'ph' - 'who' as payload
 from listings
 where status = 'active'
   and tier >= 1
   and env = 'production';
 
--- The view inherits RLS from the base table (security_invoker), so
--- the grant below is what makes it readable to the website.
 grant select on public_listings to anon;
 
 
