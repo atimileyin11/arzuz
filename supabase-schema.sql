@@ -125,15 +125,46 @@ alter table listings          enable row level security;
 alter table scout_submissions enable row level security;
 alter table amenities         enable row level security;
 
--- INSERT: the public site, and the admin dashboard.
+-- Make the whole file re-runnable: drop whatever policies exist on
+-- these tables (including ones from an older version of this file)
+-- before recreating them below.
+do $$
+declare r record;
+begin
+  for r in
+    select policyname, tablename from pg_policies
+    where schemaname = 'public'
+      and tablename in ('demand_records','listings','scout_submissions','amenities')
+  loop
+    execute format('drop policy if exists %I on %I', r.policyname, r.tablename);
+  end loop;
+end $$;
+
+-- INSERT: the public site forms. A public form must never be able to
+-- write its own approval state — with check (true) would let anyone
+-- holding the anon key POST a listing with status='active', tier=2
+-- straight onto the public browse feed. Anon rows are therefore
+-- forced in as pending/open, tier 0 (the site's own submit.js never
+-- sends status or tier, so legitimate forms are unaffected); only the
+-- admin can create or escalate anything else.
 create policy "public can submit demand"
-  on demand_records for insert to anon, authenticated with check (true);
+  on demand_records for insert to anon with check (status = 'open');
 
 create policy "public can submit listings"
-  on listings for insert to anon, authenticated with check (true);
+  on listings for insert to anon with check (status = 'pending' and tier = 0);
 
 create policy "public can submit scout reports"
-  on scout_submissions for insert to anon, authenticated with check (true);
+  on scout_submissions for insert to anon with check (status = 'pending');
+
+-- INSERT: the admin dashboard (its Add modal sets status + tier).
+create policy "admin can add demand"
+  on demand_records for insert to authenticated with check (true);
+
+create policy "admin can add listings"
+  on listings for insert to authenticated with check (true);
+
+create policy "admin can add scout reports"
+  on scout_submissions for insert to authenticated with check (true);
 
 -- SELECT / UPDATE / DELETE: the signed-in admin only.
 -- There is deliberately no anon read policy anywhere: the anon key
@@ -183,8 +214,11 @@ create policy "admin can remove amenities"
 -- must not hand anon a read of the phone numbers.
 -- ------------------------------------------------------------
 
+-- Supabase's default privileges grant ALL on every new table to anon;
+-- these explicit revokes strip that back to what the forms need.
 revoke all on demand_records, listings, scout_submissions from anon;
 grant  insert on demand_records, listings, scout_submissions to anon;
+revoke all on amenities from anon;
 grant  select on amenities to anon;
 
 
@@ -257,6 +291,11 @@ where rent_reported is not null and env = 'production'
 group by area
 having count(*) >= 3;
 
+-- The admin-report views are security_invoker, so an anon caller
+-- fails closed on them anyway; this revoke keeps the grants tidy.
+revoke all on demand_summary, minors_needing_guardian, price_movement,
+               reported_rent_benchmark from anon;
+
 
 -- ------------------------------------------------------------
 -- 4b. PUBLIC LISTINGS VIEW — the one public read surface
@@ -270,7 +309,7 @@ having count(*) >= 3;
 -- SELECT on listings, so a security_invoker view would fail with
 -- "permission denied" for the website. The definer view exposes
 -- exactly the filtered rows and columns defined here — nothing
--- more. payload is scrubbed of owner identity keys (nm/ph/who).
+-- more. payload is scrubbed of owner identity keys (nm/last/ph/who/email).
 
 drop view if exists public_listings;
 create view public_listings as
@@ -286,12 +325,18 @@ select
   property_type,
   area,
   rooms,
-  payload - 'nm' - 'ph' - 'who' as payload
+  payload - 'nm' - 'last' - 'ph' - 'who' - 'email' as payload
 from listings
 where status = 'active'
   and tier >= 1
   and env = 'production';
 
+-- Supabase's default privileges hand every new relation — views
+-- included — ALL privileges to anon. Through this definer view those
+-- extra privileges would let anyone UPDATE or DELETE public listings
+-- (the view owner bypasses RLS on its own table), so strip anon back
+-- to read-only here.
+revoke all on public_listings from anon;
 grant select on public_listings to anon;
 
 

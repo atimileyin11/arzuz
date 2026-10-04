@@ -52,9 +52,25 @@ create table if not exists booking_requests (
 
 alter table booking_requests enable row level security;
 
--- INSERT: the public listing detail page, and the admin dashboard.
+-- Make this file re-runnable: the SQL editor runs the whole script as
+-- one transaction, so a duplicate policy on a second run would abort
+-- everything.
+drop policy if exists "public can request a booking" on booking_requests;
+drop policy if exists "admin can add bookings"       on booking_requests;
+drop policy if exists "admin can read bookings"      on booking_requests;
+drop policy if exists "admin can update bookings"    on booking_requests;
+drop policy if exists "admin can delete bookings"    on booking_requests;
+
+-- INSERT: the public listing detail page. A booking can only ever
+-- arrive as 'pending' — the admin confirms it, never the submitter.
+-- (The site's own submit.js never sends status, so legitimate forms
+-- are unaffected.)
 create policy "public can request a booking"
-  on booking_requests for insert to anon, authenticated with check (true);
+  on booking_requests for insert to anon with check (status = 'pending');
+
+-- INSERT: the admin dashboard.
+create policy "admin can add bookings"
+  on booking_requests for insert to authenticated with check (true);
 
 -- SELECT / UPDATE / DELETE: the signed-in admin only. There is
 -- deliberately no anon read policy: phone numbers live here.

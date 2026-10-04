@@ -6,9 +6,10 @@
 -- supabase-schema.sql automatically.)
 --
 -- Safe to run more than once. It only ever ADDS things: any
--- missing generated columns (no-ops when already present),
--- one view and one grant. It never changes or deletes
--- existing data, columns or policies.
+-- missing generated columns (no-ops when already present) and
+-- one view. It never changes or deletes existing data, columns
+-- or policies — the one exception is anon's grant on the view
+-- itself, which is stripped back to read-only on every run.
 --
 -- What browse.html may show: active, community-verified or
 -- inspected, production listings only — and no owner names,
@@ -38,7 +39,7 @@ alter table listings add column if not exists latitude double precision generate
 alter table listings add column if not exists longitude double precision generated always as (nullif(payload->>'lng','')::double precision) stored;
 
 -- 1) The public, anon-readable listing feed.
---    payload is scrubbed of owner identity keys (nm/ph/who)
+--    payload is scrubbed of owner identity keys (nm/last/ph/who/email)
 --    so no name, phone number or runner identity ever becomes
 --    publicly readable.
 drop view if exists public_listings;
@@ -55,12 +56,18 @@ select
   property_type,
   area,
   rooms,
-  payload - 'nm' - 'ph' - 'who' as payload
+  payload - 'nm' - 'last' - 'ph' - 'who' - 'email' as payload
 from listings
 where status = 'active'
   and tier >= 1
   and env = 'production';
 
+-- Supabase's default privileges hand every new relation — views
+-- included — ALL privileges to anon. Through this definer view those
+-- extra privileges would let anyone UPDATE or DELETE public listings
+-- (the view owner bypasses RLS on its own table), so strip anon back
+-- to read-only here.
+revoke all on public_listings from anon;
 grant select on public_listings to anon;
 
 -- ------------------------------------------------------------
