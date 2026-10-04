@@ -48,7 +48,7 @@ var ArzuzWhatsApp = (function(){
       (room !== 'your preferred room' ? ' \u2014 ' + room : '') +
       (budget ? ', ' + budget : '') + '.\n\n' +
       'No app to install, no notifications to turn on.\n' +
-      '\u2014 Arzuz, Malete'
+      '\u2014 Arzuz'
     );
   }
 
@@ -82,6 +82,23 @@ var ArzuzWhatsApp = (function(){
     );
   }
 
+  function bookingMessage(a){
+    var NL = String.fromCharCode(10);
+    var first = a.name || 'there';
+    var prop = a.listing_name ? ('"' + a.listing_name + '"') : 'the apartment you booked';
+    var when = a.when ? (' for ' + a.when) : '';
+    var lines = '✅ *Booking request received, ' + first + '!*' + NL + NL +
+      prop + when + NL + NL +
+      'The Arzuz team confirms availability with the owner and messages you here with viewing details.' + NL +
+      'Booking a viewing is free — Arzuz never collects rent or deposits.' + NL;
+    if (a.roommate === 'yes') {
+      lines += NL + '🤝 We are also looking for a compatible roommate for you. We will introduce you both on WhatsApp once we find a match.' + NL;
+    }
+    lines += NL + '— Arzuz';
+    return lines;
+  }
+
+
   /* ---------- send logic ---------- */
 
   function sendConfirmation(table, answers){
@@ -95,6 +112,9 @@ var ArzuzWhatsApp = (function(){
     } else if (table === 'listings') {
       text  = landlordMessage(answers);
       phone = answers.ph || answers.owner_phone;
+    } else if (table === 'booking_requests') {
+      text  = bookingMessage(answers);
+      phone = answers.phone;
     } else if (table === 'scout_submissions') {
       text  = scoutMessage(answers);
       phone = answers.phone;

@@ -4,29 +4,26 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>KWASU Hostels & Off-Campus Accommodation in Malete — Arzuz</title>
-  <meta name="description" content="Find verified KWASU hostels and off-campus student accommodation in Malete. Real rent prices, student reviews, zero agent fees, and inspected water & power.">
+  <title>Student Hostels in Malete, KWASU and Beyond - Arzuz</title>
+  <meta name="description" content="Verified student hostels, starting in Malete near KWASU and expanding across Nigeria. Real rent prices, student reviews, zero agent fees, and inspected water & power.">
   <link rel="canonical" href="https://arzuz.com/">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link
-    href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap"
-    rel="stylesheet">
-  <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
+        <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
   <link rel="icon" href="assets/icons/icon-32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
-  <meta property="og:title" content="KWASU Hostels & Student Accommodation in Malete — Arzuz">
-  <meta property="og:description" content="Verified KWASU off-campus hostels in Malete. Real prices from students who live there, inspected utilities, no agent fees.">
+  <meta property="og:title" content="Student Hostels in Malete, KWASU and Beyond - Arzuz">
+  <meta property="og:description" content="Verified student hostels, starting in Malete near KWASU and expanding to more locations. Real prices from students who live there, no agent fees.">
   <meta property="og:image" content="https://arzuz.com/assets/social/og-image.png">
   <meta property="og:url" content="https://arzuz.com/">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Arzuz">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="KWASU Hostels & Off-Campus Housing in Malete — Arzuz">
-  <meta name="twitter:description" content="Real KWASU hostel prices and off-campus accommodation in Malete. Verified by students, zero agent fees.">
+  <meta name="twitter:title" content="Student Hostels in Malete, KWASU and Beyond - Arzuz">
+  <meta name="twitter:description" content="Real student hostel prices, starting in Malete near KWASU and expanding soon. Verified by students, zero agent fees.">
   <meta name="twitter:image" content="https://arzuz.com/assets/social/og-image.png">
-<!-- priceRange in the JSON-LD below must match BANDS in assets/data.js:
-     lowest lower bound - highest upper bound (currently NGN 60,000 - NGN 320,000). -->
+<!-- priceRange in the JSON-LD below must match BANDS in assets/data.js.
+     Open-ended bands ("Under" / "Above") use a 0 sentinel; the quoted range
+     spans the lowest real bound to the highest (currently under NGN 100,000
+     to above NGN 1,000,000). -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -34,9 +31,9 @@
       {
         "@type": "WebSite",
         "@id": "https://arzuz.com/#website",
-        "name": "Arzuz - KWASU Hostels & Accommodation",
+        "name": "Arzuz - Student Hostels & Accommodation",
         "url": "https://arzuz.com",
-        "description": "Verified KWASU student hostels and off-campus housing in Malete, Kwara State. Real prices, resident reviews, and zero agent fees.",
+        "description": "Verified student hostels and off-campus housing, starting in Malete near KWASU, Kwara State, and expanding across Nigeria. Real prices, resident reviews, and zero agent fees.",
         "potentialAction": {
           "@type": "SearchAction",
           "target": "https://arzuz.com/register",
@@ -46,8 +43,8 @@
       {
         "@type": "LocalBusiness",
         "@id": "https://arzuz.com/#business",
-        "name": "Arzuz - KWASU Student Housing Malete",
-        "description": "Student housing platform for KWASU students in Malete, Kwara State. Verified rent prices, inspected buildings, no agent fees.",
+        "name": "Arzuz Student Housing",
+        "description": "Student housing platform open to students everywhere, starting with KWASU students in Malete, Kwara State. Verified rent prices, inspected buildings, no agent fees.",
         "url": "https://arzuz.com",
         "areaServed": [
           {
@@ -57,10 +54,18 @@
           {
             "@type": "Place",
             "name": "Malete, Kwara State, Nigeria"
+          },
+          {
+            "@type": "Place",
+            "name": "Kwara State, Nigeria"
+          },
+          {
+            "@type": "Place",
+            "name": "Nigeria"
           }
         ],
-        "serviceType": "KWASU Student Accommodation & Hostels",
-        "priceRange": "₦60,000 – ₦320,000 per session"
+        "serviceType": "Student Accommodation & Hostels",
+        "priceRange": "Under ₦100,000 to above ₦1,000,000 per session"
       }
     ]
   }
@@ -115,7 +120,7 @@
       font-weight: 700;
       letter-spacing: .2em;
       text-transform: uppercase;
-      color: var(--stamp-vibrant);
+      color: var(--stamp);
       margin-bottom: 28px;
       display: inline-flex;
       align-items: center;
@@ -142,7 +147,7 @@
       font-weight: 800;
       font-size: clamp(44px, 9.6vw, 86px);
       line-height: .95;
-      letter-spacing: -.045em;
+      letter-spacing: -.04em;
       max-width: 12ch;
       margin-bottom: 28px;
       text-wrap: balance;
@@ -222,7 +227,7 @@
       border-radius: 10px;
       text-decoration: none;
       border: 2px solid var(--stamp);
-      transition: transform 0.25s var(--ease-bounce), box-shadow 0.25s ease, background 0.25s ease;
+      transition: transform 0.25s var(--ease-spring), box-shadow 0.25s ease, background 0.25s ease;
     }
 
     .h-btn:active {
@@ -262,10 +267,12 @@
     }
 
     .h-third a {
-      color: var(--stamp-vibrant);
+      color: var(--stamp);
       font-weight: 600;
       text-decoration: underline;
       text-underline-offset: 4px;
+      display: inline-block;
+      padding: 6px 0;
     }
 
     /* hero stamp mark */
@@ -301,7 +308,7 @@
     }
 
     .h-stamp b {
-      font-size: 10.5px;
+      font-size: 11px;
       font-weight: 800;
       letter-spacing: .2em;
       display: block;
@@ -446,15 +453,6 @@
       pointer-events: none;
     }
 
-    .h-band .lbl {
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: .2em;
-      text-transform: uppercase;
-      color: #C4B5FD;
-      margin-bottom: 24px;
-    }
-
     .h-band h2 {
       font-family: var(--display);
       font-weight: 800;
@@ -517,10 +515,12 @@
     .h-bars .t i {
       display: block;
       height: 100%;
-      width: 0;
+      width: 100%;
+      transform: scaleX(0);
+      transform-origin: left center;
       background: var(--stamp);
       border-radius: 7px;
-      transition: width 0.9s var(--ease-spring), background 0.3s ease;
+      transition: transform 0.9s var(--ease-spring), background 0.3s ease;
     }
 
     .h-bars .t i.lit {
@@ -571,7 +571,7 @@
     .h-ctl input[type=range] {
       width: 100%;
       accent-color: #A855F7;
-      height: 34px;
+      height: 44px;
       cursor: pointer;
     }
 
@@ -610,6 +610,39 @@
       color: #9A8CA8;
     }
 
+    /* ---- FAQ / SEO cards ---- */
+    .faq-grid {
+      margin-top: 36px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+
+    .faq-card {
+      padding: 24px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--line);
+    }
+
+    .faq-card h3 {
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+
+    .faq-card p {
+      font-size: 14.5px;
+      line-height: 1.55;
+      color: var(--body-c);
+    }
+
+    .faq-note {
+      margin-top: 18px;
+      font-size: 13.5px;
+      color: var(--mid);
+      line-height: 1.55;
+    }
+
     /* ---- generic sections ---- */
     .h-sec {
       padding: 90px 0;
@@ -640,7 +673,7 @@
       font-size: 17px;
       line-height: 1.6;
       color: var(--body-c);
-      max-width: 60ch;
+      max-width: 68ch;
     }
 
     /* problem quote */
@@ -813,7 +846,14 @@
       font-size: 16px;
       line-height: 1.62;
       color: #EDE5F5;
-      max-width: 78ch;
+      max-width: 72ch;
+    }
+
+    .h-promise a {
+      color: #fff;
+      font-weight: 600;
+      text-decoration: underline;
+      text-underline-offset: 4px;
     }
 
     /* closing dark section */
@@ -834,6 +874,7 @@
       color: #fff;
       max-width: 18ch;
       margin-bottom: 20px;
+      text-wrap: balance;
     }
 
     .h-close p {
@@ -869,6 +910,43 @@
       transform: translateY(-3px);
     }
   </style>
+  <noscript><style>.rv{opacity:1;transform:none}</style></noscript>
+  <!-- Keep priceRange, the static FAQ card figures below, and the FAQPage answers
+     in sync with BANDS in assets/data.js when real demand data replaces the
+     illustrative bands. JS overwrites the card figures on load; the static
+     values are the no-JS fallback. -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "How much is a hostel in Malete?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Registered student budgets for Malete run from under 100,000 naira to above 1,000,000 naira per academic session. The largest group of students registering for this session can pay between 100,000 and 150,000 naira, and most budgets sit between 100,000 and 300,000 naira."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I get an agent-free hostel in Malete?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Arzuz connects KWASU students directly with verified property managers and vetted compound caretakers. You view verified photos, inspection notes, and GPS coordinates without paying inspection or middleman fees."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "When should I secure my KWASU room?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "The best rooms closest to campus along School Gate, Safari, and Tipper Garage fill up 4-6 weeks before the session resumes. Registering early gives you first pick before prices surge."
+        }
+      }
+    ]
+  }
+  </script>
 </head>
 
 <body>
@@ -883,25 +961,25 @@
         <hr>
         <span id="hsDate"></span>
       </div>
-      <p class="h-eyebrow">Malete · Kwara State</p>
+      <p class="h-eyebrow">Starting in Malete, Kwara State</p>
       <h1 class="h-h1">
         <span class="ln"><i>Tell us the</i></span>
         <span class="ln"><i>room you need.</i></span>
         <span class="ln"><i><em>We’ll find it.</em></i></span>
       </h1>
-      <p class="h-lede">Verified student housing in Malete. Real prices, honest reviews from
+      <p class="h-lede">Verified student housing, starting in Malete. Real prices, honest reviews from
         students who actually live there, and no agent fees.</p>
       <div class="h-doors">
         <a class="h-btn h-p" href="register.html">I’m looking for a room</a>
-        <a class="h-btn h-s" href="owner-list.html">I have a property</a>
+        <a class="h-btn h-s" href="browse.html">Browse verified rooms</a>
       </div>
-      <p class="h-third"><a href="scout.html">I already live somewhere — register my building</a></p>
+      <p class="h-third"><a href="owner-list.html">I have a property</a> · <a href="scout.html">I already live somewhere. Register my building.</a></p>
     </div>
   </section>
 
   <div class="h-strip">
     <div class="h-wrap">
-      <p><b>Registration is open</b> for the 2026/2027 session in Malete.
+      <p><b>Registration is open</b> for the 2026/2027 session in Malete, with more locations coming soon.
         Tell us what you need and we’ll start looking.</p>
     </div>
   </div>
@@ -909,7 +987,6 @@
   <!-- ============ THE DEMAND CURVE — signature moment ============ -->
   <section class="h-band">
     <div class="h-wrap">
-      <p class="lbl rv">Why landlords list with us</p>
       <h2 class="rv">A landlord who can see the demand curve prices differently.</h2>
       <p class="sub rv" id="curveNote"></p>
 
@@ -918,7 +995,7 @@
         <div class="h-ctl rv">
           <div class="cl">Set your rent per session</div>
           <div class="pv" id="pv">₦220,000</div>
-          <input type="range" id="sp" min="60000" max="320000" step="5000" value="220000" aria-label="Rent per session">
+          <input type="range" id="sp" min="50000" max="1500000" step="5000" value="220000" aria-label="Rent per session">
           <div class="h-out"><b id="reachN">0</b><span id="reachT"></span></div>
           <div class="h-note" id="note"></div>
         </div>
@@ -930,7 +1007,6 @@
   <!-- ============ PROBLEM ============ -->
   <section class="h-sec">
     <div class="h-wrap">
-      <p class="h-lbl rv">The problem</p>
       <h2 class="h-h2 rv">You pay for a full year before you know whether the water runs.</h2>
       <p class="h-sub rv">The tenant is a blind buyer. The agent controls the information. And when
         the water stops in November, there is nobody to tell.</p>
@@ -954,10 +1030,10 @@
   <!-- ============ VERIFICATION ============ -->
   <section class="h-sec">
     <div class="h-wrap">
-      <p class="h-lbl rv">Verification</p>
       <h2 class="h-h2 rv">We show you what we know, and what we don’t.</h2>
       <p class="h-sub rv">A verification without a date is a claim, not a fact. Every stamp carries
-        one, and every inspection carries the name of the person who did it.</p>
+        one, and every inspection carries the name of the person who did it.
+        <a href="safety.html">Your safety on Arzuz</a> explains what to do before and after a viewing.</p>
       <div class="h-tiers">
         <div class="h-tier rv">
           <span class="h-badge b0">Unverified</span>
@@ -968,7 +1044,7 @@
         <div class="h-tier rv">
           <span class="h-badge b1">Community verified</span>
           <h3>A resident confirmed it</h3>
-          <p>Checked by someone who lives there or has been there — but not yet by us.</p>
+          <p>          Checked by someone who lives there or has been there, but not yet by us.</p>
         </div>
         <div class="h-tier rv lead">
           <span class="h-badge b2">Inspected</span>
@@ -979,43 +1055,43 @@
       </div>
       <div class="h-promise rv">
         <h3>If it does not match, we make it right.</h3>
-        <p>Move into a property we inspected and find the water, power or security are not what we
-          said — we re-inspect within seven days, correct the listing publicly, and Arzuz Care is
-          free for your whole session. Nobody else in this market pays for their own mistake.</p>
+        <p>Move into a property we inspected and find the water, power or security are not what we            said: we re-inspect within seven days, correct the listing publicly, and <a
+            href="care.html">Arzuz Care</a> is
+          free for your whole session. Nobody else in this market pays for their own mistake.
+          The full promise, including its limits, is in our <a href="terms.html">terms</a>.</p>
       </div>
     </div>
   </section>
 
-  <!-- ============ KWASU HOSTEL FAQ & SEO BENCHMARK ============ -->
+  <!-- ============ STUDENT HOUSING FAQ & SEO BENCHMARK ============ -->
   <section class="h-sec" id="faq">
     <div class="h-wrap">
-      <p class="h-lbl rv">KWASU Student Housing Guide</p>
-      <h2 class="h-h2 rv">Hostels in Malete & KWASU Off-Campus Accommodation</h2>
-      <p class="h-sub rv">Everything you need to know about renting around Kwara State University without paying extortionate agent cuts.</p>
+      <h2 class="h-h2 rv">Malete & KWASU Hostels: Our First Stop</h2>
+      <p class="h-sub rv">Everything you need to know about renting around Kwara State University (and soon, other campuses) without paying extortionate agent cuts.</p>
       
-      <div style="margin-top: 36px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
-        <div class="h-tier rv" style="padding: 24px; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid var(--line);">
-          <h3 style="font-size: 18px; margin-bottom: 8px;">How much is a hostel in Malete?</h3>
-          <p style="font-size: 14.5px; line-height: 1.55; color: var(--body-c);">
-            Self-contain rooms near KWASU typically sit between <strong id="faqLo">&mdash;</strong> and <strong id="faqHi">&mdash;</strong> per academic session, depending on borehole backup, inverter power, and proximity to campus gates. The largest group of students registering for this session can pay between <strong id="faqMidLo">&mdash;</strong> and <strong id="faqMidHi">&mdash;</strong>.
+      <div class="faq-grid">
+        <div class="h-tier faq-card rv">
+          <h3>How much is a hostel in Malete?</h3>
+          <p>
+            Registered student budgets for Malete run from under <strong id="faqLo">&#8358;100,000</strong> to above <strong id="faqHi">&#8358;1,000,000</strong> per academic session. The largest group of students registering for this session can pay between <strong id="faqMidLo">&#8358;100,000</strong> and <strong id="faqMidHi">&#8358;150,000</strong>, and most budgets sit between &#8358;100,000 and &#8358;300,000.
           </p>
         </div>
 
-        <div class="h-tier rv" style="padding: 24px; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid var(--line);">
-          <h3 style="font-size: 18px; margin-bottom: 8px;">How do I get an agent-free hostel in Malete?</h3>
-          <p style="font-size: 14.5px; line-height: 1.55; color: var(--body-c);">
-            Arzuz connects KWASU students directly with verified property managers and vetted compound caretakers. You view verified photos, inspection notes, and GPS coordinates without paying inspection or middleman fees.
+        <div class="h-tier faq-card rv">
+          <h3>How do I get an agent-free hostel in Malete?</h3>
+          <p>
+            Arzuz connects KWASU students directly with verified property managers and vetted compound caretakers. You view verified photos, inspection notes, and GPS coordinates without paying inspection or middleman fees. Read <a href="safety.html">how we keep you safe</a> while you view.
           </p>
         </div>
 
-        <div class="h-tier rv" style="padding: 24px; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid var(--line);">
-          <h3 style="font-size: 18px; margin-bottom: 8px;">When should I secure my KWASU room?</h3>
-          <p style="font-size: 14.5px; line-height: 1.55; color: var(--body-c);">
-            The best rooms closest to campus along School Gate, Safari, and Tipper Garage fill up 4–6 weeks before the session resumes. Registering early gives you first pick before prices surge.
+        <div class="h-tier faq-card rv">
+          <h3>When should I secure my KWASU room?</h3>
+          <p>
+            The best rooms closest to campus along School Gate, Safari, and Tipper Garage fill up 4-6 weeks before the session resumes. Registering early gives you first pick before prices surge.
           </p>
         </div>
       </div>
-      <p id="faqNote" class="rv" style="margin-top: 18px; font-size: 13.5px; color: #9A8CA8; line-height: 1.55;"></p>
+      <p id="faqNote" class="faq-note rv"></p>
     </div>
   </section>
 
@@ -1043,7 +1119,7 @@
 
     /* curve description status */
     document.getElementById('curveNote').innerHTML = Arzuz.isReal()
-      ? 'Drag the rent. Watch how many students can reach you. Live figures for Malete \u2014 every ' +
+      ? 'Drag the rent. Watch how many students can reach you. Live figures from the Arzuz register. Every ' +
       'student counted registered a specific need and verified their phone number.'
       : '<b style="color:#C4B5FD">Illustrative figures.</b> Drag the rent to see how the pricing works. ' +
       'Real numbers appear here as students register, and we never show a count we cannot trace to a record.';
@@ -1054,7 +1130,7 @@
     /* ---------- steps rendering ---------- */
     const STEPS = [
       ['You tell us what you need', 'Room type, budget, how far you can walk, when you are moving. Ninety seconds. No fee, no browsing required.'],
-      ['We take that to landlords', 'Not a pitch — a number. How many students want their room type, and what those students can pay.'],
+      ['We take that to landlords', 'Not a pitch: a number. How many students want their room type, and what those students can pay.'],
       ['Listings get checked', 'Every listing carries a public verification state, so you know how much has actually been confirmed.'],
       ['You get matched', 'When something fits, we message you on WhatsApp with photos, verified details and reviews.'],
       ['Residents keep it honest', 'Only students with a verified number can review. Landlords can reply to any review. They cannot delete one.']];
@@ -1063,7 +1139,9 @@
 
     /* ---------- FAQ figures, from the same source as everything else ---------- */
     (() => {
-      const lo = BANDS[0][0], hi = BANDS[BANDS.length - 1][1];
+      const first = BANDS[0], last = BANDS[BANDS.length - 1];
+      const lo = first[0] === 0 ? first[1] : first[0];   /* "Under" band: quote its ceiling */
+      const hi = last[1] === 0 ? last[0] : last[1];      /* "Above" band: quote its floor */
       const mid = BANDS.reduce((a, b) => b[2] > a[2] ? b : a);
       const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
       set('faqLo', Arzuz.ng(lo));
@@ -1075,7 +1153,7 @@
         note.textContent = Arzuz.isReal()
           ? `From ${DEMAND_TOTAL} registrations for the ${(window.ARZUZ_CONFIG || {}).SESSION || ''} session, ` +
             `updated ${Arzuz.STAMP_DATE}. Every figure on this page traces back to a record.`
-          : 'Illustrative figures — the shape of the demand register, not yet our own records. Real ' +
+          : 'Illustrative figures: the shape of the demand register, not yet our own records. Real ' +
             'numbers replace these the moment registrations come in, and we never show a count we ' +
             'cannot trace to a record.';
       }
@@ -1084,8 +1162,11 @@
     /* ---------- demand curve interactive slider ---------- */
     const bars = document.getElementById('bars');
     const rows = BANDS.map(b => {
-      const lbl = b[0] >= 250000 ? 'Above ₦250k' : `₦${b[0] / 1000}k – ₦${b[1] / 1000}k`;
-      return { lo: b[0], n: b[2], lbl, pct: Math.round(b[2] / 44 * 100) };
+      const fk = v => v >= 1000000 ? `₦${v / 1000000}m` : `₦${v / 1000}k`;
+      const lbl = b[0] === 0 ? `Under ${fk(b[1])}`
+        : b[1] === 0 ? `Above ${fk(b[0])}`
+        : `${fk(b[0])} - ${fk(b[1])}`;
+      return { lo: b[0], n: b[2], lbl, pct: Math.round(b[2] / Math.max(...BANDS.map(x => x[2])) * 100) };
     });
     bars.innerHTML = rows.map(r =>
       `<div class="row"><span class="k">${r.lbl}</span><span class="t"><i data-w="${r.pct}" data-lo="${r.lo}"></i></span><span class="v">${r.n}</span></div>`).join('');
@@ -1096,17 +1177,17 @@
       document.getElementById('pv').textContent = Arzuz.ng(p);
       document.getElementById('reachN').textContent = r;
       document.getElementById('reachT').textContent =
-        ` of the ${DEMAND_TOTAL} students looking in Malete can afford your room.`;
+        ` of the ${DEMAND_TOTAL} students on Arzuz can afford your room.`;
       bars.querySelectorAll('i').forEach(el => {
         el.classList.toggle('lit', +el.dataset.lo >= p - 50000 && +el.dataset.lo < p);
       });
       const note = document.getElementById('note');
-      if (p > 200000) {
-        note.innerHTML = `Drop to ₦200,000 and <b style="color:#C4B5FD">${Arzuz.reach(200000) - r} more students</b> can see you — filled faster, with no commission taken.`;
+      if (p >= 1000000) {
+        note.innerHTML = `Very few registered students can afford this. Most registered budgets sit between <b style="color:#C4B5FD">₦100,000 and ₦300,000</b>.`;
       } else if (p <= 100000) {
-        note.textContent = 'Almost everyone looking can afford this. If your rooms still sit empty, the problem is visibility, not price.';
+        note.textContent = 'Almost every student in the register can afford a room at this price.';
       } else {
-        note.innerHTML = `You are priced into the deepest part of the market. <b style="color:#C4B5FD">${r} students</b> can reach you today.`;
+        note.innerHTML = `<b style="color:#C4B5FD">${r} registered students</b> can afford this number.`;
       }
     }
     sp.addEventListener('input', paint);
@@ -1116,7 +1197,7 @@
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     function fillBars() {
       bars.querySelectorAll('i').forEach((el, i) => {
-        setTimeout(() => { el.style.width = el.dataset.w + '%'; }, reduce ? 0 : i * 80);
+        setTimeout(() => { el.style.transform = 'scaleX(' + (el.dataset.w / 100) + ')'; }, reduce ? 0 : i * 80);
       });
     }
 
@@ -1137,11 +1218,18 @@
       document.querySelectorAll('.rv').forEach(e => io.observe(e));
     }
 
-    /* Header scrolled glass highlight */
-    window.addEventListener('scroll', () => {
+    /* Header scrolled highlight: sentinel + IntersectionObserver, no scroll handlers */
+    (() => {
       const header = document.querySelector('header');
-      if (header) header.classList.toggle('scrolled', window.scrollY > 20);
-    });
+      if (!header || !('IntersectionObserver' in window)) return;
+      const sentinel = document.createElement('div');
+      sentinel.setAttribute('aria-hidden', 'true');
+      sentinel.style.cssText = 'position:absolute;top:0;left:0;width:1px;height:24px;opacity:0;pointer-events:none';
+      document.body.appendChild(sentinel);
+      new IntersectionObserver(function (entries) {
+        header.classList.toggle('scrolled', !entries[0].isIntersecting);
+      }).observe(sentinel);
+    })();
 
     Arzuz.footer();
   </script>

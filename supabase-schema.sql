@@ -259,6 +259,39 @@ having count(*) >= 3;
 
 
 -- ------------------------------------------------------------
+-- 4b. PUBLIC LISTINGS VIEW — the one public read surface
+-- ------------------------------------------------------------
+-- browse.html reads this. Only active, verified, production rows,
+-- and only columns that hold nothing personal: owner names and
+-- phone numbers stay in the base table, which anon cannot read.
+-- The contact path is the support WhatsApp, so no number leaks.
+
+create or replace view public_listings
+with (security_invoker = true) as
+select
+  id,
+  created_at,
+  tier,
+  listed_price_ngn,
+  latitude,
+  longitude,
+  property_name,
+  photo_url,
+  property_type,
+  area,
+  rooms,
+  payload
+from listings
+where status = 'active'
+  and tier >= 1
+  and env = 'production';
+
+-- The view inherits RLS from the base table (security_invoker), so
+-- the grant below is what makes it readable to the website.
+grant select on public_listings to anon;
+
+
+-- ------------------------------------------------------------
 -- 5. CHECK IT WORKED
 -- ------------------------------------------------------------
 -- From the browser console on your live site, using the anon key

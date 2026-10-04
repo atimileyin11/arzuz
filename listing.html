@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verified Apartment in Malete — Arzuz</title>
+  <meta name="description" content="A verified student apartment near KWASU on Arzuz. Real price per session, measured walking time to campus, media checked by the Arzuz team.">
+  <link rel="canonical" href="https://arzuz.com/listing">
+  <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
+  <link rel="icon" href="assets/icons/icon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <meta property="og:title" content="Verified Apartment — Arzuz">
+  <meta property="og:description" content="Verified student housing near KWASU. Real prices, measured walking time, no agent fees.">
+  <meta property="og:image" content="https://arzuz.com/assets/social/og-image.png">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json" id="ldjson">{}</script>
+  <link rel="stylesheet" href="assets/arzuz.css">
+</head>
+<body>
+  <div class="ld" id="ldRoot">
+    <a class="back" href="browse.html">&#8592; Back to verified listings</a>
+
+    <!-- skeleton while the listing loads -->
+    <div id="ldSkeleton">
+      <div class="skel hero"></div>
+      <div class="skel line w60"></div>
+      <div class="skel line"></div>
+      <div class="skel line w40"></div>
+      <div class="skel block"></div>
+    </div>
+
+    <div id="ldContent" style="display:none"></div>
+
+    <div id="ldError" style="display:none">
+      <div class="empty">
+        <div class="m"><span>az</span></div>
+        <h2>This listing isn't live.</h2>
+        <p>It may have been rented, paused, or the link is incomplete. Every room on
+           Arzuz is checked before it appears — see what's verified right now.</p>
+        <div class="h-doors">
+          <a class="h-btn h-p" href="browse.html">Browse verified listings</a>
+          <a class="h-btn h-s" href="register.html">Register your need</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- sticky mobile CTA -->
+  <div class="sticky-cta" id="stickyCta" style="display:none">
+    <button type="button" class="sbtn p" id="ctaBook">Book this apartment</button>
+    <a class="sbtn g" id="ctaWa" href="#" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+  </div>
+
+  <!-- lightbox -->
+  <div class="lbx" id="lbx" role="dialog" aria-modal="true" aria-label="Media viewer">
+    <button type="button" class="lbx-close" id="lbxClose" aria-label="Close">&#10005;</button>
+    <button type="button" class="lbx-prev" id="lbxPrev" aria-label="Previous">&#8249;</button>
+    <div class="lbx-stage" id="lbxStage"></div>
+    <button type="button" class="lbx-next" id="lbxNext" aria-label="Next">&#8250;</button>
+    <div class="lbx-cap" id="lbxCap"></div>
+  </div>
+
+  <script src="assets/config.js"></script>
+  <script src="assets/data.js"></script>
+  <script src="assets/notify.js"></script>
+  <script src="assets/submit.js"></script>
+  <script src="assets/whatsapp.js"></script>
+  <script src="assets/app.js"></script>
+  <script>
+  /* ============================================================
+     Arzuz listing detail — premium single-apartment page.
+     Reads exactly one row from public_listings (the one public
+     read surface: no owner names, no phone numbers ever leave
+     the base table). All rendering is client-side, ES5, no libs.
+     ============================================================ */
+  (function(){
+    var c = window.ARZUZ_CONFIG || {};
+    var CAMPUS = { lat: 8.721, lng: 4.484 };   /* KWASU main gate */
+
+    var ROW = null, MEDIA = [], CUR = 0, LNAME = '', LTYPE = '', LRENT = 0;
+    var SHARED_TYPES = ['Shared room', 'Face-me-I-face-you', 'Hostel bunk'];
+    var SAVE_KEY = 'arzuz_saved_listings';
+
+    /* ---------- helpers ---------- */
+    function esc(s){
+      if (s === null || s === undefined) return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    }
+    function first(p, keys){
+      for (var i = 0; i < keys.length; i++){
+        if (p[keys[i]] !== undefined && p[keys[i]] !== null && p[keys[i]] !== '') return p[keys[i]];
+      }
+      return '';
+    }
+    function haversineKm(lat1, lng1, lat2, lng2){
+      var R = 6371, toRad = Math.PI / 180;
+      var dLat = (lat2 - lat1) * toRad, dLng = (lng2 - lng1) * toRad;
+      var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) *
+              Math.sin(dLng/2) * Math.sin(dLng/2);
+      return 2 * R * Math.asin(Math.sqrt(a));
+    }
+    function walkText(lat, lng){
+      if (!lat || !lng) return '';
+      var km = haversineKm(parseFloat(lat), parseFloat(lng), CAMPUS.lat, CAMPUS.lng) * 1.25;
+      var min = Math.round(km / 4.5 * 60);
+      if (min < 1) return 'On campus street';
+      if (min > 90) return '';
+      return '\uD83D\uDEB6 \u2248 ' + min + ' min walk to KWASU';
+    }
+    function tierBadge(tier){
+      if (Number(tier) >= 2) return '<span class="h-badge b2">Inspected</span>';
+      if (Number(tier) === 1) return '<span class="h-badge b1">Community verified</span>';
+      return '<span class="h-badge b0">Unverified</span>';
+    }
+    function iconFor(u){
+      var s = String(u).toLowerCase();
+      if (s.indexOf('water') !== -1) return '\uD83D\uDCA7';
+      if (s.indexOf('nepa') !== -1 || s.indexOf('solar') !== -1 || s.indexOf('light') !== -1) return '\u26A1';
+      if (s.indexOf('generator') !== -1) return '\uD83D\uDD0C';
+      if (s.indexOf('bathroom') !== -1 || s.indexOf('shower') !== -1) return '\uD83D\uDEBF';
+      if (s.indexOf('toilet') !== -1) return '\uD83D\uDEBD';
+      if (s.indexOf('security') !== -1 || s.indexOf('gate') !== -1 || s.indexOf('cctv') !== -1) return '\uD83D\uDEE1\uFE0F';
+      if (s.indexOf('fence') !== -1) return '\uD83E\uDDF1';
+      if (s.indexOf('kitchen') !== -1) return '\uD83C\uDF73';
+      if (s.indexOf('fan') !== -1) return '\uD83C\uDF2C\uFE0F';
+      if (s.indexOf('ac') !== -1 || s.indexOf('condition') !== -1) return '\u2744\uFE0F';
+      if (s.indexOf('meter') !== -1) return '\uD83D\uDCD1';
+      return '\u2705';
+    }
+    function ref8(){ return ROW && ROW.id ? String(ROW.id).substring(0, 8) : ''; }
+    function pageUrl(){ return location.origin + location.pathname + '?id=' + (ROW ? ROW.id : ''); }
+    function waSupport(msg){
+      var wa = (c.SUPPORT_WHATSAPP || '').replace(/[^0-9]/g, '');
+      return 'https://wa.me/' + wa + '?text=' + encodeURIComponent(msg);
+    }
+    function toast(msg, type){
+      if (window.ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast(msg, type || 'info');
+    }
+    function readSaved(){
+      try { return JSON.parse(localStorage.getItem(SAVE_KEY) || '[]'); } catch(e){ return []; }
+    }
+    function isSaved(){
+      return ROW && readSaved().indexOf(ROW.id) !== -1;
+    }
+    function toggleSaved(){
+      if (!ROW) return false;
+      var l = readSaved();
+      var i = l.indexOf(ROW.id);
+      if (i === -1) { l.push(ROW.id); }
+      else { l.splice(i, 1); }
+      try { localStorage.setItem(SAVE_KEY, JSON.stringify(l.slice(-100))); } catch(e){}
+      return i === -1;
+    }
+
+    /* Media: payload.media is the source of truth; photo/video fields
+       are honoured as a fallback so every existing listing renders. */
+    function buildMedia(p){
+      var out = [];
+      var m = p.media;
+      if (Array.isArray(m)) {
+        m.forEach(function(it){
+          if (it && it.url) {
+            out.push({ type: it.type === 'video' ? 'video' : 'image', url: String(it.url), label: it.label || '' });
+          }
+        });
+      }
+      if (!out.length && p.photo) out.push({ type: 'image', url: String(p.photo), label: 'Cover photo' });
+      if (!out.length && (p.video || p.video_url)) out.push({ type: 'video', url: String(p.video || p.video_url), label: 'Video tour' });
+      var seen = {}, ded = [];
+      out.forEach(function(it){ if (!seen[it.url]) { seen[it.url] = 1; ded.push(it); } });
+      return ded;
+    }
+
+    /* ---------- render ---------- */
+    function slideInner(m, i){
+      if (m.type === 'video') {
+        return '<video src="' + esc(m.url) + '" controls preload="metadata" playsinline></video>';
+      }
+      return '<img src="' + esc(m.url) + '" alt="' + esc(LNAME + ' — ' + (m.label || 'photo ' + (i + 1))) + '"' +
+             (i === 0 ? '' : ' loading="lazy"') + '>';
+    }
+
+    function renderGallery(){
+      var badge = tierBadge(ROW.tier);
+      var html = '<div class="gal" id="gal">' +
+        '<div class="gal-track" id="galTrack">' +
+        MEDIA.map(function(m, i){
+          return '<div class="gal-slide" data-i="' + i + '">' + slideInner(m, i) +
+                 '<span class="cr">\u00A9 Arzuz 2026 \u00B7 Verified media</span></div>';
+        }).join('') +
+        '</div>' +
+        '<span class="gal-badge">' + badge + '</span>' +
+        (MEDIA.length > 1 ? '<span class="gal-chip" id="galChip">1 / ' + MEDIA.length + '</span>' : '') +
+        (MEDIA.length > 1 ? '<button type="button" class="gal-nav prev" id="galPrev" aria-label="Previous photo">\u2039</button>' +
+                            '<button type="button" class="gal-nav next" id="galNext" aria-label="Next photo">\u203A</button>' : '') +
+        '</div>';
+
+      if (MEDIA.length > 1) {
+        html += '<div class="gal-thumbs" id="galThumbs">' +
+          MEDIA.map(function(m, i){
+            var inner = m.type === 'video'
+              ? '<video src="' + esc(m.url) + '" preload="metadata" muted></video>'
+              : '<img src="' + esc(m.url) + '" alt="" loading="lazy">';
+            return '<button type="button" class="gal-thumb' + (m.type === 'video' ? ' has-video' : '') +
+                   (i === 0 ? ' on' : '') + '" data-i="' + i + '" aria-label="Show item ' + (i + 1) + '">' + inner + '</button>';
+          }).join('') + '</div>';
+      }
+      html += '<p style="font-size:12px;color:var(--mid);margin-top:10px">' +
+        'All media \u00A9 Arzuz 2026 \u2014 verified apartment media, not for reuse without permission.</p>';
+      return html;
+    }
+
+    function renderTitle(){
+      var p = ROW.payload || {};
+      var waMsg = 'Hi Arzuz! I saw "' + LNAME + '" (' + (first(p, ['ar']) || 'Malete') + ', \u20A6' +
+        Number(LRENT).toLocaleString() + ' per session, ref ' + ref8() + ') on the listing page. Is it still available?';
+      return '' +
+        '<div class="ld-head">' +
+          '<h1>' + esc(LNAME) + '</h1>' +
+          '<div class="kebab-wrap">' +
+            '<button type="button" class="kebab-btn" id="kebabBtn" aria-haspopup="true" aria-expanded="false" aria-label="More actions">\u22EE</button>' +
+            '<div class="kebab-menu" id="kebabMenu" role="menu">' +
+              '<button type="button" class="kebab-item" id="kCopy" role="menuitem"><span class="ki">\uD83D\uDD17</span>Copy link</button>' +
+              '<button type="button" class="kebab-item" id="kShare" role="menuitem"><span class="ki">\uD83D\uDCE4</span>Share\u2026</button>' +
+              '<button type="button" class="kebab-item" id="kSave" role="menuitem"><span class="ki">\u2606</span><span id="kSaveLbl">Save for later</span></button>' +
+              '<div class="kebab-sep"></div>' +
+              '<button type="button" class="kebab-item" id="kReport" role="menuitem"><span class="ki">\uD83D\uDEA9</span>Report a problem</button>' +
+              (ROW.latitude ? '<button type="button" class="kebab-item" id="kMap" role="menuitem"><span class="ki">\uD83D\uDCCD</span>Open in Google Maps</button>' : '') +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="ld-sub">' +
+          '<span>\uD83D\uDCCD ' + esc(first(p, ['ar']) || 'Malete') + '</span>' +
+          (LTYPE ? '<span>' + esc(LTYPE) + '</span>' : '') +
+          (first(p, ['rm']) ? '<span>' + esc(first(p, ['rm'])) + '</span>' : '') +
+        '</div>' +
+        '<div class="stat-chips">' +
+          '<span class="stat-chip">' + tierBadge(ROW.tier) + '</span>' +
+          (walkText(ROW.latitude, ROW.longitude) ? '<span class="stat-chip">' + walkText(ROW.latitude, ROW.longitude) + '</span>' : '') +
+          (first(p, ['neg']) ? '<span class="stat-chip">\uD83D\uDCB0 Negotiable: ' + esc(first(p, ['neg'])) + '</span>' : '') +
+        '</div>' +
+        '<div class="ld-price-row">' +
+          '<span class="ld-price">\u20A6' + Number(LRENT).toLocaleString() + '</span>' +
+          '<span class="ld-per">per session</span>' +
+        '</div>';
+    }
+
+    function renderDescription(p){
+      var d = p.desc || p.description || '';
+      if (!d) return '';
+      return '<div class="ld-sec"><h2>About this place</h2><div class="ld-card">' +
+        '<div class="desc clamp" id="descTxt">' + esc(d) + '</div>' +
+        '<button type="button" class="desc-more" id="descMore" style="display:none">Read more \u25BE</button>' +
+        '</div></div>';
+    }
+
+    function renderFeatures(p){
+      var ut = first(p, ['ut', 'utilities']) || [];
+      if (typeof ut === 'string') ut = ut.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+      if (!ut.length) return '';
+      return '<div class="ld-sec"><h2>What this place offers</h2>' +
+        '<div class="feat-grid">' +
+        ut.map(function(u, i){
+          return '<div class="feat verified rv" style="--i:' + i + '"><span class="ic">' + iconFor(u) + '</span><span>' + esc(u) + '</span></div>';
+        }).join('') +
+        '</div></div>';
+    }
+
+    /* Booking: a request the team confirms on WhatsApp. Arzuz never
+       collects rent, deposits or payment — that rule is on every page. */
+    function renderBooking(p){
+      var MATE = SHARED_TYPES.indexOf(LTYPE) !== -1 ||
+                 p.split_ok === true || p.split_ok === 'yes';
+      var html = '<div class="ld-sec" id="book"><h2>Book this apartment</h2><div class="ld-card">';
+      if (MATE) {
+        html += '<div class="mate-box"><b>Shared by design.</b> You can book this room and split the ' +
+          'cost with a compatible roommate — tell us in the form and we introduce you to each other on ' +
+          'WhatsApp, the same way landlord matches work. Arzuz never shares a room the landlord has not ' +
+          'offered for sharing.</div>';
+      }
+      html += '<div id="form"></div>' +
+        '<p class="bk-note">Booking a viewing is free. Arzuz does not collect rent, hold deposits or take ' +
+        'payment \u2014 you pay the landlord directly, and the owner\u2019s number stays private until the team ' +
+        'connects you.</p>' +
+        '</div></div>';
+      return { html: html, mate: MATE };
+    }
+
+    /* The form engine submits F.answers as-is; this wrapper stamps the
+       apartment onto every booking and spawns the roommate demand
+       record the matching panel pairs from. */
+    function wireSubmit(mate){
+      var _send = ArzuzSubmit.send.bind(ArzuzSubmit);
+      ArzuzSubmit.send = function(table, answers){
+        if (table === 'booking_requests') {
+          answers.listing_id = ROW.id;
+          answers.listing_name = LNAME;
+          answers.apt_ref = ref8();
+          if (answers.roommate === 'Split with a roommate') {
+            answers.roommate = 'yes';
+            if (mate) {
+              var d = {
+                first: answers.name || '', phone: answers.phone || '',
+                type: LTYPE,
+                budget: 'Split of \u20A6' + Number(LRENT).toLocaleString() + ' per session',
+                when: answers.when || 'This session',
+                roommate: 'yes',
+                listing_id: ROW.id,
+                listing_name: LNAME,
+                mate_gender: answers.mate_gender || '',
+                mate_budget: answers.mate_budget || '',
+                mate_style: answers.mate_style || ''
+              };
+              setTimeout(function(){ _send('demand_records', d); }, 400);
+            }
+          }
+        }
+        return _send(table, answers);
+      };
+    }
+
+    function mountForm(mate){
+      var steps = [
+        { k: 'ct', h: "Who's booking?",
+          hint: 'We use this to confirm the viewing with you on WhatsApp. Your number is never shown publicly.',
+          f: [['name', 'Your first name', 'text'], ['phone', 'WhatsApp number', 'tel']] },
+        { k: 'when', h: 'When do you want to move in?',
+          o: ['This session', 'Next session', 'Within 3 months', 'Flexible'] }
+      ];
+      if (mate) {
+        var onlyMate = function(a){ return a.roommate === 'Split with a roommate'; };
+        steps.push({ k: 'roommate', h: 'Book it alone, or split with a roommate?',
+          hint: 'This room is offered for sharing \u2014 two compatible students can take it and split the cost.',
+          o: ['Split with a roommate', 'Book it alone'] });
+        steps.push({ k: 'mate_gender', h: 'Roommate preference',
+          hint: 'We only introduce people of the same gender by default.', o: ['Same gender as me', 'Any gender'], onlyIf: onlyMate });
+        steps.push({ k: 'mate_budget', h: 'How should the split work?',
+          o: ['I can pay my half', 'I need help covering my half'], onlyIf: onlyMate });
+        steps.push({ k: 'mate_style', h: 'Your living style, in one tap',
+          hint: "We use it to pair people who won't clash.", o: ['Tidy and quiet', 'Tidy and sociable', 'Relaxed', 'It varies'], onlyIf: onlyMate });
+      }
+      steps.push({ k: 'note', h: 'Anything we should tell the landlord?', opt: true,
+        ta: "e.g. I'm a 200-level student, I'd like to view on Saturday." });
+
+      Arzuz.form({
+        table: 'booking_requests',
+        backHref: 'browse.html', backLabel: '\u2190 Back to listings',
+        steps: steps,
+        done:
+          '<div class="done"><div class="m"><span>az</span></div><h3>Booking request sent.</h3>' +
+          '<p>The Arzuz team confirms availability with the owner and messages you on WhatsApp ' +
+          'with viewing details. No payment happens on Arzuz \u2014 ever.</p>' +
+          '<div class="nav" style="display:flex;gap:10px;justify-content:center;margin-top:18px">' +
+          '<a class="next" href="browse.html">Keep browsing</a></div></div>'
+      });
+    }
+
+    /* ---------- gallery interaction ---------- */
+    var gal = null, track = null;
+    function go(i){
+      if (!MEDIA.length) return;
+      CUR = (i + MEDIA.length) % MEDIA.length;
+      track.style.transform = 'translateX(' + (-CUR * 100) + '%)';
+      var chip = document.getElementById('galChip');
+      if (chip) chip.textContent = (CUR + 1) + ' / ' + MEDIA.length;
+      var thumbs = document.querySelectorAll('.gal-thumb');
+      thumbs.forEach(function(t, k){ t.classList.toggle('on', k === CUR); });
+      var on = document.querySelector('.gal-thumb.on');
+      if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      /* preload the next frame */
+      var nxt = MEDIA[(CUR + 1) % MEDIA.length];
+      if (nxt && nxt.type === 'image') { var im = new Image(); im.src = nxt.url; }
+    }
+    function wireGallery(){
+      gal = document.getElementById('gal'); track = document.getElementById('galTrack');
+      if (!gal) return;
+      /* tap without drag opens the lightbox — wired even for a single photo */
+      gal.addEventListener('click', function(e){
+        if (e.target.closest('video') || e.target.closest('.gal-nav')) return;
+        if (Math.abs(dx) > 8) return;
+        openLbx(CUR);
+      });
+      if (MEDIA.length < 2) return;
+      document.getElementById('galPrev').addEventListener('click', function(e){ e.stopPropagation(); go(CUR - 1); });
+      document.getElementById('galNext').addEventListener('click', function(e){ e.stopPropagation(); go(CUR + 1); });
+      document.querySelectorAll('.gal-thumb').forEach(function(t){
+        t.addEventListener('click', function(){ go(parseInt(t.dataset.i, 10)); });
+      });
+      /* pointer swipe: drag the track, release past the threshold */
+      var sx = 0, dx = 0, down = false, w = 1;
+      gal.addEventListener('pointerdown', function(e){
+        if (e.target.closest('video')) return;
+        down = true; sx = e.clientX; dx = 0; w = gal.clientWidth || 1;
+        gal.classList.add('dragging');
+      });
+      window.addEventListener('pointermove', function(e){
+        if (!down) return;
+        dx = e.clientX - sx;
+        track.style.transform = 'translateX(calc(' + (-CUR * 100) + '% + ' + dx + 'px))';
+      });
+      window.addEventListener('pointerup', function(){
+        if (!down) return;
+        down = false; gal.classList.remove('dragging');
+        if (Math.abs(dx) > w * 0.18) go(dx < 0 ? CUR + 1 : CUR - 1);
+        else go(CUR);
+        dx = 0;
+      });
+      /* nav + thumbs + swipe are only meaningful with more than one item */
+    }
+
+    /* ---------- lightbox ---------- */
+    function openLbx(i){
+      var lbx = document.getElementById('lbx'), stage = document.getElementById('lbxStage');
+      var cap = document.getElementById('lbxCap');
+      var m = MEDIA[i]; if (!m) return;
+      stage.innerHTML = m.type === 'video'
+        ? '<video src="' + esc(m.url) + '" controls autoplay playsinline></video>'
+        : '<img src="' + esc(m.url) + '" alt="' + esc(LNAME) + '">';
+      cap.innerHTML = '<span class="crn">\u00A9 Arzuz 2026 \u00B7 Verified media</span>' +
+        (m.label ? ' \u2014 ' + esc(m.label) : '') +
+        (MEDIA.length > 1 ? ' \u00B7 ' + (i + 1) + ' of ' + MEDIA.length : '');
+      lbx.classList.add('on');
+      document.getElementById('lbxPrev').style.display = MEDIA.length > 1 ? '' : 'none';
+      document.getElementById('lbxNext').style.display = MEDIA.length > 1 ? '' : 'none';
+      lbx.dataset.i = i;
+    }
+    function closeLbx(){
+      document.getElementById('lbx').classList.remove('on');
+      document.getElementById('lbxStage').innerHTML = '';
+    }
+    function wireLightbox(){
+      document.getElementById('lbxClose').addEventListener('click', closeLbx);
+      document.getElementById('lbxPrev').addEventListener('click', function(){
+        openLbx((parseInt(document.getElementById('lbx').dataset.i || 0, 10) + MEDIA.length - 1) % MEDIA.length);
+      });
+      document.getElementById('lbxNext').addEventListener('click', function(){
+        openLbx((parseInt(document.getElementById('lbx').dataset.i || 0, 10) + 1) % MEDIA.length);
+      });
+      document.getElementById('lbx').addEventListener('click', function(e){
+        if (e.target === this) closeLbx();
+      });
+      document.addEventListener('keydown', function(e){
+        var lbx = document.getElementById('lbx');
+        if (!lbx.classList.contains('on')) return;
+        if (e.key === 'Escape') closeLbx();
+        if (e.key === 'ArrowLeft') document.getElementById('lbxPrev').click();
+        if (e.key === 'ArrowRight') document.getElementById('lbxNext').click();
+      });
+    }
+
+    /* ---------- kebab menu ---------- */
+    function copyLink(){
+      var url = pageUrl();
+      function done(){ toast('Link copied \u2014 share it anywhere.', 'success'); }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(done).catch(function(){ fallbackCopy(url, done); });
+      } else fallbackCopy(url, done);
+    }
+    function fallbackCopy(text, done){
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); if (done) done(); }
+      catch(e){ toast('Could not copy \u2014 long-press the address bar instead.'); }
+      document.body.removeChild(ta);
+    }
+    function wireKebab(){
+      var btn = document.getElementById('kebabBtn'), menu = document.getElementById('kebabMenu');
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var open = menu.classList.toggle('open');
+        btn.classList.toggle('on', open);
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+      document.addEventListener('click', function(e){
+        if (!e.target.closest('.kebab-wrap')) { menu.classList.remove('open'); btn.classList.remove('on'); }
+      });
+      document.getElementById('kCopy').addEventListener('click', function(){ copyLink(); menu.classList.remove('open'); });
+      document.getElementById('kShare').addEventListener('click', function(){
+        menu.classList.remove('open');
+        if (navigator.share) {
+          navigator.share({ title: LNAME + ' \u2014 Arzuz', text: 'Verified room near KWASU: ' + LNAME, url: pageUrl() })
+            .catch(function(err){ if (err && err.name !== 'AbortError') copyLink(); });
+        } else copyLink();
+      });
+      var saveLbl = document.getElementById('kSaveLbl');
+      function paintSave(){ saveLbl.textContent = isSaved() ? 'Saved \u2713' : 'Save for later'; }
+      paintSave();
+      document.getElementById('kSave').addEventListener('click', function(){
+        var now = toggleSaved(); paintSave();
+        toast(now ? 'Saved \u2014 find it again from this device.' : 'Removed from saved.', now ? 'success' : 'info');
+        menu.classList.remove('open');
+      });
+      document.getElementById('kReport').addEventListener('click', function(){
+        menu.classList.remove('open');
+        window.open(waSupport('Hi Arzuz! I want to report a problem with "' + LNAME + '" (ref ' + ref8() + '): '), '_blank', 'noopener');
+      });
+      var km = document.getElementById('kMap');
+      if (km) km.addEventListener('click', function(){
+        menu.classList.remove('open');
+        window.open('https://www.google.com/maps?q=' + encodeURIComponent(ROW.latitude + ',' + ROW.longitude), '_blank', 'noopener');
+      });
+    }
+
+    /* ---------- entrance animations ---------- */
+    function wireReveals(){
+      var els = document.querySelectorAll('.rv');
+      if (!('IntersectionObserver' in window)) {
+        els.forEach(function(el){ el.classList.add('in'); });
+        return;
+      }
+      var io = new IntersectionObserver(function(entries){
+        entries.forEach(function(en){
+          if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); }
+        });
+      }, { threshold: 0.15 });
+      els.forEach(function(el){ io.observe(el); });
+    }
+
+    /* ---------- description read-more ---------- */
+    function wireDesc(){
+      var d = document.getElementById('descTxt'), b = document.getElementById('descMore');
+      if (!d || !b) return;
+      if (d.scrollHeight > d.clientHeight + 8) b.style.display = '';
+      b.addEventListener('click', function(){
+        var clamped = d.classList.toggle('clamp');
+        b.textContent = clamped ? 'Read more \u25BE' : 'Show less \u25B4';
+      });
+    }
+
+    /* ---------- SEO / share metadata ---------- */
+    function paintMeta(p){
+      var area = first(p, ['ar']) || 'Malete';
+      document.title = LNAME + ' \u2014 ' + area + ' | Arzuz';
+      var mt = document.querySelector('meta[property="og:title"]');
+      var md = document.querySelector('meta[property="og:description"]');
+      var mi = document.querySelector('meta[property="og:image"]');
+      if (mt) mt.setAttribute('content', LNAME + ' \u2014 ' + area + ' | Arzuz');
+      if (md) md.setAttribute('content', '\u20A6' + Number(LRENT).toLocaleString() + ' per session \u00B7 verified \u00B7 measured walk to KWASU.');
+      if (mi && MEDIA.length && MEDIA[0].type === 'image') mi.setAttribute('content', MEDIA[0].url);
+      var jd = document.getElementById('ldjson');
+      if (jd) jd.textContent = JSON.stringify({
+        '@context': 'https://schema.org', '@type': 'Apartment',
+        name: LNAME, address: area,
+        numberOfRooms: first(p, ['rm']) || undefined,
+        image: MEDIA.filter(function(m){ return m.type === 'image'; }).map(function(m){ return m.url; })
+      });
+    }
+
+    /* ---------- boot ---------- */
+    function showError(){
+      document.getElementById('ldSkeleton').style.display = 'none';
+      document.getElementById('ldError').style.display = '';
+    }
+
+    function boot(){
+      var params = new URLSearchParams(location.search);
+      var id = (params.get('id') || '').trim();
+      if (!id || !c.SUPABASE_URL || !c.SUPABASE_ANON_KEY) { showError(); return; }
+
+      var url = c.SUPABASE_URL.replace(/\/+$/, '') +
+        '/rest/v1/public_listings?select=*&id=eq.' + encodeURIComponent(id);
+      fetch(url, { headers: { 'apikey': c.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + c.SUPABASE_ANON_KEY } })
+        .then(function(res){
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.json();
+        })
+        .then(function(rows){
+          if (!rows || !rows.length) { showError(); return; }
+          ROW = rows[0];
+          var p = ROW.payload || {};
+          LNAME = first(p, ['prop_name']) || 'Unnamed property';
+          LTYPE = first(p, ['ty']) || '';
+          LRENT = Number(first(p, ['rent']) || 0);
+          MEDIA = buildMedia(p);
+
+          var bk = renderBooking(p);
+          document.getElementById('ldContent').innerHTML =
+            (MEDIA.length ? renderGallery() :
+              '<div class="gal"><div class="gal-slide" style="cursor:default">\uD83D\uDCF7 Photos coming soon</div></div>') +
+            renderTitle() +
+            renderDescription(p) +
+            renderFeatures(p) +
+            bk.html;
+
+          document.getElementById('ldSkeleton').style.display = 'none';
+          var content = document.getElementById('ldContent');
+          content.style.display = '';
+
+          /* WhatsApp CTAs — the support number stays the contact path */
+          var waMsg = 'Hi Arzuz! I saw "' + LNAME + '" (' + (first(p, ['ar']) || 'Malete') + ', \u20A6' +
+            Number(LRENT).toLocaleString() + ' per session, ref ' + ref8() + '). I want to book it \u2014 is it still available?';
+          var ctaWa = document.getElementById('ctaWa');
+          ctaWa.href = waSupport(waMsg);
+          document.getElementById('stickyCta').style.display = '';
+          document.getElementById('ctaBook').addEventListener('click', function(){
+            document.getElementById('book').scrollIntoView({ behavior: 'smooth', block: 'start' });
+          });
+
+          paintMeta(p);
+          if (MEDIA.length) wireGallery();
+          wireLightbox();
+          wireKebab();
+          wireDesc();
+          wireReveals();
+          wireSubmit(bk.mate);
+          mountForm(bk.mate);
+        })
+        .catch(function(err){
+          console.warn('[Arzuz] listing load failed:', err.message);
+          showError();
+        });
+    }
+
+    Arzuz.chrome('student');
+    Arzuz.footer();
+    boot();
+  })();
+  </script>
+</body>
+</html>

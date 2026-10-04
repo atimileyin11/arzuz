@@ -89,6 +89,19 @@ function formatMessage(table, p) {
     lines.push(`• <b>Run By:</b> ${esc(p.who) || 'N/A'}`);
     lines.push(`• <b>WhatsApp:</b> ${esc(p.ph || p.owner_phone) || 'N/A'}`);
     if (p.photo) lines.push(`• <b>Photo:</b> <a href="${esc(p.photo, 300)}">view</a>`);
+  } else if (table === 'booking_requests') {
+    title = '📅 <b>New Booking Request</b>';
+    lines.push(`• <b>Student:</b> ${esc(p.name || p.student_name) || 'N/A'}`);
+    lines.push(`• <b>Apartment:</b> ${esc(p.listing_name || '—')}${p.apt_ref ? ' (ref ' + esc(p.apt_ref) + ')' : ''}`);
+    lines.push(`• <b>Move-in:</b> ${esc(p.when || p.move_in) || 'N/A'}`);
+    lines.push(`• <b>WhatsApp:</b> ${esc(p.phone) || 'N/A'}`);
+    if (p.roommate === 'yes') {
+      lines.push(`• <b>🤝 Roommate:</b> yes — wants to split with a compatible partner`);
+      if (p.mate_gender) lines.push(`• <b>Preference:</b> ${esc(p.mate_gender)}`);
+      if (p.mate_budget) lines.push(`• <b>Split:</b> ${esc(p.mate_budget)}`);
+      if (p.mate_style) lines.push(`• <b>Style:</b> ${esc(p.mate_style)}`);
+    }
+    if (p.note) lines.push(`• <b>Note:</b> ${esc(p.note)}`);
   } else if (table === 'scout_submissions') {
     title = '🔍 <b>New Building Scout Report</b>';
     lines.push(`• <b>First Name:</b> ${esc(p.first || p.first_name) || 'N/A'}`);

@@ -10,7 +10,7 @@ Allow: /
 Disallow: /admin.html
 
 # /owner-list.html is the landlord form; it carries a canonical link
-# to /list, which stays indexable — "list your property in Malete"
+# to /list, which stays indexable — "list your property on Arzuz"
 # is a landing page worth ranking.
 
 Sitemap: https://arzuz.com/sitemap.xml

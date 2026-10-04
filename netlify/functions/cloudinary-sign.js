@@ -14,6 +14,12 @@
 
 const crypto = require('crypto');
 
+/* Copyright context stamped into every uploaded asset. Plain ASCII
+   so the signature survives every client and encoding path — the
+   visible "©" treatment is applied by the site itself. */
+const COPYRIGHT_CONTEXT =
+  'caption=(c) Arzuz 2026 - verified apartment media|alt=Verified apartment media by Arzuz';
+
 exports.handler = async function (event) {
   // CORS pre-flight
   const CORS = {
@@ -45,6 +51,7 @@ exports.handler = async function (event) {
   const folder       = 'arzuz-buildings';
   const eager        = 'c_limit,w_1600,q_auto,f_auto';   // auto-compress on upload
   const maxFileSize  = 10 * 1024 * 1024;                 // 10 MB, matches the form copy
+  const context      = COPYRIGHT_CONTEXT;                // copyright metadata on the asset
 
   // Build the string-to-sign exactly as Cloudinary expects:
   // signable params in alphabetical order, secret appended last.
@@ -52,8 +59,8 @@ exports.handler = async function (event) {
   // is rejected by Cloudinary itself — the signature cannot be
   // reused for something bigger than what we approved.
   const paramsToSign =
-    `eager=${eager}&folder=${folder}&max_file_size=${maxFileSize}&timestamp=${timestamp}${API_SECRET}`;
-  const signature    = crypto.createHash('sha1').update(paramsToSign).digest('hex');
+    `context=${context}&eager=${eager}&folder=${folder}&max_file_size=${maxFileSize}&timestamp=${timestamp}${API_SECRET}`;
+  const signature    = crypto.createHash('sha1').update(paramsToSign, 'utf8').digest('hex');
 
   return {
     statusCode: 200,
@@ -65,6 +72,7 @@ exports.handler = async function (event) {
       cloud_name:   CLOUD_NAME,
       folder,
       eager,
+      context,
       max_file_size: maxFileSize,
     }),
   };

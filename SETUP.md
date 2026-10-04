@@ -16,9 +16,10 @@ services are free at your scale.
 | `owner-list.html` | Property listings | `listings` |
 | `scout.html` | Building registrations, real rent paid | `scout_submissions` |
 
-**That is the whole site.** Everything that ran on sample listings has been removed — there is
-no browse, no listing pages, no dashboards. A student who registers cannot wander into invented
-data, which is the only version of this that is honest before you have real inventory.
+**That is the whole site** — plus `browse.html`, the public board of verified rooms. It reads the
+`public_listings` view (active + community-verified or inspected + production only) and shows
+nothing when that view is empty. A student who registers cannot wander into invented data,
+which is the only version of this that is honest before you have real inventory.
 
 The homepage carries one illustrative element: the price curve a landlord drags. It is labelled
 **Illustrative figures** until you set `DEMAND_IS_REAL = true` in `assets/data.js`, at which point
@@ -38,6 +39,8 @@ the label and the wording switch to live automatically.
 1. Left sidebar → **SQL Editor** → **New query**
 2. **New project?** Paste all of `supabase-schema.sql`. **Already have data?** Paste
    `supabase-hardening.sql` instead — it does the same job without touching your rows.
+   Already hardened *before* the browse page existed? Run `supabase-public-view.sql` once —
+   it adds just the `public_listings` view browse.html reads.
 3. Press **Run**
 
 You should see *Success. No rows returned.*

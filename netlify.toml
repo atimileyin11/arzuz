@@ -25,6 +25,11 @@
   status = 200
 
 [[redirects]]
+  from = "/browse"
+  to   = "/browse.html"
+  status = 200
+
+[[redirects]]
   from = "/my-building"
   to   = "/scout.html"
   status = 200
@@ -32,6 +37,11 @@
 [[redirects]]
   from = "/safety"
   to   = "/safety.html"
+  status = 200
+
+[[redirects]]
+  from = "/care"
+  to   = "/care.html"
   status = 200
 
 [[redirects]]

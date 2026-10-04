@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verified Rooms & Hostels in Malete — Browse | Arzuz</title>
+  <meta name="description" content="Browse verified student rooms, self-contains and hostels in Malete near KWASU. Real prices per session, walking time to campus, no agent fees.">
+  <link rel="canonical" href="https://arzuz.com/browse">
+  <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
+  <link rel="icon" href="assets/icons/icon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <meta property="og:title" content="Verified Rooms & Hostels in Malete — Arzuz">
+  <meta property="og:description" content="Verified student housing near KWASU. Real prices, walking time to campus, no agent fees.">
+  <meta property="og:image" content="https://arzuz.com/assets/social/og-image.png">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="assets/arzuz.css">
+  <style>
+    .bw {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 34px 24px 70px;
+    }
+
+    .bw .h-lbl { margin-bottom: 14px; }
+
+    .bw h1 {
+      margin-bottom: 12px;
+    }
+
+    .bw .lede {
+      font-size: 17px;
+      line-height: 1.6;
+      color: var(--body-c);
+      max-width: 62ch;
+      margin-bottom: 30px;
+    }
+
+    /* honest empty state */
+    .empty {
+      background: var(--surface);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 44px 32px;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);
+    }
+    .empty .m {
+      width: 64px; height: 64px; font-size: 30px;
+      margin: 0 auto 20px;
+    }
+    .empty h2 {
+      font-size: clamp(22px, 4vw, 27px);
+      margin-bottom: 12px;
+    }
+    .empty p {
+      color: var(--body-c);
+      line-height: 1.6;
+      max-width: 52ch;
+      margin: 0 auto 8px;
+      font-size: 15.5px;
+    }
+    .empty .h-doors {
+      margin-top: 26px;
+      justify-content: center;
+    }
+
+    /* listing grid */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      background: var(--glass-bg-light);
+      backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--glass-border-light);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04);
+      transition: transform 0.28s var(--ease-spring), box-shadow 0.28s var(--ease-spring), border-color 0.28s ease;
+      display: flex;
+      flex-direction: column;
+    }
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
+      border-color: rgba(124, 58, 237, 0.35);
+    }
+
+    .card .ph {
+      position: relative;
+      aspect-ratio: 4 / 3;
+      background:
+        repeating-linear-gradient(45deg, #ECE5DC, #ECE5DC 10px, #F4EFE9 10px, #F4EFE9 20px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--mid);
+      font-size: 14px;
+      overflow: hidden;
+    }
+    .card .ph img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .card .media-chips {
+      position: absolute; left: 12px; bottom: 12px;
+      display: flex; gap: 6px; z-index: 2;
+    }
+    .card .media-chip {
+      font-size: 11px; font-weight: 700; color: #fff;
+      background: rgba(10, 8, 16, 0.55);
+      backdrop-filter: blur(6px);
+      padding: 4px 9px; border-radius: 999px;
+    }
+    .card .ph .badge {
+      position: absolute;
+      top: 12px; left: 12px;
+      margin: 0;
+    }
+
+    .card .body { padding: 18px 20px 20px; display: flex; flex-direction: column; flex: 1; }
+    .card h3 {
+      font-size: 19px;
+      margin-bottom: 4px;
+    }
+    .card .area {
+      font-size: 13.5px;
+      color: var(--mid);
+      margin-bottom: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 12px;
+    }
+    .card .price {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: 24px;
+      letter-spacing: -.02em;
+      color: var(--ink);
+      line-height: 1;
+      margin-bottom: 2px;
+    }
+    .card .per {
+      font-size: 12.5px;
+      color: var(--mid);
+      margin-bottom: 14px;
+    }
+    .card .walk {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--stamp-vibrant);
+      background: rgba(124, 58, 237, 0.08);
+      border: 1px solid rgba(124, 58, 237, 0.2);
+      border-radius: 8px;
+      padding: 6px 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 14px;
+      width: fit-content;
+    }
+    .card .amen {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+    .card .amen span {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--stamp);
+      background: var(--stamp-soft);
+      border: 1px solid rgba(107, 59, 167, 0.18);
+      border-radius: 6px;
+      padding: 3px 8px;
+    }
+    .card .cta {
+      margin-top: auto;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .card .cta a {
+      flex: 1;
+      text-align: center;
+      text-decoration: none;
+      font-size: 14.5px;
+      font-weight: 700;
+      padding: 12px 14px;
+      border-radius: 9px;
+      border: 2px solid var(--stamp);
+      transition: transform 0.22s var(--ease-spring), background 0.22s ease;
+    }
+    .card .cta a.primary {
+      background: linear-gradient(135deg, var(--stamp) 0%, var(--stamp-vibrant) 100%);
+      color: #fff;
+      border: none;
+      box-shadow: 0 4px 14px var(--stamp-glow);
+    }
+    .card .cta a.primary:hover { transform: translateY(-2px); }
+    .card .cta a.ghost {
+      background: transparent;
+      color: var(--stamp-vibrant);
+      border-color: rgba(124, 58, 237, 0.35);
+    }
+    .card .cta a.ghost:hover { background: var(--stamp-soft); }
+
+    .note {
+      margin-top: 34px;
+      font-size: 13.5px;
+      color: var(--mid);
+      line-height: 1.65;
+      border-top: 1px solid var(--line);
+      padding-top: 20px;
+    }
+
+    @media (max-width: 640px) {
+      .bw { padding: 26px 18px 60px; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bw">
+    <p class="h-lbl">Now live in Malete · Kwara State</p>
+    <h1>Verified rooms near campus</h1>
+    <p class="lede">Every listing below was checked before it appeared here — the badge on each photo says how far that check went. Prices are per session, and the walking time to KWASU is measured from the compound's dropped pin, not guessed.</p>
+
+    <div id="listings"><div class="empty"><div class="m"><span>az</span></div><h2>Loading…</h2><p>Fetching verified listings.</p></div></div>
+
+    <p class="note">
+      Arzuz does not collect rent, hold deposits or take payment. Contact goes through the Arzuz team —
+      the owner's number is never published. Interested in listing a property?
+      <a href="owner-list.html">Add yours here</a>. Looking rather than browsing?
+      <a href="register.html">Register your need</a> and get matched first.
+    </p>
+  </div>
+
+  <script src="assets/config.js"></script>
+  <script src="assets/data.js"></script>
+  <script src="assets/app.js"></script>
+  <script>
+  (function(){
+    var c = window.ARZUZ_CONFIG || {};
+
+    /* KWASU main gate — the reference point for walking time */
+    var CAMPUS = { lat: 8.721, lng: 4.484 };
+
+    /* straight-line km */
+    function haversineKm(lat1, lng1, lat2, lng2){
+      var R = 6371, toRad = Math.PI / 180;
+      var dLat = (lat2 - lat1) * toRad, dLng = (lng2 - lng1) * toRad;
+      var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) *
+              Math.sin(dLng/2) * Math.sin(dLng/2);
+      return 2 * R * Math.asin(Math.sqrt(a));
+    }
+
+    /* measured walking time: path is longer than the straight line,
+       students walk ~4.5 km/h on campus roads */
+    function walkText(lat, lng){
+      if (!lat || !lng) return '';
+      var km = haversineKm(parseFloat(lat), parseFloat(lng), CAMPUS.lat, CAMPUS.lng) * 1.25;
+      var min = Math.round(km / 4.5 * 60);
+      if (min < 1) return 'On campus street';
+      if (min > 90) return '';
+      return '🚶 ≈ ' + min + ' min walk to KWASU';
+    }
+
+    function tierBadge(tier){
+      if (Number(tier) >= 2) return '<span class="h-badge b2" style="margin:0">Inspected</span>';
+      if (Number(tier) === 1) return '<span class="h-badge b1" style="margin:0">Community verified</span>';
+      return '<span class="h-badge b0" style="margin:0">Unverified</span>';
+    }
+
+    function esc(s){
+      if (s === null || s === undefined) return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    }
+
+    function first(p, keys){
+      for (var i = 0; i < keys.length; i++){
+        if (p[keys[i]] !== undefined && p[keys[i]] !== null && p[keys[i]] !== '') return p[keys[i]];
+      }
+      return '';
+    }
+
+    function card(r){
+      var p = r.payload || {};
+      var name = first(p, ['prop_name']) || 'Unnamed property';
+      var area = first(p, ['ar']) || 'Malete';
+      var rent = Number(first(p, ['rent']) || 0);
+      var type = first(p, ['ty']) || '';
+      var rooms = first(p, ['rm']) || '';
+      var photo = first(p, ['photo']);
+      var ut = first(p, ['ut', 'utilities']) || [];
+      if (typeof ut === 'string') ut = ut.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+      var walk = walkText(r.latitude || first(p, ['lat']), r.longitude || first(p, ['lng']));
+      var ref = r.id ? String(r.id).substring(0, 8) : '';
+      var vid = first(p, ['video', 'video_url']);
+      var nImg = 0, nVid = 0;
+      if (Array.isArray(p.media) && p.media.length) {
+        p.media.forEach(function(m){ if (m && m.url) { if (m.type === 'video') nVid++; else nImg++; } });
+      } else {
+        if (photo) nImg = 1;
+        if (vid) nVid = 1;
+      }
+      var chips =
+        (nImg > 1 ? '<span class="media-chip">📷 ' + nImg + ' photos</span>' : '') +
+        (nVid ? '<span class="media-chip">▶ Tour</span>' : '');
+      var wa = (c.SUPPORT_WHATSAPP || '').replace(/[^0-9]/g, '');
+      var msg = encodeURIComponent(
+        'Hi Arzuz! I saw "' + name + '" (' + area + ', ₦' + rent.toLocaleString() + ' per session, ref ' + ref +
+        ') on the browse page. Is it still available?'
+      );
+
+      return '<div class="card">' +
+        '<div class="ph">' + (photo ? '<img src="' + esc(photo) + '" alt="' + esc(name) + '" loading="lazy">' : '📷 Photo coming soon') +
+        (chips ? '<span class="media-chips">' + chips + '</span>' : '') +
+        '<span class="ph-cr">© Arzuz</span>' +
+        '<span class="badge">' + tierBadge(r.tier) + '</span></div>' +
+        '<div class="body">' +
+          '<h3>' + esc(name) + '</h3>' +
+          '<div class="area"><span>📍 ' + esc(area) + '</span>' + (type ? '<span>' + esc(type) + '</span>' : '') + (rooms ? '<span>' + esc(rooms) + '</span>' : '') + '</div>' +
+          '<div class="price">₦' + rent.toLocaleString() + '</div>' +
+          '<div class="per">per session · negotiable: ' + esc(first(p, ['neg']) || 'ask us') + '</div>' +
+          (walk ? '<div class="walk">' + walk + '</div>' : '') +
+          (ut.length ? '<div class="amen">' + ut.slice(0, 4).map(function(u){ return '<span>' + esc(u) + '</span>'; }).join('') +
+            (ut.length > 4 ? '<span>+' + (ut.length - 4) + '</span>' : '') + '</div>' : '') +
+          '<div class="cta">' +
+            '<a class="primary" href="listing.html?id=' + encodeURIComponent(r.id || '') + '">View details</a>' +
+            '<a class="ghost" href="https://wa.me/' + wa + '?text=' + msg + '" target="_blank" rel="noopener noreferrer">Ask</a>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }
+
+    var box = document.getElementById('listings');
+
+    function render(rows){
+      if (!rows.length){
+        box.innerHTML =
+          '<div class="empty">' +
+            '<div class="m"><span>az</span></div>' +
+            '<h2>No verified listings yet.</h2>' +
+            '<p>We only show rooms that have been checked — nothing invented, nothing padded. ' +
+            'The moment a verified property is ready, it appears here.</p>' +
+            '<p>Want first pick when they go live? Register your need now — founding members get matched first.</p>' +
+            '<div class="h-doors">' +
+              '<a class="h-btn h-p" href="register.html">I’m looking for a room</a>' +
+              '<a class="h-btn h-s" href="owner-list.html">I have a property</a>' +
+            '</div>' +
+          '</div>';
+        return;
+      }
+      box.innerHTML = '<div class="grid">' + rows.map(card).join('') + '</div>';
+    }
+
+    if (!c.SUPABASE_URL || !c.SUPABASE_ANON_KEY){
+      render([]);
+      return;
+    }
+
+    var url = c.SUPABASE_URL.replace(/\/+$/, '') +
+      '/rest/v1/public_listings?select=*&order=created_at.desc';
+
+    fetch(url, {
+      headers: { 'apikey': c.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + c.SUPABASE_ANON_KEY }
+    })
+      .then(function(res){
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(render)
+      .catch(function(err){
+        console.warn('[Arzuz] browse load failed:', err.message);
+        box.innerHTML =
+          '<div class="empty">' +
+            '<div class="m"><span>az</span></div>' +
+            '<h2>Listings are warming up.</h2>' +
+            '<p>We could not load the listing board just now — it may be the connection. ' +
+            'Register your need and we will match you directly on WhatsApp meanwhile.</p>' +
+            '<div class="h-doors"><a class="h-btn h-p" href="register.html">Register your need</a></div>' +
+          '</div>';
+      });
+
+    Arzuz.chrome('student');
+    Arzuz.footer();
+  })();
+  </script>
+</body>
+</html>

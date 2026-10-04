@@ -4,1021 +4,491 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Arzuz Admin — Private Owner Dashboard</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
 <link rel="stylesheet" href="assets/arzuz.css">
+<link rel="stylesheet" href="assets/admin.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<style>
-/* ================= Private Admin Dashboard Specific Styles ================= */
-body {
-  background: #09070E;
-  color: #F5F0F8;
-  font-family: var(--body);
-  min-height: 100vh;
-  margin: 0;
-  padding: 0;
-}
-
-/* Glassmorphic Admin Header */
-.admin-head {
-  background: rgba(18, 14, 26, 0.88);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  padding: 14px 20px;
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.admin-logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  text-decoration: none;
-  color: #fff;
-}
-.admin-logo .m {
-  width: 34px;
-  height: 34px;
-  font-size: 16px;
-}
-.admin-logo strong {
-  font-family: var(--display);
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -.03em;
-}
-
-.head-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.admin-badge {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  padding: 5px 10px;
-  border-radius: 20px;
-  background: rgba(124, 58, 237, 0.2);
-  color: #C4B5FD;
-  border: 1px solid rgba(124, 58, 237, 0.4);
-}
-
-/* Passcode Gate & Modal Overlays */
-.gate-wrap, .modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(9, 7, 14, 0.94);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  overflow-y: auto;
-}
-
-.gate-card, .modal-box {
-  background: rgba(22, 17, 32, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 18px;
-  padding: 32px 28px;
-  max-width: 440px;
-  width: 100%;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
-  animation: modalPop 0.3s var(--ease-spring);
-}
-
-@keyframes modalPop {
-  from { transform: scale(0.95); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
-}
-
-.gate-card {
-  text-align: center;
-}
-.gate-card .m {
-  width: 54px;
-  height: 54px;
-  font-size: 26px;
-  margin: 0 auto 16px;
-}
-.gate-card h2 {
-  font-family: var(--display);
-  font-size: 24px;
-  font-weight: 800;
-  color: #fff;
-  margin-bottom: 8px;
-}
-.gate-card p {
-  font-size: 14px;
-  color: #B3A7BF;
-  margin-bottom: 20px;
-  line-height: 1.5;
-}
-.gate-card input {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1.5px solid rgba(255, 255, 255, 0.18);
-  color: #fff;
-  text-align: center;
-  letter-spacing: .2em;
-  font-size: 18px;
-  margin-bottom: 16px;
-}
-.gate-card input:focus {
-  border-color: #8B5CF6;
-  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.3);
-}
-
-.lockout-msg {
-  color: #EF4444;
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 12px;
-  display: none;
-}
-
-/* Dashboard Container */
-.dash-wrap {
-  max-width: 1240px;
-  margin: 0 auto;
-  padding: 24px 16px 80px;
-}
-
-/* Metric Counter Cards */
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 16px;
-  margin-bottom: 28px;
-}
-.metric-card {
-  background: rgba(22, 17, 32, 0.75);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 14px;
-  padding: 20px 22px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-  transition: transform 0.25s var(--ease-spring), border-color 0.25s ease;
-}
-.metric-card:hover {
-  transform: translateY(-2.5px);
-  border-color: rgba(139, 92, 246, 0.4);
-}
-.metric-lbl {
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-  color: #B3A7BF;
-  margin-bottom: 8px;
-}
-.metric-num {
-  font-family: var(--display);
-  font-size: 38px;
-  font-weight: 800;
-  color: #fff;
-  letter-spacing: -.04em;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-.metric-sub {
-  font-size: 12.5px;
-  color: #9A8CA8;
-  margin-top: 8px;
-}
-
-/* Tabs & Search Controls */
-.dash-controls {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin-bottom: 20px;
-}
-.dash-tabs {
-  display: flex;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 4px;
-  border-radius: 12px;
-  gap: 4px;
-  overflow-x: auto;
-  max-width: 100%;
-}
-.tab-btn {
-  background: none;
-  border: none;
-  color: #B3A7BF;
-  font-family: var(--body);
-  font-size: 14px;
-  font-weight: 600;
-  padding: 9px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.2s ease;
-}
-.tab-btn.active {
-  background: #8B5CF6;
-  color: #fff;
-  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.4);
-}
-
-.search-box {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.search-box input {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: #fff;
-  padding: 10px 14px;
-  border-radius: 8px;
-  font-size: 14px;
-  width: 220px;
-}
-.search-box input:focus {
-  border-color: #8B5CF6;
-}
-
-/* Glass Data Table & Responsive Card View */
-.table-card {
-  background: rgba(22, 17, 32, 0.75);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
-}
-.table-wrap {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-table {
-  width: 100%;
-  border-collapse: collapse;
-  text-align: left;
-  font-size: 14px;
-  min-width: 720px;
-}
-th {
-  background: rgba(255, 255, 255, 0.04);
-  padding: 14px 18px;
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-  color: #C4B5FD;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  white-space: nowrap;
-}
-td {
-  padding: 14px 18px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  color: #E2D9EC;
-  vertical-align: middle;
-}
-tr:hover td {
-  background: rgba(255, 255, 255, 0.03);
-}
-
-/* Status Tags */
-.tag-status {
-  display: inline-block;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  padding: 3px 8px;
-  border-radius: 10px;
-}
-.tag-open, .tag-active { background: rgba(16, 185, 129, 0.18); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.3); }
-.tag-pending { background: rgba(245, 158, 11, 0.18); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.3); }
-.tag-fulfilled, .tag-matched { background: rgba(124, 58, 237, 0.2); color: #C4B5FD; border: 1px solid rgba(124, 58, 237, 0.35); }
-.tag-rejected, .tag-inactive { background: rgba(239, 68, 68, 0.18); color: #F87171; border: 1px solid rgba(239, 68, 68, 0.3); }
-
-/* Table Action Buttons */
-.cell-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-.act-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 9px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all 0.2s ease;
-  text-decoration: none;
-}
-.act-edit {
-  background: rgba(139, 92, 246, 0.15);
-  color: #C4B5FD;
-  border-color: rgba(139, 92, 246, 0.3);
-}
-.act-edit:hover {
-  background: rgba(139, 92, 246, 0.3);
-  color: #fff;
-  transform: translateY(-1px);
-}
-.act-del {
-  background: rgba(239, 68, 68, 0.12);
-  color: #FCA5A5;
-  border-color: rgba(239, 68, 68, 0.25);
-}
-.act-del:hover {
-  background: rgba(239, 68, 68, 0.25);
-  color: #fff;
-  transform: translateY(-1px);
-}
-.act-map {
-  background: rgba(59, 130, 246, 0.15);
-  color: #93C5FD;
-  border-color: rgba(59, 130, 246, 0.3);
-}
-.act-map:hover {
-  background: rgba(59, 130, 246, 0.28);
-  color: #fff;
-  transform: translateY(-1px);
-}
-.wa-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(31, 168, 85, 0.18);
-  color: #34D399;
-  border: 1px solid rgba(31, 168, 85, 0.3);
-  padding: 5px 10px;
-  border-radius: 6px;
-  text-decoration: none;
-  font-size: 12px;
-  font-weight: 600;
-  transition: all 0.2s ease;
-}
-.wa-btn:hover {
-  background: rgba(31, 168, 85, 0.32);
-  transform: translateY(-1px);
-}
-
-/* Edit Modal Styling */
-.modal-box {
-  max-width: 560px;
-}
-.modal-box h3 {
-  font-family: var(--display);
-  font-size: 22px;
-  color: #fff;
-  margin-top: 0;
-  margin-bottom: 6px;
-}
-.modal-box .sub {
-  font-size: 13px;
-  color: #A79BB5;
-  margin-bottom: 20px;
-}
-.edit-form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-}
-@media (max-width: 600px) {
-  .edit-form-grid { grid-template-columns: 1fr; }
-}
-.edit-fld {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.edit-fld label {
-  font-size: 12px;
-  font-weight: 700;
-  color: #C4B5FD;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-}
-.edit-fld input, .edit-fld select, .edit-fld textarea {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: #fff;
-  padding: 10px 12px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-family: var(--body);
-}
-.edit-fld input:focus, .edit-fld select:focus, .edit-fld textarea:focus {
-  border-color: #8B5CF6;
-  outline: none;
-}
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 24px;
-}
-
-/* Telegram Settings Panel */
-.settings-panel {
-  background: rgba(22, 17, 32, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  padding: 24px 26px;
-  margin-top: 32px;
-}
-.settings-panel h3 {
-  color: #fff;
-  font-size: 19px;
-  margin-top: 0;
-  margin-bottom: 10px;
-}
-.settings-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 14px;
-  margin-bottom: 18px;
-}
-.settings-grid input {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: #fff;
-}
-
-@media (max-width: 640px) {
-  .admin-head { padding: 12px 14px; }
-  .dash-wrap { padding: 18px 12px 60px; }
-  .metric-card { padding: 16px 18px; }
-  .metric-num { font-size: 32px; }
-  .search-box input { width: 100%; }
-  .search-box { width: 100%; justify-content: stretch; }
-  .search-box button { width: 100%; }
-}
-/* Photo thumbnail in admin table */
-.admin-photo-thumb {
-  width: 52px;
-  height: 40px;
-  object-fit: cover;
-  border-radius: 6px;
-  border: 1px solid rgba(255,255,255,0.12);
-  display: block;
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-.admin-photo-thumb:hover {
-  transform: scale(1.08);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
-}
-/* Lightbox overlay for full-size photo */
-#photoLightbox {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.88);
-  z-index: 200;
-  align-items: center;
-  justify-content: center;
-  cursor: zoom-out;
-}
-#photoLightbox img {
-  max-width: 90vw;
-  max-height: 88vh;
-  border-radius: 10px;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.8);
-  object-fit: contain;
-}
-/* Photo preview inside edit modal */
-.edit-photo-preview {
-  width: 100%;
-  border-radius: 10px;
-  margin-top: 6px;
-  object-fit: cover;
-  max-height: 180px;
-  border: 1px solid rgba(255,255,255,0.14);
-}
-
-/* Add / Edit Apartment Media Upload UI */
-.admin-media-zone {
-  border: 2px dashed rgba(139, 92, 246, 0.45);
-  border-radius: 12px;
-  padding: 16px;
-  text-align: center;
-  background: rgba(139, 92, 246, 0.05);
-  cursor: pointer;
-  transition: all 0.25s ease;
-  position: relative;
-}
-.admin-media-zone:hover {
-  border-color: #A78BFA;
-  background: rgba(139, 92, 246, 0.12);
-}
-.admin-media-zone.uploading {
-  opacity: 0.7;
-  pointer-events: none;
-}
-.media-preview-box {
-  position: relative;
-  margin-top: 10px;
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.15);
-  max-height: 200px;
-  background: #000;
-}
-.media-preview-box img, .media-preview-box video {
-  width: 100%;
-  max-height: 200px;
-  display: block;
-  object-fit: contain;
-}
-.media-remove-btn {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  background: rgba(239, 68, 68, 0.85);
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.media-upload-status {
-  font-size: 12px;
-  font-weight: 600;
-  margin-top: 6px;
-}
-.media-upload-status.uploading { color: #FBBF24; }
-.media-upload-status.success { color: #34D399; }
-.media-upload-status.error { color: #F87171; }
-.btn-add-apt {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: linear-gradient(135deg, #7C3AED 0%, #6366F1 100%);
-  color: #fff;
-  font-family: var(--body);
-  font-size: 14px;
-  font-weight: 700;
-  padding: 9px 18px;
-  border-radius: 10px;
-  border: none;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);
-  transition: all 0.2s ease;
-}
-.btn-add-apt:hover {
-  transform: translateY(-1.5px);
-  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.5);
-}
-.apt-badge-id {
-  display: inline-block;
-  font-family: var(--mono);
-  font-size: 11px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  padding: 2px 6px;
-  border-radius: 4px;
-  color: #C4B5FD;
-}
-/* Amenities Chip Selector & Badges */
-.admin-chips-wrap {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 6px;
-}
-.admin-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: #B3A7BF;
-  user-select: none;
-  transition: all 0.2s ease;
-}
-.admin-chip:hover {
-  background: rgba(139, 92, 246, 0.15);
-  border-color: rgba(139, 92, 246, 0.35);
-  color: #fff;
-}
-.admin-chip.active {
-  background: rgba(124, 58, 237, 0.3);
-  border-color: #8B5CF6;
-  color: #E9D5FF;
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
-}
-.admin-chip input {
-  display: none;
-}
-.table-amenity-tag {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 600;
-  background: rgba(139, 92, 246, 0.15);
-  color: #C4B5FD;
-  border: 1px solid rgba(139, 92, 246, 0.25);
-  border-radius: 4px;
-  padding: 1px 5px;
-  margin: 1px;
-  white-space: nowrap;
-}
-.act-view {
-  background: rgba(52, 211, 153, 0.14);
-  color: #6EE7B7;
-  border-color: rgba(52, 211, 153, 0.3);
-}
-.act-view:hover {
-  background: rgba(52, 211, 153, 0.28);
-  color: #fff;
-  transform: translateY(-1px);
-}
-.details-kv-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
-  margin-top: 16px;
-}
-.details-kv-item {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  padding: 10px 14px;
-}
-.details-kv-lbl {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  color: #A79BB5;
-  margin-bottom: 4px;
-}
-.details-kv-val {
-  font-size: 14px;
-  color: #fff;
-  font-weight: 600;
-  word-break: break-word;
-}
-</style>
 </head>
-<body>
+<body class="admin-body">
 
 <!-- Sign-in Gate (Supabase Auth) -->
-<div class="gate-wrap" id="gateModal">
+<div class="gate-wrap" id="gateModal" style="display:none;">
   <div class="gate-card">
     <div class="m"><span>az</span></div>
     <h2>Arzuz Admin</h2>
     <p>Private Owner Dashboard. Sign in to view, edit, or manage form submissions.</p>
     <div class="lockout-msg" id="gateErr"></div>
-    <input type="email" id="gateEmail" placeholder="you@example.com" autofocus autocomplete="username" style="letter-spacing: normal; text-align: left;">
+    <input type="email" id="gateEmail" placeholder="you@example.com" autofocus autocomplete="username">
     <input type="password" id="gatePass" placeholder="Password" autocomplete="current-password">
-    <button class="next" id="btnUnlock">Sign in</button>
-    <p style="margin-top: 14px; font-size: 13px; color: #8D8099;">Signed in with Supabase Auth · the session ends when you close this tab</p>
+    <button class="next btn-wide" id="btnUnlock">Sign in</button>
+    <p class="gate-foot">Signed in with Supabase Auth · the session ends when you close this tab</p>
   </div>
 </div>
 
-<!-- Main Admin Layout -->
-<header class="admin-head">
-  <a href="index.html" class="admin-logo">
+<!-- Sidebar -->
+<aside class="admin-side">
+  <a href="index.html" class="admin-brand">
     <span class="m"><span>az</span></span>
     <strong>arzuz <i>admin</i></strong>
   </a>
-  <div class="head-actions">
-    <span class="admin-badge" id="envBadge">Production DB</span>
-    <span class="admin-badge" id="whoBadge" style="display:none;"></span>
-    <button class="bk" id="btnRefresh" style="color: #C4B5FD; padding: 6px 12px; font-size: 13.5px;">↻ Refresh</button>
-    <button class="bk" id="btnLock" style="color: #F87171; padding: 6px 12px; font-size: 13.5px;">Sign out</button>
+  <nav class="admin-nav">
+    <button class="nav-item active" data-section="overview"><span class="ico">▦</span> Overview</button>
+    <button class="nav-item" data-section="demand_records"><span class="ico">🎓</span> Demands</button>
+    <button class="nav-item" data-section="listings"><span class="ico">🏠</span> Listings</button>
+    <button class="nav-item" data-section="scout_submissions"><span class="ico">📋</span> Scouts</button>
+    <button class="nav-item" data-section="bookings"><span class="ico">📅</span> Bookings</button>
+    <button class="nav-item" data-section="roommate"><span class="ico">🤝</span> Roommates</button>
+    <button class="nav-item" data-section="settings"><span class="ico">⚙</span> Settings <span class="nav-pill" id="navPillMinors"></span></button>
+  </nav>
+  <div class="admin-side-foot">
+    <span class="admin-badge ok" id="envBadge">PRODUCTION DB</span>
+    <span class="who-badge" id="whoBadge"></span>
+    <button class="btn-inline danger" id="btnLock">Sign out</button>
   </div>
-</header>
+</aside>
 
-<div class="dash-wrap">
+<!-- Main -->
+<main class="admin-main">
+  <header class="admin-topbar">
+    <h1 id="sectionTitle">Overview</h1>
+    <div class="topbar-actions">
+      <button class="btn-inline" id="btnRefresh">↻ Refresh</button>
+    </div>
+  </header>
 
-  <!-- Metric Counters -->
-  <div class="metrics-grid">
-    <div class="metric-card">
-      <div class="metric-lbl">Total Student Needs</div>
-      <div class="metric-num" id="mDemands">0</div>
-      <div class="metric-sub">Registered student requests</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-lbl">Property Listings</div>
-      <div class="metric-num" id="mListings">0</div>
-      <div class="metric-sub">Landlord submitted properties</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-lbl">Building Scouts</div>
-      <div class="metric-num" id="mScouts">0</div>
-      <div class="metric-sub">Resident building reports</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-lbl">Target Area</div>
-      <div class="metric-num" style="font-size: 30px;">Malete</div>
-      <div class="metric-sub">Kwara State Session 2026/2027</div>
-    </div>
-  </div>
+  <div class="dash-wrap">
 
-  <!-- Controls & Search -->
-  <div class="dash-controls">
-    <div class="dash-tabs">
-      <button class="tab-btn active" data-table="demand_records">Student Demands</button>
-      <button class="tab-btn" data-table="listings">Landlord Listings</button>
-      <button class="tab-btn" data-table="scout_submissions">Building Scouts</button>
-    </div>
-    <div class="search-box">
-      <button class="btn-add-apt" id="btnOpenAddApt">✨ + Add Apartment</button>
-      <input type="text" id="searchInput" placeholder="Search name, phone, room, ID...">
-      <button class="next" id="btnExport" style="padding: 10px 18px; font-size: 14px;">Export CSV</button>
-    </div>
-  </div>
-
-  <!-- Data Table -->
-  <div class="table-card">
-    <div class="table-wrap">
-      <table id="dataTable">
-        <thead><tr id="tableHead"></tr></thead>
-        <tbody id="tableBody"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- Telegram Instant Alert Settings — the bot token lives only in Netlify -->
-  <div class="settings-panel">
-    <h3>Telegram Instant Alerts</h3>
-    <p style="color: #B3A7BF; font-size: 14px; margin-bottom: 18px;">
-      Every student, landlord and scout submission sends an alert to your Telegram. The bot token is
-      held by Netlify as <b>TELEGRAM_BOT_TOKEN</b> and is never sent to the browser.
-      <span id="tgStatus" style="display:block; margin-top:8px; color:#C4B5FD;"></span>
-    </p>
-    <div class="settings-grid">
-      <div class="fld">
-        <label style="color: #C4B5FD; font-size: 12.5px; font-weight: 700;">Telegram Chat ID <span style="color:#9A8CA8; font-weight:400;">(stored in Netlify as TELEGRAM_CHAT_ID)</span></label>
-        <input type="text" id="tgChat" placeholder="Run Auto-Detect to fill this in" readonly>
+    <!-- Shared data-table toolbar (hidden on Overview / Settings) -->
+    <div class="dash-controls" id="dataTableControls" style="display:none;">
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="Search name, phone, room, ID…">
+        <select id="statusFilter"></select>
+        <button class="filter-toggle" id="filterAsk" style="display:none;">🏷 Needs opening ask</button>
+      </div>
+      <div class="search-box">
+        <button class="btn-add-apt" id="btnOpenAddApt" style="display:none;">✨ + Add Apartment</button>
+        <button class="btn-inline" id="btnExport">⬇ Export CSV</button>
       </div>
     </div>
-    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-      <button class="next" id="btnCopyChat" style="max-width: 200px; font-size: 14px; padding: 10px 16px;">Copy Chat ID</button>
-      <button class="h-btn h-s" id="btnAutoDetect" style="color: #34D399; border-color: rgba(52, 211, 153, 0.4); font-size: 13.5px; padding: 8px 14px;">Auto-Detect Chat ID</button>
-      <button class="h-btn h-s" id="btnTestNotify" style="color: #C4B5FD; border-color: rgba(196, 181, 253, 0.4); font-size: 13.5px; padding: 8px 14px;">Send Test Alert</button>
-    </div>
-    <p style="color: #9A8CA8; font-size: 12.5px; margin-top: 12px; line-height: 1.5;">
-      Once you have a chat ID, paste it into Netlify → Site configuration → Environment variables →
-      <b>TELEGRAM_CHAT_ID</b> and redeploy. Nothing about the bot is stored in this page.
-    </p>
-  </div>
 
-  <!-- Amenities & Utilities Manager -->
-  <div class="settings-panel" style="margin-top: 24px;">
-    <h3 style="margin-bottom: 6px;">🏠 Hostel Amenities & Utilities Manager</h3>
-    <p style="color: #B3A7BF; font-size: 14px; margin-bottom: 18px;">
-      Add custom amenity options here (e.g. <em>Solar panels</em>, <em>Security cameras</em>, <em>Swimming pool</em>).
-      They instantly appear in <b>Add Apartment</b>, the <b>Edit modal</b>, and all public listing forms automatically.
-    </p>
-    <!-- Existing options -->
-    <div style="margin-bottom: 14px;">
-      <div style="font-size: 12px; font-weight: 700; color: #9A8CA8; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px;">Current Amenities</div>
-      <div class="admin-chips-wrap" id="amenitiesManagerList" style="gap: 8px;"></div>
-    </div>
-    <!-- Add new option -->
-    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-      <input type="text" id="newAmenityInput" placeholder="e.g. Solar panels, Security cameras..." style="flex: 1; min-width: 220px; font-size: 14px;">
-      <button class="next" id="btnAddAmenity" style="padding: 10px 18px; font-size: 14px; white-space: nowrap;">+ Add Amenity</button>
-    </div>
-    <div id="amenityFeedback" style="margin-top: 8px; font-size: 13px; color: #34D399; display:none;"></div>
-  </div>
+    <!-- ============ OVERVIEW ============ -->
+    <section class="section-view" data-section="overview">
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-lbl">Student Needs</div>
+          <div class="metric-num" id="mDemands">0</div>
+          <div class="metric-sub">Registered student requests</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-lbl">Open Demands</div>
+          <div class="metric-num" id="mOpenDemands">0</div>
+          <div class="metric-sub">Still waiting for a match</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-lbl">Listings</div>
+          <div class="metric-num" id="mListings">0</div>
+          <div class="metric-sub" id="mActiveListingsWrap"><span id="mActiveListings">0</span> active</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-lbl">Building Scouts</div>
+          <div class="metric-num" id="mScouts">0</div>
+          <div class="metric-sub">Resident building reports</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-lbl">Roommate 14-day Match</div>
+          <div class="metric-num" id="mRoommate">—</div>
+          <div class="metric-sub">% of shared demand matched in 14 days</div>
+        </div>
+        <div class="metric-card attention">
+          <div class="metric-lbl">Missing Opening Ask</div>
+          <div class="metric-num" id="mMissingAsk">0</div>
+          <div class="metric-sub">Listings you cannot use as evidence</div>
+        </div>
+        <div class="metric-card attention">
+          <div class="metric-lbl">Minors Need Guardian</div>
+          <div class="metric-num" id="mMinors">0</div>
+          <div class="metric-sub">Under-18, no guardian on file</div>
+        </div>
+      </div>
 
-</div>
+      <div class="ops-two-col">
+        <div class="ops-panel">
+          <h3>🛡 Safeguarding — check every day</h3>
+          <p class="sub">Under-18 registrations missing a guardian contact. Match nothing to anyone on this list until it is filled in.</p>
+          <div class="ops-list" id="opsMinors"></div>
+        </div>
+        <div class="ops-panel">
+          <h3>🏷 Opening asks — the thesis number</h3>
+          <p class="sub">The gap between the opening ask and the listed price is the only real measurement of whether Arzuz works.</p>
+          <div class="ops-list" id="opsAsk"></div>
+        </div>
+      </div>
+
+      <div class="ops-panel">
+        <h3>⚡ Quick actions</h3>
+        <p class="sub">Everything the field team needs, one click away.</p>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn-add-apt" id="btnOpenAddAptOverview">✨ + Add Apartment</button>
+          <button class="btn-inline" data-goto="demand_records">🎓 View demands</button>
+          <button class="btn-inline" data-goto="listings">🏠 View listings</button>
+          <a class="btn-inline" href="browse.html" target="_blank" rel="noopener">🌐 Open public listings page</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ DEMAND RECORDS ============ -->
+    <section class="section-view" data-section="demand_records" style="display:none;">
+      <div class="table-card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr id="tableHead"></tr></thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+        <div class="cards-wrap" id="tableCards"></div>
+      </div>
+    </section>
+
+    <!-- ============ LISTINGS ============ -->
+    <section class="section-view" data-section="listings" style="display:none;">
+      <div class="table-card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr id="tableHead"></tr></thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+        <div class="cards-wrap" id="tableCards"></div>
+      </div>
+      <p style="color:#8D8099; font-size:12.5px; margin-top:12px;">
+        Active, verified listings appear on <a href="browse.html" target="_blank" rel="noopener" style="color:#C4B5FD">the public browse page</a> automatically.
+      </p>
+    </section>
+
+    <!-- ============ SCOUT SUBMISSIONS ============ -->
+    <section class="section-view" data-section="scout_submissions" style="display:none;">
+      <div class="table-card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr id="tableHead"></tr></thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+        <div class="cards-wrap" id="tableCards"></div>
+      </div>
+    </section>
+
+    <!-- ============ BOOKINGS ============ -->
+    <section class="section-view" data-section="bookings" style="display:none;">
+      <div class="table-card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr id="tableHead"></tr></thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+        <div class="cards-wrap" id="tableCards"></div>
+      </div>
+      <p style="color:#8D8099; font-size:12.5px; margin-top:12px;">
+        Booking requests from the listing detail page. No money moves on Arzuz — confirm viewings on WhatsApp.
+      </p>
+    </section>
+
+    <!-- ============ ROOMMATE MATCHING ============ -->
+    <section class="section-view" data-section="roommate" style="display:none;">
+      <div class="ops-panel" id="roommateMetric"></div>
+      <div class="table-card" id="roommatePanel"></div>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section class="section-view" data-section="settings" style="display:none;">
+
+      <div class="settings-panel">
+        <h3>Test data</h3>
+        <p style="margin-bottom:12px;">Rows submitted with <b>ENV = test</b> are hidden from every table and metric. Show them only when debugging.</p>
+        <label class="show-test-row"><input type="checkbox" id="showTestRows"> Show test rows</label>
+      </div>
+
+      <!-- Telegram Instant Alert Settings — the bot token lives only in Netlify -->
+      <div class="settings-panel">
+        <h3>Telegram Instant Alerts</h3>
+        <p style="margin-bottom:18px;">
+          Every student, landlord and scout submission sends an alert to your Telegram. The bot token is
+          held by Netlify as <b>TELEGRAM_BOT_TOKEN</b> and is never sent to the browser.
+          <span id="tgStatus" style="display:block; margin-top:8px; color:#C4B5FD;"></span>
+        </p>
+        <div class="settings-grid">
+          <div>
+            <label style="color:#C4B5FD; font-size:12.5px; font-weight:700; display:block; margin-bottom:6px;">Telegram Chat ID <span style="color:#9A8CA8; font-weight:400;">(stored in Netlify as TELEGRAM_CHAT_ID)</span></label>
+            <input type="text" id="tgChat" placeholder="Run Auto-Detect to fill this in" readonly>
+          </div>
+        </div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap;">
+          <button class="btn-inline" id="btnCopyChat">Copy Chat ID</button>
+          <button class="btn-inline green" id="btnAutoDetect">Auto-Detect Chat ID</button>
+          <button class="btn-inline" id="btnTestNotify">Send Test Alert</button>
+        </div>
+        <p style="color:#9A8CA8; font-size:12.5px; margin-top:12px; line-height:1.5;">
+          Once you have a chat ID, paste it into Netlify → Site configuration → Environment variables →
+          <b>TELEGRAM_CHAT_ID</b> and redeploy. Nothing about the bot is stored in this page.
+        </p>
+      </div>
+
+      <!-- Amenities & Utilities Manager -->
+      <div class="settings-panel">
+        <h3>🏠 Hostel Amenities &amp; Utilities Manager</h3>
+        <p style="margin-bottom:18px;">
+          Add custom amenity options here (e.g. <em>Solar panels</em>, <em>Security cameras</em>). They instantly appear
+          in <b>Add Apartment</b>, the <b>Edit modal</b>, and all public listing forms automatically.
+        </p>
+        <div style="margin-bottom:14px;">
+          <div style="font-size:12px; font-weight:700; color:#9A8CA8; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px;">Current Amenities</div>
+          <div class="admin-chips-wrap" id="amenitiesManagerList"></div>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <input type="text" id="newAmenityInput" placeholder="e.g. Solar panels, Security cameras…" style="flex:1; min-width:220px;">
+          <button class="btn-inline green" id="btnAddAmenity">+ Add Amenity</button>
+        </div>
+        <div id="amenityFeedback" style="margin-top:8px; font-size:13px; color:#34D399; display:none;"></div>
+      </div>
+
+    </section>
+  </div>
+</main>
 
 <!-- Add Apartment Modal -->
-<div class="modal-overlay" id="addAptModal" style="display: none;">
-  <div class="modal-box" style="max-width: 680px;">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-      <h3 style="margin:0;">✨ Add New Apartment / Listing</h3>
-      <span class="admin-badge">Admin Creator</span>
+<div class="modal-overlay" id="addAptModal">
+  <div class="modal-box wide">
+    <div class="modal-head">
+      <h3>✨ Add New Apartment / Listing</h3>
+      <button type="button" class="modal-close" data-close="addAptModal">✕</button>
     </div>
-    <div class="sub">Add a verified apartment with a custom ID, details, photo, and video directly to the system.</div>
+    <div class="sub">Mirrors the public landlord form field-for-field. Add a verified apartment with a custom ID, details, photo and video directly to the system.</div>
     <form id="addAptForm">
       <div class="edit-form-grid">
         <div class="edit-fld">
-          <label>Apartment ID / Code *</label>
+          <label>Apartment ID / Code <span class="req">*</span></label>
           <input type="text" id="add_apt_id" placeholder="e.g. APT-001 or MLT-BL-01" required>
         </div>
         <div class="edit-fld">
-          <label>Apartment / Lodge Name *</label>
+          <label>Apartment / Lodge Name <span class="req">*</span></label>
           <input type="text" id="add_prop_name" placeholder="e.g. Blessing Lodge" required>
         </div>
 
         <div class="edit-fld">
-          <label>Property / Room Type *</label>
-          <select id="add_ty" required>
-            <option value="Self-contain">Self-contain</option>
-            <option value="Shared room">Shared room</option>
-            <option value="Single Room">Single Room</option>
-            <option value="Two Bedroom">Two Bedroom</option>
-            <option value="Face-me-I-face-you">Face-me-I-face-you</option>
-          </select>
+          <label>Property / Room Type <span class="req">*</span> <small>Same list as the public landlord form</small></label>
+          <select id="add_ty" required></select>
         </div>
         <div class="edit-fld">
-          <label>Area / Location *</label>
+          <label>Area / Location <span class="req">*</span></label>
           <input type="text" id="add_ar" placeholder="e.g. Behind KWASU Gate, Malete" required>
         </div>
 
         <div class="edit-fld">
-          <label>Rent Price (₦ / Session) *</label>
+          <label>Rent Price (₦ / Session) <span class="req">*</span></label>
           <input type="number" id="add_rent" placeholder="e.g. 180000" required>
         </div>
+        <div class="edit-fld">
+          <label>Opening Ask (₦) <small>What they asked before seeing demand data</small></label>
+          <input type="number" id="add_ask" placeholder="e.g. 200000">
+        </div>
+
         <div class="edit-fld">
           <label>Available Units / Rooms</label>
           <input type="text" id="add_rm" placeholder="e.g. 3 rooms available">
         </div>
+        <div class="edit-fld">
+          <label>Negotiable?</label>
+          <select id="add_neg">
+            <option value="Yes">Yes</option>
+            <option value="No">No</option>
+            <option value="Depends on the tenant">Depends on the tenant</option>
+          </select>
+        </div>
 
         <div class="edit-fld">
-          <label>Landlord / Caretaker Name</label>
-          <input type="text" id="add_nm" placeholder="e.g. Alh. Kareem (or Admin Managed)">
+          <label>Who Runs the Compound?</label>
+          <select id="add_who">
+            <option value="">—</option>
+            <option value="I do, myself">I do, myself</option>
+            <option value="A caretaker">A caretaker</option>
+            <option value="An agent">An agent</option>
+            <option value="Nobody yet">Nobody yet</option>
+          </select>
         </div>
+        <div class="edit-fld">
+          <label>Can We Verify It?</label>
+          <select id="add_vf">
+            <option value="Yes, come and check it">Yes, come and check it</option>
+            <option value="Not right now">Not right now</option>
+          </select>
+        </div>
+
+        <div class="edit-fld">
+          <label>Owner First Name</label>
+          <input type="text" id="add_nm" placeholder="e.g. Alh. Kareem">
+        </div>
+        <div class="edit-fld">
+          <label>Owner Last Name</label>
+          <input type="text" id="add_nm_last" placeholder="Optional">
+        </div>
+
         <div class="edit-fld">
           <label>Contact Phone / WhatsApp</label>
           <input type="tel" id="add_ph" placeholder="e.g. 08012345678">
         </div>
-
         <div class="edit-fld">
           <label>Status</label>
           <select id="add_status">
-            <option value="active" selected>ACTIVE (Visible/Ready)</option>
+            <option value="active" selected>ACTIVE (visible when verified)</option>
             <option value="pending">PENDING</option>
             <option value="inactive">INACTIVE</option>
           </select>
         </div>
-        <div class="edit-fld">
+
+        <div class="edit-fld full">
           <label>Verification Tier</label>
           <select id="add_tier">
-            <option value="2" selected>Tier 2 — Verified & Inspected</option>
+            <option value="2" selected>Tier 2 — Verified &amp; Inspected</option>
             <option value="1">Tier 1 — Community Verified</option>
             <option value="0">Tier 0 — Unverified</option>
           </select>
         </div>
 
-        <div class="edit-fld" style="grid-column: 1 / -1;">
-          <label>Apartment Description & Features</label>
-          <textarea id="add_desc" rows="2" placeholder="e.g. Running water, prepaid meter, paved compound, 5 mins walk to school..."></textarea>
+        <div class="edit-fld full">
+          <label>Apartment Description &amp; Features</label>
+          <textarea id="add_desc" rows="2" placeholder="e.g. Running water, prepaid meter, paved compound, 5 mins walk to school…"></textarea>
         </div>
 
-        <!-- Hostel Amenities & Utilities (Synced with website forms) -->
-        <div class="edit-fld" style="grid-column: 1 / -1;">
-          <label>Hostel Amenities & Utilities (Tick all that apply)</label>
-          <div class="admin-chips-wrap" id="addAptUtilitiesWrap">
-            <!-- Populated dynamically via UTILITIES or fallback -->
-          </div>
+        <div class="edit-fld full">
+          <label>Hostel Amenities &amp; Utilities (tick all that apply)</label>
+          <div class="admin-chips-wrap" id="addAptUtilitiesWrap"></div>
+        </div>
+
+        <div class="edit-fld full">
+          <label class="ck-line">
+            <input type="checkbox" id="add_split_ok">
+            <span>Landlord consents to this room being shared by two tenants who split the cost
+            <small>(enables roommate matching on the public listing page — shared room types are always eligible)</small></span>
+          </label>
         </div>
 
         <!-- Map Location Pin -->
-        <div class="edit-fld" style="grid-column: 1 / -1;">
-          <label style="display:flex; align-items:center; gap:8px;">📍 Map Location Pin <span style="font-size:11px; font-weight:400; color:#9A8CA8;">(Satellite + Street — tap to pin exact gate)</span></label>
-          <div style="background: rgba(124,58,237,0.08); border: 1px solid rgba(124,58,237,0.3); border-radius: 10px; padding: 10px; margin-bottom:8px; font-size:13px; color:#C4B5FD;">
-            🛰️ <b>Satellite view is active.</b> Zoom in and tap the exact gate of the compound to drop a pin.
-          </div>
-          <div style="position:relative;">
-            <div id="admin-leaflet-map" style="height: 280px; border-radius: 10px; overflow:hidden; border: 1px solid rgba(255,255,255,0.12);"></div>
-            <div style="position:absolute; top:10px; right:10px; z-index:500; display:flex; gap:6px;">
-              <button type="button" id="adminBtnLayerSat" style="background:rgba(22,17,32,0.92);color:#C4B5FD;border:1px solid rgba(196,181,253,0.4);padding:5px 10px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:700;">🛰 Satellite</button>
-              <button type="button" id="adminBtnLayerStreet" style="background:rgba(22,17,32,0.85);color:#9A8CA8;border:1px solid rgba(255,255,255,0.15);padding:5px 10px;border-radius:6px;font-size:12px;cursor:pointer;">🗺 Street</button>
+        <div class="edit-fld full">
+          <label>📍 Map Location Pin <small>Satellite + Street — tap to pin the exact gate</small></label>
+          <div class="map-note">🛰️ <b>Satellite view is active.</b> Zoom in and tap the exact gate of the compound to drop a pin.</div>
+          <div class="admin-map-wrap">
+            <div id="admin-leaflet-map"></div>
+            <div class="map-float-btns">
+              <button type="button" id="adminBtnLayerSat" class="on">🛰 Satellite</button>
+              <button type="button" id="adminBtnLayerStreet">🗺 Street</button>
             </div>
           </div>
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:8px; flex-wrap:wrap; gap:8px;">
-            <span id="adminMapCoordsText" style="font-size:13px; color:#9A8CA8; background:rgba(255,255,255,0.05); padding:5px 10px; border-radius:6px;">📍 Tap map or drag marker to the gate</span>
-            <button type="button" id="adminBtnLocateMe" style="background:rgba(52,211,153,0.15);color:#34D399;border:1px solid rgba(52,211,153,0.4);padding:7px 14px;border-radius:8px;font-size:13px;cursor:pointer;font-weight:600;">🎯 Use GPS</button>
+          <div class="map-bottom-bar">
+            <span class="map-coords" id="adminMapCoordsText">📍 Tap map or drag marker to the gate</span>
+            <button type="button" id="adminBtnLocateMe" class="gps-btn">🎯 Use GPS</button>
           </div>
           <input type="hidden" id="add_lat">
           <input type="hidden" id="add_lng">
           <input type="hidden" id="add_pin">
         </div>
 
-        <!-- Apartment Photo Upload -->
-        <div class="edit-fld" style="grid-column: 1 / -1;">
-          <label>Apartment Photo (Cloudinary)</label>
-          <div class="admin-media-zone" id="addPhotoZone">
-            <input type="file" id="addPhotoInput" accept="image/*" style="display:none;">
-            <div id="addPhotoText">📷 Click or tap to upload apartment photo</div>
-            <div id="addPhotoProgress" class="media-upload-status"></div>
+        <!-- Media gallery -->
+        <div class="edit-fld full">
+          <label>Apartment Media Gallery <small>several photos + a video tour · the first photo is the cover · every asset is stamped © Arzuz</small></label>
+          <div class="admin-media-zone" id="galAddZone">📷 Click to upload photos (select several at once)
+            <input type="file" id="galAddInput" accept="image/*" multiple style="display:none;">
+            <div id="galAddProgress" class="media-upload-status"></div>
           </div>
-          <input type="hidden" id="add_photo_url">
-          <div id="addPhotoPreview" class="media-preview-box" style="display:none;"></div>
-        </div>
-
-        <!-- Apartment Video Upload -->
-        <div class="edit-fld" style="grid-column: 1 / -1;">
-          <label>Apartment Video Tour (Cloudinary / Link)</label>
-          <div class="admin-media-zone" id="addVideoZone">
-            <input type="file" id="addVideoInput" accept="video/*" style="display:none;">
-            <div id="addVideoText">🎥 Click or tap to upload apartment video tour</div>
-            <div id="addVideoProgress" class="media-upload-status"></div>
+          <div class="admin-media-zone" id="galAddVideoZone" style="margin-top:8px;">🎥 Click to upload a video tour
+            <input type="file" id="galAddVideoInput" accept="video/*" style="display:none;">
+            <div id="galAddVideoProgress" class="media-upload-status"></div>
           </div>
-          <input type="hidden" id="add_video_url">
-          <div id="addVideoPreview" class="media-preview-box" style="display:none;"></div>
           <input type="url" id="add_video_url_manual" placeholder="Or paste direct video/tour URL (optional)" style="margin-top:6px; font-size:12.5px;">
+          <div class="gal-mgr" id="galAddGrid"></div>
+          <input type="hidden" id="add_photo_url">
+          <input type="hidden" id="add_video_url">
         </div>
       </div>
 
       <div class="modal-actions">
-        <button type="button" class="bk" id="btnCancelAddApt" style="color: #B3A7BF;">Cancel</button>
-        <button type="submit" class="next" id="btnSaveAddApt" style="padding: 10px 24px; font-size: 14px;">Save Apartment</button>
+        <button type="button" class="btn-inline" id="btnCancelAddApt">Cancel</button>
+        <button type="submit" class="next" id="btnSaveAddApt" style="padding:10px 24px; font-size:14px;">Save Apartment</button>
       </div>
+      <div class="modal-error" id="addModalError"></div>
     </form>
   </div>
 </div>
 
-<!-- View Full Record Details Modal -->
-<div class="modal-overlay" id="detailsModal" style="display: none;">
-  <div class="modal-box" style="max-width: 640px;">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-      <h3 id="detailsModalTitle" style="margin:0;">Record Details</h3>
-      <span class="admin-badge" id="detailsModalBadge">Details</span>
+<!-- Details Modal -->
+<div class="modal-overlay" id="detailsModal">
+  <div class="modal-box" style="max-width:640px;">
+    <div class="modal-head">
+      <h3 id="detailsModalTitle">Record Details</h3>
+      <button type="button" class="modal-close" data-close="detailsModal">✕</button>
     </div>
-    <div class="sub" id="detailsModalSub">Comprehensive overview of all submission fields and metadata.</div>
-    <div id="detailsModalContent">
-      <!-- Injected dynamically -->
-    </div>
+    <div class="sub">Comprehensive overview of all submission fields and metadata. <span class="admin-badge" id="detailsModalBadge" style="margin-left:6px;">Details</span></div>
+    <div id="detailsModalContent"></div>
     <div class="modal-actions">
-      <button type="button" class="bk" id="btnCloseDetails" style="color: #B3A7BF;">Close</button>
-      <button type="button" class="next" id="btnEditFromDetails" style="padding: 10px 20px; font-size: 14px;">✎ Edit Record</button>
+      <button type="button" class="btn-inline" id="btnCloseDetails">Close</button>
+      <button type="button" class="next" id="btnEditFromDetails" style="padding:10px 20px; font-size:14px;">✎ Edit Record</button>
     </div>
   </div>
 </div>
 
-<!-- Edit Submission Modal -->
-<div class="modal-overlay" id="editModal" style="display: none;">
-  <div class="modal-box">
-    <h3 id="editModalTitle">Edit Record</h3>
-    <div class="sub" id="editModalSub">Update details and status. Changes persist directly to Supabase.</div>
+<!-- Edit Modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal-box wide">
+    <div class="modal-head">
+      <h3 id="editModalTitle">Edit Record</h3>
+      <button type="button" class="modal-close" data-close="editModal">✕</button>
+    </div>
+    <div class="sub">Update details and status. Changes persist directly to Supabase.</div>
     <form id="editRecordForm">
       <input type="hidden" id="editRowId">
       <input type="hidden" id="editRowTable">
-      <div class="edit-form-grid" id="editFieldsContainer">
-        <!-- Dynamic fields populated via JS -->
-      </div>
+      <div class="edit-form-grid" id="editFieldsContainer"></div>
       <div class="modal-actions">
-        <button type="button" class="bk" id="btnCancelEdit" style="color: #B3A7BF;">Cancel</button>
-        <button type="submit" class="next" id="btnSaveEdit" style="padding: 10px 22px; font-size: 14px;">Save Changes</button>
+        <button type="button" class="btn-inline" id="btnCancelEdit">Cancel</button>
+        <button type="submit" class="next" id="btnSaveEdit" style="padding:10px 22px; font-size:14px;">Save Changes</button>
       </div>
+      <div class="modal-error" id="editModalError"></div>
     </form>
   </div>
 </div>
 
 <!-- Delete Confirmation Modal -->
-<div class="modal-overlay" id="delModal" style="display: none;">
-  <div class="modal-box" style="max-width: 420px; text-align: center;">
-    <div style="font-size: 38px; margin-bottom: 12px;">⚠️</div>
-    <h3 style="color: #F87171;">Delete Submission</h3>
-    <p style="color: #B3A7BF; font-size: 14px; line-height: 1.5; margin-bottom: 24px;">
-      Are you sure you want to permanently delete this submission? This will remove it from the database and cannot be undone.
-    </p>
-    <div style="display: flex; gap: 12px; justify-content: center;">
-      <button type="button" class="bk" id="btnCancelDel" style="color: #B3A7BF;">Cancel</button>
-      <button type="button" class="next" id="btnConfirmDel" style="background: #EF4444; border-color: #DC2626; padding: 10px 22px; font-size: 14px;">Yes, Delete</button>
+<div class="modal-overlay center" id="delModal">
+  <div class="modal-box" style="max-width:440px;">
+    <div class="modal-head">
+      <h3 style="color:#F87171;">⚠️ Delete Submission</h3>
+      <button type="button" class="modal-close" data-close="delModal">✕</button>
     </div>
+    <div class="sub">You are deleting this exact record. This removes it from the database and cannot be undone.</div>
+    <div class="del-summary" id="delSummary"></div>
+    <label class="del-confirm-label">Type <code id="delConfirmId"></code> to confirm:</label>
+    <input type="text" id="delConfirmInput" autocomplete="off" spellcheck="false">
+    <div class="modal-actions">
+      <button type="button" class="btn-inline" id="btnCancelDel">Cancel</button>
+      <button type="button" class="next" id="btnConfirmDel" style="background:#EF4444; padding:10px 22px; font-size:14px;" disabled>Yes, Delete</button>
+    </div>
+    <div class="modal-error" id="delModalError"></div>
   </div>
 </div>
 
-<!-- Fullsize Photo Lightbox Modal -->
-<div id="photoLightbox" onclick="this.style.display='none'">
-  <div style="position:relative; max-width:90vw; max-height:90vh; text-align:center;">
-    <img id="lightboxImg" src="" alt="Full view" style="max-width:100%; max-height:85vh; border-radius:10px; box-shadow:0 12px 40px rgba(0,0,0,0.8); border:1px solid rgba(255,255,255,0.2);">
-    <div style="color:#E5E7EB; font-size:13px; margin-top:10px;">Click anywhere outside to close</div>
+<!-- Lightboxes -->
+<div class="lightbox" id="photoLightbox">
+  <div style="max-width:90vw;">
+    <img id="lightboxImg" src="" alt="Full view">
+    <div class="lb-hint">Click anywhere to close</div>
   </div>
 </div>
-
-<!-- Fullsize Video Lightbox Modal -->
-<div id="videoLightbox" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.92); z-index:210; align-items:center; justify-content:center; padding:16px;">
-  <div style="position:relative; max-width:860px; width:100%; text-align:center; background:rgba(20,15,30,0.95); border:1px solid rgba(255,255,255,0.2); border-radius:14px; padding:16px; box-shadow:0 24px 60px rgba(0,0,0,0.8);">
-    <button type="button" onclick="window.closeVideoLightbox()" style="position:absolute; top:12px; right:12px; background:rgba(255,255,255,0.15); color:#fff; border:none; border-radius:8px; padding:6px 12px; font-weight:700; cursor:pointer;">✕ Close</button>
-    <h4 style="margin:0 0 12px; color:#fff; font-family:var(--display);">Apartment Video Tour</h4>
-    <div id="videoLightboxContainer" style="max-height:75vh; overflow:hidden; border-radius:8px; background:#000;"></div>
+<div class="lightbox" id="videoLightbox">
+  <div class="lb-frame">
+    <button type="button" class="lb-close" id="videoLightboxClose">✕ Close</button>
+    <h4>Apartment Video Tour</h4>
+    <div id="videoLightboxContainer"></div>
   </div>
 </div>
 
@@ -1027,1251 +497,36 @@ tr:hover td {
 <script src="assets/data.js"></script>
 <script src="assets/notify.js"></script>
 <script src="assets/submit.js"></script>
+<script src="assets/admin.js"></script>
 <script>
+/* shell-only wiring that has no place in admin.js */
 (function(){
-  var cfg = window.ARZUZ_CONFIG || {};
-  var currentTable = 'demand_records';
-  var loadedData = { demand_records: [], listings: [], scout_submissions: [] };
-  var pendingDelete = null;
-
-  // HTML Entity Escaper for XSS Prevention
-  function esc(str){
-    if (str === null || str === undefined) return '';
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
+  // populate the Add + modal property-type selects from the shared list
+  var ty = document.getElementById('add_ty');
+  if (ty && typeof PROPERTY_TYPES !== 'undefined') {
+    ty.innerHTML = PROPERTY_TYPES.map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('');
   }
 
-  // ---------- Supabase Auth gate ----------
-  // Reads, updates and deletes in Supabase are granted `to authenticated`,
-  // so signing in is the only way into the data. There is no passcode
-  // left in this page: nothing in the page source can open it.
-  var gateModal = document.getElementById('gateModal');
-  var gateEmail  = document.getElementById('gateEmail');
-  var gatePass   = document.getElementById('gatePass');
-  var gateErr    = document.getElementById('gateErr');
-  var btnUnlock  = document.getElementById('btnUnlock');
-
-  function showGate(msg){
-    gateModal.style.display = 'flex';
-    if (msg) { gateErr.textContent = msg; gateErr.style.display = 'block'; }
-    else { gateErr.style.display = 'none'; }
-  }
-
-  function hideGate(){
-    gateErr.style.display = 'none';
-    gateModal.style.display = 'none';
-    var who = document.getElementById('whoBadge');
-    if (who) {
-      who.textContent = 'Signed in' + (ArzuzAuth.email() ? ' · ' + ArzuzAuth.email() : '');
-      who.style.display = '';
-    }
-  }
-
-  // A rejected request means the session is gone: back to the gate.
-  function onAuthError(err){
-    ArzuzAuth.clear();
-    showGate('Your session has expired. Please sign in again.');
-    console.warn('[Arzuz Admin]', err && err.message);
-  }
-
-  function checkAuth(){
-    ArzuzAuth.restore().then(function(s){
-      if (s) { hideGate(); fetchData(); }
-      else showGate();
-    }).catch(function(){ showGate(); });
-  }
-
-  btnUnlock.addEventListener('click', function(){
-    var email = gateEmail.value.trim();
-    var pass  = gatePass.value;
-    if (!email || !pass) { showGate('Enter your email and password.'); return; }
-    btnUnlock.disabled = true;
-    btnUnlock.textContent = 'Signing in…';
-    ArzuzAuth.signIn(email, pass)
-      .then(function(){
-        btnUnlock.textContent = 'Sign in';
-        btnUnlock.disabled = false;
-        gatePass.value = '';
-        hideGate();
-        fetchData();
-      })
-      .catch(function(err){
-        btnUnlock.textContent = 'Sign in';
-        btnUnlock.disabled = false;
-        showGate(err.message);
-      });
-  });
-
-  function gateKey(e){ if (e.key === 'Enter') btnUnlock.click(); }
-  gateEmail.addEventListener('keydown', gateKey);
-  gatePass.addEventListener('keydown', gateKey);
-
-  document.getElementById('btnLock').addEventListener('click', function(){
-    ArzuzAuth.signOut().then(function(){ location.reload(); });
-  });
-
-  // ---------- Telegram alerts — the bot token lives only in Netlify ----------
-  var tgChatEl  = document.getElementById('tgChat');
-  var tgStatusEl = document.getElementById('tgStatus');
-
-  // Ask the function what it has configured — never the token itself.
-  ArzuzNotify.status()
-    .then(function(st){
-      if (!tgStatusEl) return;
-      tgStatusEl.textContent = (st.token ? '✓ Bot token configured.' : '⚠ TELEGRAM_BOT_TOKEN is not set in Netlify.') +
-        '  ' + (st.chatId ? '✓ Chat ID configured.' : '⚠ TELEGRAM_CHAT_ID is not set yet.');
-      tgStatusEl.style.color = (st.token && st.chatId) ? '#34D399' : '#FBBF24';
-      if (st.chatId && tgChatEl) tgChatEl.value = 'Configured in Netlify (hidden)';
-    })
-    .catch(function(){
-      if (tgStatusEl) { tgStatusEl.textContent = '⚠ Could not reach /api/notify — has this site been deployed with the function?'; tgStatusEl.style.color = '#FBBF24'; }
-    });
-
-  document.getElementById('btnAutoDetect').addEventListener('click', function(){
-    var btn = this; btn.disabled = true;
-    ArzuzNotify.detect()
-      .then(function(st){
-        if (!st.chatId) {
-          alert('No recent chat found. Open Telegram, search for @arzuzwaitlist_bot, send it any message (e.g. /start), then click Auto-Detect again.');
-          return;
-        }
-        tgChatEl.value = st.chatId;
-        alert('Detected Chat ID: ' + st.chatId + '\n\nCopy it into Netlify → Site configuration → Environment variables → TELEGRAM_CHAT_ID, then redeploy.');
-      })
-      .catch(function(err){ alert('Could not detect a chat ID: ' + err.message); })
-      .finally(function(){ btn.disabled = false; });
-  });
-
-  document.getElementById('btnCopyChat').addEventListener('click', function(){
-    var v = (tgChatEl.value || '').trim();
-    if (!v || v.indexOf('Configured') === 0) { alert('Click Auto-Detect Chat ID first.'); return; }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(v).then(function(){ alert('Copied: ' + v); }).catch(function(){ alert(v); });
-    } else { alert(v); }
-  });
-
-  document.getElementById('btnTestNotify').addEventListener('click', function(){
-    var btn = this; btn.disabled = true;
-    ArzuzNotify.test()
-      .then(function(){ alert('Test alert sent to Telegram!'); })
-      .catch(function(err){ alert('Failed to send test alert: ' + err.message); })
-      .finally(function(){ btn.disabled = false; });
-  });
-
-  // ================= AMENITIES MANAGER =================
-  function renderAmenitiesManager(){
-    var list = document.getElementById('amenitiesManagerList');
-    if (!list) return;
-    var allUtils = (typeof UTILITIES !== 'undefined' && UTILITIES.length) ? UTILITIES : [];
-    list.innerHTML = allUtils.map(function(u, idx){
-      var isDefault = (typeof _DEFAULT_UTILITIES !== 'undefined') && _DEFAULT_UTILITIES.indexOf(u) !== -1;
-      return '<label class="admin-chip active" style="position:relative; padding-right:30px;">'+
-               '<span>✓ '+esc(u)+'</span>'+
-               (!isDefault
-                 ? '<button type="button" onclick="window.removeAmenity(\''+esc(u).replace(/'/g,"\\'")+'\')" style="position:absolute;top:3px;right:6px;background:none;border:none;color:#F87171;cursor:pointer;font-size:13px;padding:0;line-height:1;" title="Remove">✕</button>'
-                 : '<span style="position:absolute;top:3px;right:6px;font-size:10px;color:#6B5C7D;cursor:help;" title="Built-in — cannot remove">🔒</span>')+
-             '</label>';
-    }).join('') || '<span style="color:#6B5C7D;font-size:13px;">No amenities defined yet.</span>';
-  }
-
-  window.removeAmenity = function(name){
-    if (typeof _DEFAULT_UTILITIES !== 'undefined' && _DEFAULT_UTILITIES.indexOf(name) !== -1) {
-      alert('Built-in amenity "' + name + '" cannot be removed.'); return;
-    }
-    ArzuzAuth.headers().then(function(h){
-      var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/amenities?name=eq.' + encodeURIComponent(name);
-      return fetch(url, { method: 'DELETE', headers: h });
-    }).then(function(r){
-      if (r.status === 401 || r.status === 403) { onAuthError(new Error('Amenity delete rejected (HTTP ' + r.status + ')')); throw new Error('Your session has expired.'); }
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return ArzuzData.reload();
-    }).then(function(){
-      renderAmenitiesManager();
-      ArzuzSubmit.showToast('Amenity "' + name + '" removed.', 'info');
-    }).catch(function(err){
-      alert('Could not remove amenity: ' + err.message);
-    });
-  };
-
-  var newAmenityInput = document.getElementById('newAmenityInput');
-  var btnAddAmenity = document.getElementById('btnAddAmenity');
-  var amenityFeedback = document.getElementById('amenityFeedback');
-
-  if (btnAddAmenity) {
-    btnAddAmenity.addEventListener('click', function(){
-      var val = (newAmenityInput ? newAmenityInput.value.trim() : '');
-      if (!val) return;
-      var current = (typeof UTILITIES !== 'undefined' && UTILITIES) ? UTILITIES.slice() : [];
-      if (current.indexOf(val) !== -1) {
-        if (amenityFeedback) { amenityFeedback.style.color='#F59E0B'; amenityFeedback.textContent='⚠️ "'+val+'" already exists.'; amenityFeedback.style.display='block'; }
-        return;
-      }
-      ArzuzAuth.headers().then(function(h){
-        h['Prefer'] = 'return=representation';
-        var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/amenities';
-        return fetch(url, { method: 'POST', headers: h, body: JSON.stringify({ name: val }) });
-      }).then(function(r){
-        if (r.status === 401 || r.status === 403) { onAuthError(new Error('Amenity insert rejected (HTTP ' + r.status + ')')); throw new Error('Your session has expired.'); }
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return ArzuzData.reload();
-      }).then(function(){
-        if (newAmenityInput) newAmenityInput.value = '';
-        if (amenityFeedback) { amenityFeedback.style.color='#34D399'; amenityFeedback.textContent='✅ "'+val+'" added! It now appears in all forms and the Add Apartment modal.'; amenityFeedback.style.display='block'; }
-        renderAmenitiesManager();
-        setTimeout(function(){ if(amenityFeedback) amenityFeedback.style.display='none'; }, 4000);
-      }).catch(function(err){
-        if (amenityFeedback) { amenityFeedback.style.color='#F87171'; amenityFeedback.textContent='⚠️ Could not save: ' + err.message; amenityFeedback.style.display='block'; }
-      });
-    });
-  }
-
-  if (newAmenityInput) {
-    newAmenityInput.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); btnAddAmenity.click(); } });
-  }
-
-  // Initial render — after the amenity list has loaded from the database
-  ArzuzData.ready.then(renderAmenitiesManager);
-
-
-  document.querySelectorAll('.tab-btn').forEach(function(b){
+  // generic close buttons on modal heads
+  document.querySelectorAll('.modal-close[data-close]').forEach(function(b){
     b.addEventListener('click', function(){
-      document.querySelectorAll('.tab-btn').forEach(function(t){ t.classList.remove('active'); });
-      b.classList.add('active');
-      currentTable = b.dataset.table;
-      renderTable();
+      var m = document.getElementById(b.dataset.close);
+      if (m) m.classList.remove('open');
     });
   });
 
-  document.getElementById('searchInput').addEventListener('input', renderTable);
-  document.getElementById('btnRefresh').addEventListener('click', fetchData);
-
-  // Fetch data from Supabase — as the signed-in admin, never as anon.
-  function fetchData(){
-    if(!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY){
-      return;
-    }
-    ArzuzAuth.headers().then(function(h){
-      var tables = ['demand_records', 'listings', 'scout_submissions'];
-      var promises = tables.map(function(tbl){
-        var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/' + tbl + '?select=*&order=created_at.desc';
-        return fetch(url, { headers: h }).then(function(r){
-          if (r.status === 401 || r.status === 403) throw Object.assign(new Error('Not authorised (HTTP ' + r.status + ')'), { auth: true });
-          return r.ok ? r.json() : [];
-        }).catch(function(e){
-          if (e && e.auth) onAuthError(e);
-          return [];
-        });
-      });
-
-    Promise.all(promises).then(function(results){
-      loadedData.demand_records = results[0] || [];
-      loadedData.listings = results[1] || [];
-      loadedData.scout_submissions = results[2] || [];
-      updateMetrics();
-      renderTable();
-    });
-    }).catch(function(err){
-      // headers() rejects when there is no valid session
-      onAuthError(err);
-    });
-  }
-
-  function updateMetrics(){
-    document.getElementById('mDemands').textContent = loadedData.demand_records.length;
-    document.getElementById('mListings').textContent = loadedData.listings.length;
-    document.getElementById('mScouts').textContent = loadedData.scout_submissions.length;
-  }
-
-  function getStatusTag(status){
-    var s = (status || 'pending').toLowerCase();
-    return '<span class="tag-status tag-' + esc(s) + '">' + esc(s) + '</span>';
-  }
-
-  function renderTable(){
-    var rows = loadedData[currentTable] || [];
-    var q = document.getElementById('searchInput').value.toLowerCase().trim();
-
-    if(q){
-      rows = rows.filter(function(r){
-        return JSON.stringify(r).toLowerCase().indexOf(q) !== -1;
-      });
-    }
-
-    var head = document.getElementById('tableHead');
-    var body = document.getElementById('tableBody');
-
-    if(currentTable === 'demand_records'){
-      head.innerHTML = '<th>Date</th><th>Status</th><th>First Name</th><th>Last Name</th><th>Room Type</th><th>Budget</th><th>Distance</th><th>Timing</th><th>Contact</th><th>Actions</th>';
-      body.innerHTML = rows.map(function(r){
-        var dateStr = new Date(r.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
-        var phone = r.phone || (r.payload && r.payload.phone) || '';
-        var waLink = phone ? '<a class="wa-btn" href="https://wa.me/'+phone.replace(/\+/g,'')+'" target="_blank">WhatsApp</a>' : '-';
-        var firstName = esc(r.first_name || (r.payload&&r.payload.first) || 'Student');
-        var lastName = esc((r.payload&&r.payload.last) || '');
-        return '<tr>'+
-          '<td>'+esc(dateStr)+'</td>'+
-          '<td>'+getStatusTag(r.status)+'</td>'+
-          '<td><b>'+firstName+'</b></td>'+
-          '<td>'+(lastName||'<span style="color:#6B5C7D">—</span>')+'</td>'+
-          '<td>'+esc(r.room_type || (r.payload&&r.payload.type) || '-')+'</td>'+
-          '<td>'+esc(r.budget_band || (r.payload&&r.payload.budget) || '-')+'</td>'+
-          '<td>'+esc(r.distance || (r.payload&&r.payload.dist) || '-')+'</td>'+
-          '<td>'+esc(r.timing || (r.payload&&r.payload.when) || '-')+'</td>'+
-          '<td>'+waLink+'</td>'+
-          '<td><div class="cell-actions">'+
-            '<button class="act-btn act-view" onclick="window.openDetailsModal(\'demand_records\',\''+r.id+'\')">👁 View</button>'+
-            '<button class="act-btn act-edit" onclick="window.openEditModal(\'demand_records\',\''+r.id+'\')">✎ Edit</button>'+
-            '<button class="act-btn act-del" onclick="window.openDeleteModal(\'demand_records\',\''+r.id+'\')">🗑</button>'+
-          '</div></td>'+
-        '</tr>';
-      }).join('') || '<tr><td colspan="10" style="text-align:center; padding:30px; color:#8D8099;">No student records found.</td></tr>';
-    } 
-    else if(currentTable === 'listings'){
-      head.innerHTML = '<th>Date</th><th>Status</th><th>Apt ID</th><th>Photo</th><th>Video</th><th>Property Name</th><th>Amenities</th><th>Type</th><th>Area</th><th>Price</th><th>Location</th><th>Actions</th>';
-      body.innerHTML = rows.map(function(r){
-        var dateStr = new Date(r.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
-        var price = r.listed_price_ngn || (r.payload&&r.payload.rent) || 0;
-        var phone = r.owner_phone || (r.payload&&r.payload.ph) || '';
-        var lat = r.latitude || (r.payload && r.payload.lat);
-        var lng = r.longitude || (r.payload && r.payload.lng);
-        var photoUrl = r.photo_url || (r.payload && r.payload.photo) || '';
-        var videoUrl = (r.payload && (r.payload.video || r.payload.video_url)) || '';
-        var aptId = (r.payload && (r.payload.apt_id || r.payload.custom_id)) || (r.id ? r.id.substring(0,8) : '');
-        var propName = esc(r.property_name || (r.payload&&r.payload.prop_name) || '');
-        var mapBtn = (lat && lng) 
-          ? '<a class="act-btn act-map" href="https://www.google.com/maps?q='+lat+','+lng+'" target="_blank">📍 Map</a>' 
-          : '<span style="color:#6B5C7D; font-size:12px;">No pin</span>';
-        var photoCell = photoUrl
-          ? '<img class="admin-photo-thumb" src="'+esc(photoUrl)+'" alt="Property" onclick="window.openLightbox(\'' + esc(photoUrl) + '\')">'  
-          : '<span style="color:#6B5C7D;font-size:11px;">No photo</span>';
-        var videoCell = videoUrl
-          ? '<button type="button" class="act-btn" style="background:rgba(236,72,153,0.18);color:#F472B6;border-color:rgba(236,72,153,0.35);font-size:11.5px;padding:3px 8px;" onclick="window.openVideoLightbox(\'' + esc(videoUrl) + '\')">🎥 Play</button>'
-          : '<span style="color:#6B5C7D;font-size:11px;">No video</span>';
-
-        // Display top utilities as mini chips
-        var utList = (r.payload && (r.payload.ut || r.payload.utilities)) || [];
-        if (typeof utList === 'string') utList = utList.split(',').map(function(s){ return s.trim(); });
-        var amenitiesHtml = (Array.isArray(utList) && utList.length)
-          ? utList.slice(0, 3).map(function(u){ return '<span class="table-amenity-tag">'+esc(u)+'</span>'; }).join('') + (utList.length > 3 ? '<span class="table-amenity-tag" style="opacity:0.7;">+'+(utList.length - 3)+'</span>' : '')
-          : '<span style="color:#6B5C7D;font-size:11px;">—</span>';
-
-        return '<tr>'+
-          '<td>'+esc(dateStr)+'</td>'+
-          '<td>'+getStatusTag(r.status)+'</td>'+
-          '<td><span class="apt-badge-id">'+esc(aptId)+'</span></td>'+
-          '<td>'+photoCell+'</td>'+
-          '<td>'+videoCell+'</td>'+
-          '<td><b>'+(propName||'<span style="color:#6B5C7D">—</span>')+'</b></td>'+
-          '<td><div style="max-width:180px; display:flex; flex-wrap:wrap; gap:2px;">'+amenitiesHtml+'</div></td>'+
-          '<td>'+esc(r.property_type || (r.payload&&r.payload.ty) || '-')+'</td>'+
-          '<td>'+esc(r.area || (r.payload&&r.payload.ar) || '-')+'</td>'+
-          '<td><b>₦'+Number(price).toLocaleString()+'</b></td>'+
-          '<td>'+mapBtn+'</td>'+
-          '<td><div class="cell-actions">'+
-            '<button class="act-btn act-view" onclick="window.openDetailsModal(\'listings\',\''+r.id+'\')">👁 View</button>'+
-            (phone ? '<a class="wa-btn" href="https://wa.me/'+phone.replace(/\+/g,'')+'" target="_blank">WA</a>' : '')+
-            '<button class="act-btn act-edit" onclick="window.openEditModal(\'listings\',\''+r.id+'\')">✎ Edit</button>'+
-            '<button class="act-btn act-del" onclick="window.openDeleteModal(\'listings\',\''+r.id+'\')">🗑</button>'+
-          '</div></td>'+
-        '</tr>';
-      }).join('') || '<tr><td colspan="12" style="text-align:center; padding:30px; color:#8D8099;">No listings found.</td></tr>';
-    } 
-    else if(currentTable === 'scout_submissions'){
-      head.innerHTML = '<th>Date</th><th>Status</th><th>Photo</th><th>Area</th><th>Rent Paid</th><th>Vacancy</th><th>Utilities</th><th>Location</th><th>Actions</th>';
-      body.innerHTML = rows.map(function(r){
-        var dateStr = new Date(r.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
-        var rent = r.rent_reported || (r.payload&&r.payload.amt) || 0;
-        var phone = r.scout_phone || (r.payload&&r.payload.phone) || '';
-        var lat = r.latitude || (r.payload && r.payload.lat);
-        var lng = r.longitude || (r.payload && r.payload.lng);
-        var photoUrl = r.photo_url || (r.payload && r.payload.photo) || '';
-        var mapBtn = (lat && lng) 
-          ? '<a class="act-btn act-map" href="https://www.google.com/maps?q='+lat+','+lng+'" target="_blank">📍 Map</a>' 
-          : '<span style="color:#6B5C7D; font-size:12px;">No pin</span>';
-        var photoCell = photoUrl
-          ? '<img class="admin-photo-thumb" src="'+esc(photoUrl)+'" alt="Building" onclick="window.openLightbox(\'' + esc(photoUrl) + '\')">'  
-          : '<span style="color:#6B5C7D;font-size:11px;">No photo</span>';
-
-        var utList = (r.payload && (r.payload.ut || r.payload.utilities)) || [];
-        if (typeof utList === 'string') utList = utList.split(',').map(function(s){ return s.trim(); });
-        var amenitiesHtml = (Array.isArray(utList) && utList.length)
-          ? utList.slice(0, 2).map(function(u){ return '<span class="table-amenity-tag">'+esc(u)+'</span>'; }).join('') + (utList.length > 2 ? '<span class="table-amenity-tag" style="opacity:0.7;">+'+(utList.length - 2)+'</span>' : '')
-          : '<span style="color:#6B5C7D;font-size:11px;">—</span>';
-
-        return '<tr>'+
-          '<td>'+esc(dateStr)+'</td>'+
-          '<td>'+getStatusTag(r.status)+'</td>'+
-          '<td>'+photoCell+'</td>'+
-          '<td><b>'+esc(r.area || (r.payload&&r.payload.area) || '-')+'</b></td>'+
-          '<td><b>₦'+Number(rent).toLocaleString()+'</b></td>'+
-          '<td>'+esc(r.vacancy_signal || (r.payload&&r.payload.vac) || '-')+'</td>'+
-          '<td><div style="max-width:140px; display:flex; flex-wrap:wrap; gap:2px;">'+amenitiesHtml+'</div></td>'+
-          '<td>'+mapBtn+'</td>'+
-          '<td><div class="cell-actions">'+
-            '<button class="act-btn act-view" onclick="window.openDetailsModal(\'scout_submissions\',\''+r.id+'\')">👁 View</button>'+
-            (phone ? '<a class="wa-btn" href="https://wa.me/'+phone.replace(/\+/g,'')+'" target="_blank">WA</a>' : '')+
-            '<button class="act-btn act-edit" onclick="window.openEditModal(\'scout_submissions\',\''+r.id+'\')">✎ Edit</button>'+
-            '<button class="act-btn act-del" onclick="window.openDeleteModal(\'scout_submissions\',\''+r.id+'\')">🗑</button>'+
-          '</div></td>'+
-        '</tr>';
-      }).join('') || '<tr><td colspan="9" style="text-align:center; padding:30px; color:#8D8099;">No scout reports found.</td></tr>';
-    }
-  }
-
-  // ================= EDIT MODAL FUNCTIONALITY =================
-  var editModal = document.getElementById('editModal');
-  var editForm = document.getElementById('editRecordForm');
-  var editFieldsContainer = document.getElementById('editFieldsContainer');
-  var editRowIdEl = document.getElementById('editRowId');
-  var editRowTableEl = document.getElementById('editRowTable');
-
-  window.openEditModal = function(table, id){
-    var row = (loadedData[table] || []).find(function(r){ return r.id === id; });
-    if (!row) return;
-
-    editRowIdEl.value = id;
-    editRowTableEl.value = table;
-    document.getElementById('editModalTitle').textContent = 'Edit ' + (table === 'demand_records' ? 'Student Demand' : (table === 'listings' ? 'Property Listing' : 'Scout Report'));
-
-    var p = row.payload || {};
-    var html = '';
-
-    // Status Field
-    html += '<div class="edit-fld"><label>Status</label><select id="edit_status">';
-    var statuses = (table === 'demand_records')
-      ? ['open', 'matched', 'fulfilled', 'expired']
-      : ['pending', 'active', 'rejected', 'inactive'];
-
-    statuses.forEach(function(st){
-      html += '<option value="'+st+'"'+((row.status||'').toLowerCase()===st?' selected':'')+'>'+st.toUpperCase()+'</option>';
-    });
-    html += '</select></div>';
-
-    // Internal Notes Field
-    html += '<div class="edit-fld"><label>Admin Notes</label><input type="text" id="edit_notes" value="'+esc(row.notes||'')+'" placeholder="Internal notes..."></div>';
-
-    if (table === 'demand_records') {
-      html += '<div class="edit-fld"><label>First Name</label><input type="text" id="edit_first" value="'+esc(row.first_name || p.first || '')+'"></div>';
-      html += '<div class="edit-fld"><label>Last Name</label><input type="text" id="edit_last" value="'+esc(p.last || '')+'"></div>';
-      html += '<div class="edit-fld"><label>Phone / WhatsApp</label><input type="tel" id="edit_phone" value="'+esc(row.phone || p.phone || '')+'"></div>';
-      html += '<div class="edit-fld"><label>Room Type</label><input type="text" id="edit_room_type" value="'+esc(row.room_type || p.type || '')+'"></div>';
-      html += '<div class="edit-fld"><label>Budget Band</label><input type="text" id="edit_budget_band" value="'+esc(row.budget_band || p.budget || '')+'"></div>';
-    } 
-    else if (table === 'listings') {
-      var photoUrl = row.photo_url || p.photo || '';
-      var videoUrl = (p && (p.video || p.video_url)) || '';
-      var aptId = (p && (p.apt_id || p.custom_id)) || (row.id ? row.id.substring(0,8) : '');
-
-      html += '<div class="edit-fld"><label>Apartment ID / Code</label><input type="text" id="edit_apt_id" value="'+esc(aptId)+'" placeholder="e.g. APT-001"></div>';
-      html += '<div class="edit-fld"><label>Property Name</label><input type="text" id="edit_prop_name" value="'+esc(row.property_name || p.prop_name || '')+'" placeholder="e.g. Blessing Lodge"></div>';
-      html += '<div class="edit-fld"><label>Owner / Caretaker Name</label><input type="text" id="edit_nm" value="'+esc(row.owner_name || p.nm || '')+'"></div>';
-      html += '<div class="edit-fld"><label>Phone / WhatsApp</label><input type="tel" id="edit_ph" value="'+esc(row.owner_phone || p.ph || '')+'"></div>';
-      html += '<div class="edit-fld"><label>Area / Street</label><input type="text" id="edit_ar" value="'+esc(row.area || p.ar || '')+'"></div>';
-      html += '<div class="edit-fld"><label>Price (₦ / Session)</label><input type="number" id="edit_rent" value="'+esc(row.listed_price_ngn || p.rent || '')+'"></div>';
-      html += '<div class="edit-fld"><label>Available Rooms</label><input type="text" id="edit_rm" value="'+esc(row.rooms || p.rm || '')+'"></div>';
-      html += '<div class="edit-fld"><label>Property Type</label><input type="text" id="edit_ty" value="'+esc(row.property_type || p.ty || 'Self-contain')+'"></div>';
-
-      // Description field
-      html += '<div class="edit-fld" style="grid-column:1/-1"><label>Apartment Description & Features</label><textarea id="edit_desc" rows="2" placeholder="Running water, prepaid meter...">'+esc(p.desc || p.description || '')+'</textarea></div>';
-
-      // Hostel amenities chips
-      var curUtilities = p.ut || p.utilities || [];
-      if (typeof curUtilities === 'string') curUtilities = curUtilities.split(',').map(function(s){ return s.trim(); });
-      var allUtils = (typeof UTILITIES !== 'undefined' && UTILITIES.length) ? UTILITIES : [
-        "Borehole water","Pipe-borne water","NEPA connection","Generator backup",
-        "Private bathroom","Flush toilet","Security gate","Perimeter fence","Kitchen access"
-      ];
-      var editChipsHtml = allUtils.map(function(u){
-        var isChk = Array.isArray(curUtilities) && curUtilities.indexOf(u) !== -1;
-        return '<label class="admin-chip'+(isChk ? ' active' : '')+'">'+
-                 '<input type="checkbox" name="edit_ut" value="'+esc(u)+'"'+(isChk ? ' checked' : '')+' onchange="this.parentElement.classList.toggle(\'active\', this.checked)">'+
-                 '<span>'+(isChk ? '✓ ' : '+ ')+esc(u)+'</span>'+
-               '</label>';
-      }).join('');
-      html += '<div class="edit-fld" style="grid-column:1/-1"><label>Hostel Amenities & Utilities</label><div class="admin-chips-wrap">'+editChipsHtml+'</div></div>';
-
-      // Photo upload & preview in edit modal
-      html += '<div class="edit-fld" style="grid-column:1/-1"><label>Property Photo</label>'+
-              '<div class="admin-media-zone" id="editPhotoZone">'+
-                '<input type="file" id="editPhotoInput" accept="image/*" style="display:none;">'+
-                '<div id="editPhotoText">📷 Click to upload or replace photo</div>'+
-                '<div id="editPhotoProgress" class="media-upload-status"></div>'+
-              '</div>'+
-              '<input type="hidden" id="edit_photo" value="'+esc(photoUrl)+'">'+
-              '<div id="editPhotoPreview" class="media-preview-box" style="'+(photoUrl ? '' : 'display:none;')+'">'+
-                (photoUrl ? '<img src="'+esc(photoUrl)+'" alt="Property"><button type="button" class="media-remove-btn" onclick="window.clearEditMedia(\'edit_photo\',\'editPhotoPreview\')">✕ Remove</button>' : '')+
-              '</div>'+
-              '</div>';
-
-      // Video upload & preview in edit modal
-      html += '<div class="edit-fld" style="grid-column:1/-1"><label>Property Video Tour</label>'+
-              '<div class="admin-media-zone" id="editVideoZone">'+
-                '<input type="file" id="editVideoInput" accept="video/*" style="display:none;">'+
-                '<div id="editVideoText">🎥 Click to upload or replace video tour</div>'+
-                '<div id="editVideoProgress" class="media-upload-status"></div>'+
-              '</div>'+
-              '<input type="hidden" id="edit_video" value="'+esc(videoUrl)+'">'+
-              '<div id="editVideoPreview" class="media-preview-box" style="'+(videoUrl ? '' : 'display:none;')+'">'+
-                (videoUrl ? '<video src="'+esc(videoUrl)+'" controls></video><button type="button" class="media-remove-btn" onclick="window.clearEditMedia(\'edit_video\',\'editVideoPreview\')">✕ Remove</button>' : '')+
-              '</div>'+
-              '<input type="url" id="edit_video_manual" value="'+esc(videoUrl)+'" placeholder="Or paste direct video URL" style="margin-top:6px; font-size:12.5px;">'+
-              '</div>';
-    } 
-    else if (table === 'scout_submissions') {
-      var scoutPhoto = row.photo_url || p.photo || '';
-      html += '<div class="edit-fld"><label>Area / Street</label><input type="text" id="edit_area" value="'+esc(row.area || p.area || '')+'"></div>';
-      html += '<div class="edit-fld"><label>Phone / WhatsApp</label><input type="tel" id="edit_phone" value="'+esc(row.scout_phone || p.phone || '')+'"></div>';
-      html += '<div class="edit-fld"><label>Rent Paid (₦)</label><input type="number" id="edit_amt" value="'+esc(row.rent_reported || p.amt || '')+'"></div>';
-      html += '<div class="edit-fld"><label>Vacancy Signal</label><input type="text" id="edit_vac" value="'+esc(row.vacancy_signal || p.vac || '')+'"></div>';
-      if (scoutPhoto) {
-        html += '<div class="edit-fld" style="grid-column:1/-1"><label>Building Photo</label>'+
-                '<img class="edit-photo-preview" src="'+esc(scoutPhoto)+'" alt="Building photo">'+
-                '<p style="font-size:12px;color:#9A8CA8;margin-top:6px;">Photo uploaded via Cloudinary.</p></div>';
-      }
-    }
-
-    editFieldsContainer.innerHTML = html;
-    editModal.style.display = 'flex';
-
-    // Hook upload dropzones inside edit modal if listings table
-    if (table === 'listings') {
-      initEditUploaders();
-    }
-  };
-
-  window.clearEditMedia = function(inputId, previewId){
-    var inp = document.getElementById(inputId);
-    var prev = document.getElementById(previewId);
-    if (inp) inp.value = '';
-    if (prev) { prev.innerHTML = ''; prev.style.display = 'none'; }
-  };
-
-  function initEditUploaders(){
-    var photoZone = document.getElementById('editPhotoZone');
-    var photoInput = document.getElementById('editPhotoInput');
-    if (photoZone && photoInput) {
-      photoZone.onclick = function(){ photoInput.click(); };
-      photoInput.onchange = function(){
-        if (!photoInput.files || !photoInput.files[0]) return;
-        uploadMediaToCloudinary(photoInput.files[0], 'image', document.getElementById('editPhotoProgress'), function(url){
-          document.getElementById('edit_photo').value = url;
-          var prev = document.getElementById('editPhotoPreview');
-          prev.innerHTML = '<img src="'+url+'" alt="Photo"><button type="button" class="media-remove-btn" onclick="window.clearEditMedia(\'edit_photo\',\'editPhotoPreview\')">✕ Remove</button>';
-          prev.style.display = 'block';
-        });
-      };
-    }
-
-    var videoZone = document.getElementById('editVideoZone');
-    var videoInput = document.getElementById('editVideoInput');
-    var videoManual = document.getElementById('edit_video_manual');
-    if (videoZone && videoInput) {
-      videoZone.onclick = function(){ videoInput.click(); };
-      videoInput.onchange = function(){
-        if (!videoInput.files || !videoInput.files[0]) return;
-        uploadMediaToCloudinary(videoInput.files[0], 'video', document.getElementById('editVideoProgress'), function(url){
-          document.getElementById('edit_video').value = url;
-          if (videoManual) videoManual.value = url;
-          var prev = document.getElementById('editVideoPreview');
-          prev.innerHTML = '<video src="'+url+'" controls></video><button type="button" class="media-remove-btn" onclick="window.clearEditMedia(\'edit_video\',\'editVideoPreview\')">✕ Remove</button>';
-          prev.style.display = 'block';
-        });
-      };
-    }
-    if (videoManual) {
-      videoManual.oninput = function(){
-        var url = videoManual.value.trim();
-        document.getElementById('edit_video').value = url;
-        var prev = document.getElementById('editVideoPreview');
-        if (url) {
-          prev.innerHTML = '<video src="'+url+'" controls></video><button type="button" class="media-remove-btn" onclick="window.clearEditMedia(\'edit_video\',\'editVideoPreview\')">✕ Remove</button>';
-          prev.style.display = 'block';
-        } else {
-          prev.style.display = 'none';
-        }
-      };
-    }
-  }
-
-  document.getElementById('btnCancelEdit').addEventListener('click', function(){
-    editModal.style.display = 'none';
+  // quick-action buttons on Overview
+  document.querySelectorAll('[data-goto]').forEach(function(b){
+    b.addEventListener('click', function(){ location.hash = '#/' + b.dataset.goto; });
   });
 
-  editForm.addEventListener('submit', function(e){
-    e.preventDefault();
-    var table = editRowTableEl.value;
-    var id = editRowIdEl.value;
-    var row = (loadedData[table] || []).find(function(r){ return r.id === id; });
-    if (!row) return;
-
-    var statusVal = document.getElementById('edit_status').value;
-    var notesVal = document.getElementById('edit_notes').value.trim();
-    var newPayload = Object.assign({}, row.payload || {});
-
-    if (table === 'demand_records') {
-      newPayload.first = document.getElementById('edit_first').value.trim();
-      newPayload.last = document.getElementById('edit_last') ? document.getElementById('edit_last').value.trim() : (newPayload.last || '');
-      newPayload.phone = document.getElementById('edit_phone').value.trim();
-      newPayload.type = document.getElementById('edit_room_type').value.trim();
-      newPayload.budget = document.getElementById('edit_budget_band').value.trim();
-    } else if (table === 'listings') {
-      newPayload.apt_id = (document.getElementById('edit_apt_id') ? document.getElementById('edit_apt_id').value.trim() : '');
-      newPayload.prop_name = document.getElementById('edit_prop_name').value.trim();
-      newPayload.nm = document.getElementById('edit_nm').value.trim();
-      newPayload.ph = document.getElementById('edit_ph').value.trim();
-      newPayload.ar = document.getElementById('edit_ar').value.trim();
-      newPayload.rent = document.getElementById('edit_rent').value.trim();
-      newPayload.rm = document.getElementById('edit_rm').value.trim();
-      if (document.getElementById('edit_ty')) {
-        newPayload.ty = document.getElementById('edit_ty').value.trim();
-      }
-      if (document.getElementById('edit_desc')) {
-        newPayload.desc = document.getElementById('edit_desc').value.trim();
-      }
-      var selectedUt = [];
-      document.querySelectorAll('input[name="edit_ut"]:checked').forEach(function(ck){
-        selectedUt.push(ck.value);
-      });
-      newPayload.ut = selectedUt;
-      newPayload.utilities = selectedUt;
-
-      var photoVal = document.getElementById('edit_photo') ? document.getElementById('edit_photo').value.trim() : '';
-      if (photoVal) newPayload.photo = photoVal;
-      var videoVal = document.getElementById('edit_video') ? document.getElementById('edit_video').value.trim() : '';
-      newPayload.video = videoVal;
-      newPayload.video_url = videoVal;
-    } else if (table === 'scout_submissions') {
-      newPayload.area = document.getElementById('edit_area').value.trim();
-      newPayload.phone = document.getElementById('edit_phone').value.trim();
-      newPayload.amt = document.getElementById('edit_amt').value.trim();
-      newPayload.vac = document.getElementById('edit_vac').value.trim();
-    }
-
-    var patchBody = {
-      status: statusVal,
-      notes: notesVal,
-      payload: newPayload
-    };
-
-    var btnSave = document.getElementById('btnSaveEdit');
-    btnSave.textContent = 'Saving...';
-    btnSave.disabled = true;
-
-    ArzuzAuth.headers().then(function(h){
-      h['Prefer'] = 'return=representation';
-      var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/' + table + '?id=eq.' + id;
-      return fetch(url, {
-        method: 'PATCH',
-        headers: h,
-        body: JSON.stringify(patchBody)
-      });
-    })
-    .then(function(r){
-      if(r.status === 401 || r.status === 403){
-        onAuthError(new Error('Update rejected (HTTP ' + r.status + ')'));
-        throw new Error('Your session has expired.');
-      }
-      if(!r.ok) throw new Error('Update failed: ' + r.status);
-      return r.json();
-    })
-    .then(function(updatedRows){
-      // Update local state
-      row.status = statusVal;
-      row.notes = notesVal;
-      row.payload = newPayload;
-      if (updatedRows && updatedRows[0]) {
-        Object.assign(row, updatedRows[0]);
-      }
-      renderTable();
-      editModal.style.display = 'none';
-      ArzuzSubmit.showToast('Record updated successfully!', 'success');
-    })
-    .catch(function(err){
-      alert('Could not update record: ' + err.message + '\nSign out and in again if it keeps happening.');
-    })
-    .finally(function(){
-      btnSave.textContent = 'Save Changes';
-      btnSave.disabled = false;
-    });
+  // "+ Add Apartment" lives in two places (Overview + Listings toolbar)
+  var overviewAdd = document.getElementById('btnOpenAddAptOverview');
+  if (overviewAdd) overviewAdd.addEventListener('click', function(){
+    document.getElementById('btnOpenAddApt').click();
   });
 
-  // ================= ADD APARTMENT / LISTING MODAL =================
-  var addAptModal = document.getElementById('addAptModal');
-  var addAptForm = document.getElementById('addAptForm');
-  var btnOpenAddApt = document.getElementById('btnOpenAddApt');
-  var btnCancelAddApt = document.getElementById('btnCancelAddApt');
-
-  btnOpenAddApt.addEventListener('click', function(){
-    addAptForm.reset();
-    document.getElementById('add_photo_url').value = '';
-    document.getElementById('add_video_url').value = '';
-    document.getElementById('add_lat').value = '';
-    document.getElementById('add_lng').value = '';
-    document.getElementById('add_pin').value = '';
-    document.getElementById('addPhotoPreview').style.display = 'none';
-    document.getElementById('addPhotoPreview').innerHTML = '';
-    document.getElementById('addVideoPreview').style.display = 'none';
-    document.getElementById('addVideoPreview').innerHTML = '';
-    document.getElementById('addPhotoProgress').textContent = '';
-    document.getElementById('addVideoProgress').textContent = '';
-
-    // Auto-generate suggestion for apartment ID
-    var nextNum = (loadedData.listings.length + 1).toString().padStart(3, '0');
-    document.getElementById('add_apt_id').value = 'APT-' + nextNum;
-
-    // Populate utilities chips from current UTILITIES (merged with localStorage custom ones)
-    var wrap = document.getElementById('addAptUtilitiesWrap');
-    if (wrap) {
-      var allUtils = (typeof UTILITIES !== 'undefined' && UTILITIES.length) ? UTILITIES : [
-        "Borehole water","Pipe-borne water","NEPA connection","Generator backup",
-        "Private bathroom","Flush toilet","Security gate","Perimeter fence","Kitchen access"
-      ];
-      wrap.innerHTML = allUtils.map(function(u){
-        return '<label class="admin-chip">'+
-                 '<input type="checkbox" name="add_ut" value="'+esc(u)+'" onchange="this.parentElement.classList.toggle(\'active\', this.checked)">'+
-                 '<span>+ '+esc(u)+'</span>'+
-               '</label>';
-      }).join('');
-    }
-
-    addAptModal.style.display = 'flex';
-
-    // Initialise Leaflet map inside the modal after it's visible
-    setTimeout(function(){ initAdminMap(); }, 200);
-  });
-
-  btnCancelAddApt.addEventListener('click', function(){
-    addAptModal.style.display = 'none';
-  });
-
-  // Generic Cloudinary Upload Helper (supports images and videos)
-  function uploadMediaToCloudinary(file, resourceType, statusEl, onDone){
-    if (statusEl) {
-      statusEl.className = 'media-upload-status uploading';
-      statusEl.textContent = '⏳ Preparing signed upload...';
-    }
-
-    fetch('/api/cloudinary-sign', { method: 'POST' })
-      .then(function(r){
-        if (!r.ok) throw new Error('Could not get upload signature (HTTP ' + r.status + ')');
-        return r.json();
-      })
-      .then(function(sig){
-        if (statusEl) {
-          statusEl.textContent = '📤 Uploading ' + (resourceType === 'video' ? 'video tour' : 'photo') + '...';
-        }
-
-        var fd = new FormData();
-        fd.append('file', file);
-        fd.append('api_key', sig.api_key);
-        fd.append('timestamp', sig.timestamp);
-        fd.append('signature', sig.signature);
-        fd.append('folder', sig.folder);
-        if (resourceType !== 'video' && sig.eager) {
-          fd.append('eager', sig.eager);
-        }
-
-        var uploadEndpoint = 'https://api.cloudinary.com/v1_1/' + sig.cloud_name + '/' + (resourceType === 'video' ? 'video' : 'image') + '/upload';
-        return fetch(uploadEndpoint, { method: 'POST', body: fd }).then(function(res){
-          if (!res.ok) {
-            return res.text().then(function(t){ throw new Error('Cloudinary error: ' + t); });
-          }
-          return res.json();
-        });
-      })
-      .then(function(data){
-        if (statusEl) {
-          statusEl.className = 'media-upload-status success';
-          statusEl.textContent = '✅ ' + (resourceType === 'video' ? 'Video' : 'Photo') + ' uploaded!';
-        }
-        onDone(data.secure_url);
-      })
-      .catch(function(err){
-        if (statusEl) {
-          statusEl.className = 'media-upload-status error';
-          statusEl.textContent = '❌ Upload failed: ' + err.message;
-        }
-        alert('Upload failed: ' + err.message);
-      });
-  }
-
-  // Setup Add Apartment upload dropzones
-  var addPhotoZone = document.getElementById('addPhotoZone');
-  var addPhotoInput = document.getElementById('addPhotoInput');
-  addPhotoZone.onclick = function(){ addPhotoInput.click(); };
-  addPhotoInput.onchange = function(){
-    if (!addPhotoInput.files || !addPhotoInput.files[0]) return;
-    uploadMediaToCloudinary(addPhotoInput.files[0], 'image', document.getElementById('addPhotoProgress'), function(url){
-      document.getElementById('add_photo_url').value = url;
-      var prev = document.getElementById('addPhotoPreview');
-      prev.innerHTML = '<img src="'+url+'" alt="Apartment photo"><button type="button" class="media-remove-btn" onclick="window.clearAddMedia(\'photo\')">✕ Remove</button>';
-      prev.style.display = 'block';
-    });
-  };
-
-  var addVideoZone = document.getElementById('addVideoZone');
-  var addVideoInput = document.getElementById('addVideoInput');
-  var addVideoManual = document.getElementById('add_video_url_manual');
-  addVideoZone.onclick = function(){ addVideoInput.click(); };
-  addVideoInput.onchange = function(){
-    if (!addVideoInput.files || !addVideoInput.files[0]) return;
-    uploadMediaToCloudinary(addVideoInput.files[0], 'video', document.getElementById('addVideoProgress'), function(url){
-      document.getElementById('add_video_url').value = url;
-      if (addVideoManual) addVideoManual.value = url;
-      var prev = document.getElementById('addVideoPreview');
-      prev.innerHTML = '<video src="'+url+'" controls></video><button type="button" class="media-remove-btn" onclick="window.clearAddMedia(\'video\')">✕ Remove</button>';
-      prev.style.display = 'block';
-    });
-  };
-
-  if (addVideoManual) {
-    addVideoManual.oninput = function(){
-      var url = addVideoManual.value.trim();
-      document.getElementById('add_video_url').value = url;
-      var prev = document.getElementById('addVideoPreview');
-      if (url) {
-        prev.innerHTML = '<video src="'+url+'" controls></video><button type="button" class="media-remove-btn" onclick="window.clearAddMedia(\'video\')">✕ Remove</button>';
-        prev.style.display = 'block';
-      } else {
-        prev.style.display = 'none';
-      }
-    };
-  }
-
-  window.clearAddMedia = function(type){
-    if (type === 'photo') {
-      document.getElementById('add_photo_url').value = '';
-      var prev = document.getElementById('addPhotoPreview');
-      prev.innerHTML = '';
-      prev.style.display = 'none';
-      document.getElementById('addPhotoProgress').textContent = '';
-    } else {
-      document.getElementById('add_video_url').value = '';
-      if (addVideoManual) addVideoManual.value = '';
-      var prev = document.getElementById('addVideoPreview');
-      prev.innerHTML = '';
-      prev.style.display = 'none';
-      document.getElementById('addVideoProgress').textContent = '';
-    }
-  };
-
-  // ================= ADMIN MAP (Add Apartment modal) =================
-  var adminMap = null;
-  var adminMarker = null;
-  var adminActiveTile = null;
-
-  function initAdminMap(){
-    var MALETE_LAT = 8.7113, MALETE_LNG = 4.4697;
-    var mapEl = document.getElementById('admin-leaflet-map');
-    if (!mapEl) return;
-
-    // Only load Leaflet JS if not already loaded
-    function buildMap(){
-      if (adminMap) { try { adminMap.remove(); } catch(e){} adminMap = null; adminMarker = null; adminActiveTile = null; }
-
-      adminMap = L.map('admin-leaflet-map', { zoomControl: true }).setView([MALETE_LAT, MALETE_LNG], 16);
-
-      var LAYERS = {
-        sat: { url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', opt:{ maxZoom:19, attribution:'Esri' } },
-        street: { url:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', opt:{ maxZoom:19, attribution:'&copy; OpenStreetMap contributors' } }
-      };
-
-      adminActiveTile = L.tileLayer(LAYERS.sat.url, LAYERS.sat.opt).addTo(adminMap);
-
-      var pinIcon = L.divIcon({
-        className:'',
-        html:'<div class="map-pin-custom"><div class="map-pin-ring"></div><div class="map-pin-dot"></div></div>',
-        iconSize:[32,42], iconAnchor:[16,42]
-      });
-
-      adminMarker = L.marker([MALETE_LAT, MALETE_LNG], { draggable:true, icon:pinIcon }).addTo(adminMap);
-
-      function setPin(lat, lng, msg){
-        document.getElementById('add_lat').value = lat;
-        document.getElementById('add_lng').value = lng;
-        document.getElementById('add_pin').value = lat.toFixed(6)+','+lng.toFixed(6);
-        var badge = document.getElementById('adminMapCoordsText');
-        if (badge) { badge.textContent = '\uD83D\uDCCD '+lat.toFixed(5)+', '+lng.toFixed(5); badge.style.color='#34D399'; }
-      }
-
-      adminMarker.on('dragend', function(){ var p=adminMarker.getLatLng(); setPin(p.lat,p.lng,'Marker moved'); });
-      adminMap.on('click', function(e){ adminMarker.setLatLng(e.latlng); setPin(e.latlng.lat,e.latlng.lng,'Tapped'); });
-
-      var btnSat = document.getElementById('adminBtnLayerSat');
-      var btnStr = document.getElementById('adminBtnLayerStreet');
-      function swLayer(k){
-        if(adminActiveTile) adminMap.removeLayer(adminActiveTile);
-        adminActiveTile = L.tileLayer(LAYERS[k].url, LAYERS[k].opt).addTo(adminMap);
-        if(adminMarker) adminMarker.bringToFront();
-        if(btnSat) { btnSat.style.color = k==='sat' ? '#C4B5FD' : '#9A8CA8'; btnSat.style.borderColor = k==='sat' ? 'rgba(196,181,253,0.4)' : 'rgba(255,255,255,0.15)'; }
-        if(btnStr) { btnStr.style.color = k==='street' ? '#C4B5FD' : '#9A8CA8'; btnStr.style.borderColor = k==='street' ? 'rgba(196,181,253,0.4)' : 'rgba(255,255,255,0.15)'; }
-      }
-      if(btnSat) btnSat.onclick = function(){ swLayer('sat'); };
-      if(btnStr) btnStr.onclick = function(){ swLayer('street'); };
-
-      var btnGPS = document.getElementById('adminBtnLocateMe');
-      if(btnGPS) btnGPS.onclick = function(){
-        if(!navigator.geolocation){ alert('GPS not supported in this browser.'); return; }
-        btnGPS.textContent='⏳ Locating...';
-        navigator.geolocation.getCurrentPosition(function(pos){
-          var lat=pos.coords.latitude, lng=pos.coords.longitude;
-          adminMarker.setLatLng([lat,lng]);
-          adminMap.setView([lat,lng],18);
-          setPin(lat,lng,'GPS');
-          btnGPS.textContent='🌍 GPS Locked';
-        }, function(){ btnGPS.textContent='🎯 Use GPS'; }, { enableHighAccuracy:true, timeout:10000, maximumAge:0 });
-      };
-
-      setTimeout(function(){ if(adminMap) adminMap.invalidateSize(); }, 300);
-    }
-
-    if (typeof L === 'undefined') {
-      var s = document.createElement('script');
-      s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-      s.onload = buildMap;
-      document.head.appendChild(s);
-    } else {
-      buildMap();
-    }
-  }
-
-  // Add Apartment Form Submit
-  addAptForm.addEventListener('submit', function(e){
-    e.preventDefault();
-
-    var aptId = document.getElementById('add_apt_id').value.trim();
-    var propName = document.getElementById('add_prop_name').value.trim();
-    var ty = document.getElementById('add_ty').value;
-    var ar = document.getElementById('add_ar').value.trim();
-    var rent = document.getElementById('add_rent').value.trim();
-    var rm = document.getElementById('add_rm').value.trim();
-    var nm = document.getElementById('add_nm').value.trim();
-    var ph = document.getElementById('add_ph').value.trim();
-    var status = document.getElementById('add_status').value;
-    var tier = parseInt(document.getElementById('add_tier').value, 10) || 2;
-    var desc = document.getElementById('add_desc').value.trim();
-    var photoUrl = document.getElementById('add_photo_url').value.trim();
-    var videoUrl = document.getElementById('add_video_url').value.trim();
-
-    var selectedUt = [];
-    document.querySelectorAll('input[name="add_ut"]:checked').forEach(function(ck){
-      selectedUt.push(ck.value);
-    });
-
-    var addLat = document.getElementById('add_lat').value.trim();
-    var addLng = document.getElementById('add_lng').value.trim();
-    var addPin = document.getElementById('add_pin').value.trim();
-
-    var payload = {
-      apt_id: aptId,
-      custom_id: aptId,
-      prop_name: propName,
-      ty: ty,
-      ar: ar,
-      rent: rent,
-      rm: rm,
-      nm: nm,
-      ph: ph,
-      desc: desc,
-      photo: photoUrl,
-      video: videoUrl,
-      video_url: videoUrl,
-      ut: selectedUt,
-      utilities: selectedUt,
-      lat: addLat || null,
-      lng: addLng || null,
-      pin: addPin || null,
-      who: 'admin',
-      created_by: 'admin'
-    };
-
-    var newListing = {
-      session: cfg.SESSION || '2026/2027',
-      env: cfg.ENV || 'production',
-      source: 'admin_dashboard',
-      status: status,
-      tier: tier,
-      notes: 'Added via Admin Dashboard (' + aptId + ')',
-      payload: payload
-    };
-
-    var btnSave = document.getElementById('btnSaveAddApt');
-    btnSave.textContent = 'Saving Apartment...';
-    btnSave.disabled = true;
-
-    ArzuzAuth.headers().then(function(h){
-      h['Prefer'] = 'return=representation';
-      var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/listings';
-      return fetch(url, {
-        method: 'POST',
-        headers: h,
-        body: JSON.stringify(newListing)
-      });
-    })
-    .then(function(r){
-      if(r.status === 401 || r.status === 403){
-        onAuthError(new Error('Insert rejected (HTTP ' + r.status + ')'));
-        throw new Error('Your session has expired.');
-      }
-      if (!r.ok) throw new Error('Insertion failed: ' + r.status);
-      return r.json();
-    })
-    .then(function(createdRows){
-      var inserted = (createdRows && createdRows[0]) ? createdRows[0] : newListing;
-      loadedData.listings.unshift(inserted);
-      updateMetrics();
-
-      // Switch to Landlord Listings tab to display new apartment
-      document.querySelectorAll('.tab-btn').forEach(function(t){ t.classList.remove('active'); });
-      var listingTab = document.querySelector('.tab-btn[data-table="listings"]');
-      if (listingTab) listingTab.classList.add('active');
-      currentTable = 'listings';
-
-      renderTable();
-      addAptModal.style.display = 'none';
-      ArzuzSubmit.showToast('Apartment ' + aptId + ' added successfully!', 'success');
-    })
-    .catch(function(err){
-      alert('Could not add apartment: ' + err.message + '\nSign out and in again if it keeps happening.');
-    })
-    .finally(function(){
-      btnSave.textContent = 'Save Apartment';
-      btnSave.disabled = false;
-    });
-  });
-
-  // Lightbox for photo & video
-  window.openLightbox = function(url) {
-    var lb = document.getElementById('photoLightbox');
-    document.getElementById('lightboxImg').src = url;
-    lb.style.display = 'flex';
-  };
-
-  window.openVideoLightbox = function(videoUrl) {
-    var lb = document.getElementById('videoLightbox');
-    var container = document.getElementById('videoLightboxContainer');
-    container.innerHTML = '<video src="'+videoUrl+'" controls autoplay style="width:100%; max-height:70vh; display:block;"></video>';
-    lb.style.display = 'flex';
-  };
-
-  window.closeVideoLightbox = function() {
-    var lb = document.getElementById('videoLightbox');
-    var container = document.getElementById('videoLightboxContainer');
-    if (container) container.innerHTML = '';
-    lb.style.display = 'none';
-  };
-
-  // ================= VIEW RECORD DETAILS MODAL =================
-  var detailsModal = document.getElementById('detailsModal');
-  var detailsModalContent = document.getElementById('detailsModalContent');
-  var currentDetailRecord = null;
-
-  window.openDetailsModal = function(table, id){
-    var row = (loadedData[table] || []).find(function(r){ return r.id === id; });
-    if (!row) return;
-    currentDetailRecord = { table: table, id: id, row: row };
-
-    var p = row.payload || {};
-    var dateStr = new Date(row.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
-    document.getElementById('detailsModalTitle').textContent = (table === 'demand_records' ? 'Student Need Details' : (table === 'listings' ? 'Apartment & Hostel Details' : 'Scout Submission Details'));
-    document.getElementById('detailsModalBadge').textContent = (row.status || 'open').toUpperCase();
-
-    var html = '<div class="details-kv-grid">';
-    html += '<div class="details-kv-item"><div class="details-kv-lbl">Record ID</div><div class="details-kv-val" style="font-family:var(--mono);font-size:12px;">'+esc(row.id)+'</div></div>';
-    html += '<div class="details-kv-item"><div class="details-kv-lbl">Created At</div><div class="details-kv-val">'+esc(dateStr)+'</div></div>';
-    html += '<div class="details-kv-item"><div class="details-kv-lbl">Status</div><div class="details-kv-val">'+getStatusTag(row.status)+'</div></div>';
-
-    if (row.notes) {
-      html += '<div class="details-kv-item" style="grid-column:1/-1;"><div class="details-kv-lbl">Admin Notes</div><div class="details-kv-val">'+esc(row.notes)+'</div></div>';
-    }
-
-    if (table === 'demand_records') {
-      var studentFirst = esc(row.first_name || p.first || '-');
-      var studentLast = esc(p.last || '');
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Full Name</div><div class="details-kv-val"><b>'+studentFirst+(studentLast ? ' '+studentLast : '')+'</b></div></div>';
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Phone / WhatsApp</div><div class="details-kv-val">'+esc(row.phone || p.phone || '-')+'</div></div>';
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Room Type Needed</div><div class="details-kv-val">'+esc(row.room_type || p.type || '-')+'</div></div>';
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Budget Band</div><div class="details-kv-val">'+esc(row.budget_band || p.budget || '-')+'</div></div>';
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Distance to Campus</div><div class="details-kv-val">'+esc(row.distance || p.dist || '-')+'</div></div>';
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Needed When</div><div class="details-kv-val">'+esc(row.timing || p.when || '-')+'</div></div>';
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Age Group</div><div class="details-kv-val">'+esc(row.age_band || p.age || '-')+'</div></div>';
-      if (p.g_phone) {
-        html += '<div class="details-kv-item"><div class="details-kv-lbl">Guardian Contact</div><div class="details-kv-val">'+esc((p.g_name || 'Guardian') + ' — ' + p.g_phone)+'</div></div>';
-      }
-      if (p.pain) {
-        html += '<div class="details-kv-item" style="grid-column:1/-1;"><div class="details-kv-lbl">Current Housing Feedback</div><div class="details-kv-val">'+esc(p.pain)+'</div></div>';
-      }
-    } else if (table === 'listings') {
-      var aptId = (p && (p.apt_id || p.custom_id)) || (row.id ? row.id.substring(0,8) : '');
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Apartment ID</div><div class="details-kv-val"><span class="apt-badge-id">'+esc(aptId)+'</span></div></div>';
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Property / Lodge Name</div><div class="details-kv-val">'+esc(row.property_name || p.prop_name || '-')+'</div></div>';
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Owner / Caretaker</div><div class="details-kv-val">'+esc(row.owner_name || p.nm || '-')+'</div></div>';
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Contact Phone</div><div class="details-kv-val">'+esc(row.owner_phone || p.ph || '-')+'</div></div>';
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Property Type</div><div class="details-kv-val">'+esc(row.property_type || p.ty || '-')+'</div></div>';
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Area / Street</div><div class="details-kv-val">'+esc(row.area || p.ar || '-')+'</div></div>';
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Price / Session</div><div class="details-kv-val">₦'+Number(row.listed_price_ngn || p.rent || 0).toLocaleString()+'</div></div>';
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Units Available</div><div class="details-kv-val">'+esc(row.rooms || p.rm || '-')+'</div></div>';
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Managed By</div><div class="details-kv-val">'+esc(row.run_by || p.who || '-')+'</div></div>';
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Tier</div><div class="details-kv-val">Tier '+esc(row.tier !== undefined ? row.tier : 0)+'</div></div>';
-
-      var utList = p.ut || p.utilities || [];
-      if (typeof utList === 'string') utList = utList.split(',').map(function(s){ return s.trim(); });
-      if (Array.isArray(utList) && utList.length) {
-        html += '<div class="details-kv-item" style="grid-column:1/-1;"><div class="details-kv-lbl">Verified Utilities & Amenities</div><div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">'+
-          utList.map(function(u){ return '<span class="admin-chip active" style="font-size:11.5px; padding:3px 10px;">✓ '+esc(u)+'</span>'; }).join('')+
-          '</div></div>';
-      }
-
-      if (p.desc || p.description) {
-        html += '<div class="details-kv-item" style="grid-column:1/-1;"><div class="details-kv-lbl">Description</div><div class="details-kv-val">'+esc(p.desc || p.description)+'</div></div>';
-      }
-
-      var photoUrl = row.photo_url || p.photo;
-      if (photoUrl) {
-        html += '<div class="details-kv-item" style="grid-column:1/-1;"><div class="details-kv-lbl">Photo</div><img src="'+esc(photoUrl)+'" style="max-width:100%; max-height:220px; border-radius:8px; display:block; margin-top:6px; cursor:pointer;" onclick="window.openLightbox(\''+esc(photoUrl)+'\')"></div>';
-      }
-
-      var videoUrl = p.video || p.video_url;
-      if (videoUrl) {
-        html += '<div class="details-kv-item" style="grid-column:1/-1;"><div class="details-kv-lbl">Video Tour</div><button type="button" class="act-btn" style="background:rgba(236,72,153,0.2);color:#F472B6;padding:8px 14px;border-radius:6px;margin-top:6px;cursor:pointer;" onclick="window.openVideoLightbox(\''+esc(videoUrl)+'\')">🎥 Play Video Tour</button></div>';
-      }
-    } else if (table === 'scout_submissions') {
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Area / Street</div><div class="details-kv-val">'+esc(row.area || p.area || '-')+'</div></div>';
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Rent Paid</div><div class="details-kv-val">₦'+Number(row.rent_reported || p.amt || 0).toLocaleString()+'</div></div>';
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Scout Phone</div><div class="details-kv-val">'+esc(row.scout_phone || p.phone || '-')+'</div></div>';
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Vacancy Signal</div><div class="details-kv-val">'+esc(row.vacancy_signal || p.vac || '-')+'</div></div>';
-      html += '<div class="details-kv-item"><div class="details-kv-lbl">Collected By</div><div class="details-kv-val">'+esc(row.rent_collected_by || p.who || '-')+'</div></div>';
-      var photoUrl = row.photo_url || p.photo;
-      if (photoUrl) {
-        html += '<div class="details-kv-item" style="grid-column:1/-1;"><div class="details-kv-lbl">Building Photo</div><img src="'+esc(photoUrl)+'" style="max-width:100%; max-height:220px; border-radius:8px; display:block; margin-top:6px; cursor:pointer;" onclick="window.openLightbox(\''+esc(photoUrl)+'\')"></div>';
-      }
-    }
-
-    html += '</div>';
-    detailsModalContent.innerHTML = html;
-    detailsModal.style.display = 'flex';
-  };
-
-  document.getElementById('btnCloseDetails').addEventListener('click', function(){
-    detailsModal.style.display = 'none';
-  });
-
-  document.getElementById('btnEditFromDetails').addEventListener('click', function(){
-    if (currentDetailRecord) {
-      detailsModal.style.display = 'none';
-      window.openEditModal(currentDetailRecord.table, currentDetailRecord.id);
-    }
-  });
-
-  // ================= DELETE MODAL FUNCTIONALITY =================
-  var delModal = document.getElementById('delModal');
-  var btnCancelDel = document.getElementById('btnCancelDel');
-  var btnConfirmDel = document.getElementById('btnConfirmDel');
-
-  window.openDeleteModal = function(table, id){
-    pendingDelete = { table: table, id: id };
-    delModal.style.display = 'flex';
-  };
-
-  btnCancelDel.addEventListener('click', function(){
-    delModal.style.display = 'none';
-    pendingDelete = null;
-  });
-
-  btnConfirmDel.addEventListener('click', function(){
-    if (!pendingDelete) return;
-    var table = pendingDelete.table;
-    var id = pendingDelete.id;
-
-    btnConfirmDel.textContent = 'Deleting...';
-    btnConfirmDel.disabled = true;
-
-    ArzuzAuth.headers().then(function(h){
-      var url = cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/' + table + '?id=eq.' + id;
-      return fetch(url, {
-        method: 'DELETE',
-        headers: h
-      });
-    })
-    .then(function(res){
-      if (res.status === 401 || res.status === 403){
-        onAuthError(new Error('Delete rejected (HTTP ' + res.status + ')'));
-        throw new Error('Your session has expired.');
-      }
-      if (!res.ok) throw new Error('Deletion failed (HTTP ' + res.status + ')');
-      loadedData[table] = (loadedData[table] || []).filter(function(r){ return r.id !== id; });
-      updateMetrics();
-      renderTable();
-      delModal.style.display = 'none';
-      pendingDelete = null;
-      ArzuzSubmit.showToast('Record deleted successfully.', 'info');
-    })
-    .catch(function(err){
-      alert('Could not delete record: ' + err.message + '\nSign out and in again if it keeps happening.');
-    })
-    .finally(function(){
-      btnConfirmDel.textContent = 'Yes, Delete';
-      btnConfirmDel.disabled = false;
-    });
-  });
-
-  // ================= CSV EXPORT FUNCTIONALITY =================
-  var btnExport = document.getElementById('btnExport');
-  if (btnExport) {
-    btnExport.addEventListener('click', function(){
-      var rows = loadedData[currentTable] || [];
-      if (!rows.length) {
-        alert('No data available to export in ' + currentTable);
-        return;
-      }
-
-      // Collect all keys
-      var keysSet = new Set();
-      rows.forEach(function(r){
-        Object.keys(r).forEach(function(k){ if (k !== 'payload') keysSet.add(k); });
-        if (r.payload) {
-          Object.keys(r.payload).forEach(function(pk){ keysSet.add('payload_' + pk); });
-        }
-      });
-      var headers = Array.from(keysSet);
-
-      var csvLines = [];
-      csvLines.push(headers.map(function(h){ return '"' + h.replace(/"/g, '""') + '"'; }).join(','));
-
-      rows.forEach(function(r){
-        var rowValues = headers.map(function(h){
-          var val = '';
-          if (h.indexOf('payload_') === 0) {
-            var pk = h.substring(8);
-            val = (r.payload && r.payload[pk] !== undefined) ? r.payload[pk] : '';
-          } else {
-            val = r[h] !== undefined ? r[h] : '';
-          }
-          if (typeof val === 'object') val = JSON.stringify(val);
-          return '"' + String(val).replace(/"/g, '""') + '"';
-        });
-        csvLines.push(rowValues.join(','));
-      });
-
-      var blob = new Blob([csvLines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = url;
-      a.download = 'arzuz_' + currentTable + '_' + new Date().toISOString().slice(0,10) + '.csv';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      ArzuzSubmit.showToast('CSV export downloaded!', 'success');
-    });
-  }
-
-  // Initial Auth Check
-  checkAuth();
+  // (no further shell wiring — admin.js owns the rest)
 })();
 </script>
 </body>

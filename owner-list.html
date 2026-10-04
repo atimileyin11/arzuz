@@ -3,17 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>List Your Property — Arzuz Student Housing Malete</title>
-<meta name="description" content="List your student property in Malete on Arzuz. Reach verified students looking for rooms. Free to list, no agent required.">
+<title>List Your Property — Arzuz Student Housing</title>
+<meta name="description" content="List your student property on Arzuz. Now open in Malete, with more locations coming soon. Reach verified students looking for rooms. Free to list.">
 <link rel="canonical" href="https://arzuz.com/list">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
 <link rel="icon" href="assets/icons/icon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
-<meta property="og:title" content="List Your Property — Arzuz Student Housing Malete">
-<meta property="og:description" content="List your student property in Malete on Arzuz. Reach verified students looking for rooms.">
+<meta property="og:title" content="List Your Property — Arzuz Student Housing">
+<meta property="og:description" content="List your student property on Arzuz. Now open in Malete, with more locations coming soon.">
 <meta property="og:image" content="https://arzuz.com/assets/social/og-image.png">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
@@ -40,7 +37,7 @@ Arzuz.form({
    {k:'p', h:"About the property",
     hint:"Give us a name for the property if it has one \u2014 helps students recognise it. Everything else is required.",
     f:[["prop_name","Property name or nickname (e.g. Blessing Lodge)","text",{opt:true}],
-       ["ty","Property type","sel",["Self-contain","Shared room","Face-me-I-face-you","Hostel","Boys quarters"]],
+       ["ty","Property type","sel",PROPERTY_TYPES],
        ["ar","Street or area name","text"],
        ["rm","Rooms available","number"]]},
    {k:'pin', h:"Where exactly is it?",
@@ -70,10 +67,10 @@ Arzuz.form({
    '<p>We review it within 24 hours and message you on WhatsApp.</p>'+
    '<div class="live" style="text-align:left">'+
    (Arzuz.isReal()
-     ? '<b>'+DEMAND_TOTAL+'</b> students looking in Malete right now match this property. '+
+     ? '<b>'+DEMAND_TOTAL+'</b> students are registered on Arzuz right now. '+
        'They see it the moment it goes live.'
      : 'As soon as your listing is live we will send you the real number of students looking in '+
-       'Malete for this property \u2014 we never show a count we cannot trace to a record.')+
+       'your area for this property \u2014 we never show a count we cannot trace to a record.')+
    '</div>'+
    '<div class="nav"><a class="next" href="index.html">Done</a></div></div>'
 });

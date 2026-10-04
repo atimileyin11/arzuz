@@ -69,7 +69,7 @@ var Arzuz = (function(){
       'Arzuz does not collect rent, hold deposits, or take payment from tenants. '+
       'Your phone number is used to verify your account and send you matches. '+
       'It is never shown publicly.<br><br>'+
-      'Arzuz \u2014 Malete, Kwara State. Pronounced AR-zuz.'+
+      'Arzuz. Open to students everywhere, starting in Malete, Kwara State. Pronounced AR-zuz.'+
       '</div></div>');
   }
 
@@ -129,7 +129,7 @@ var Arzuz = (function(){
 
     var band = deepestBand();
     if(s.ctx) h += '<div class="ctxbox">'+ (isReal() && band && typeof DEMAND_TOTAL !== 'undefined'
-      ? '<b>'+DEMAND_TOTAL+' students</b> are looking in Malete this session. '+
+      ? '<b>'+DEMAND_TOTAL+' students</b> are registered on Arzuz this session. '+
         'Most can pay between '+ng(band[0])+' and '+ng(band[1])+'.'
       : 'We will show you exactly how many students are looking in your area, and what '+
         'they can pay, as soon as your listing is in.') +'</div>';
@@ -171,7 +171,7 @@ var Arzuz = (function(){
              }).join('')+'</select>';
       } else if(f[2]==='pin'){
         x += '<div class="fld-header">' +
-             '<label>Location Pin (Malete)</label>' +
+             '<label>Location Pin</label>' +
              '<span class="fld-badge-req">📡 Satellite + Street</span>' +
              '</div>' +
              '<div class="map-tip-banner" id="mapTipBanner">' +
@@ -299,8 +299,7 @@ var Arzuz = (function(){
           var r = reach(v);
           var totalDemand = typeof DEMAND_TOTAL !== 'undefined' ? DEMAND_TOTAL : 0;
           out.innerHTML = isReal()
-            ? '<b>'+r+'</b> of the '+totalDemand+' students looking in Malete can afford this.'+
-              (v > 200000 ? ' Drop to \u20A6200,000 and '+(reach(200000)-r)+' more can see you.' : '')
+            ? '<b>'+r+'</b> of the '+totalDemand+' students on Arzuz can afford this.'
             : 'Noted. We will tell you how many students this reaches once your listing is live.';
         };
         rl.addEventListener('input', updateRentDisplay);
