@@ -12,6 +12,22 @@
 
 [build]
   publish = "."
+  # listing-og.js reads listing.html from the function sandbox to inject
+  # per-listing preview tags — this bundles the page into the deploy.
+  included_files = ["netlify/functions/**", "listing.html"]
+
+# Link-preview cards: scrapers (WhatsApp, X, iMessage) never run JS,
+# so /listing is served by a function that writes the real listing's
+# tags into the head before the page ships. Query string is preserved.
+[[redirects]]
+  from = "/listing"
+  to   = "/.netlify/functions/listing-og"
+  status = 200
+
+[[redirects]]
+  from = "/listing.html"
+  to   = "/.netlify/functions/listing-og"
+  status = 200
 
 # Clean URLs: /register instead of /register.html
 [[redirects]]

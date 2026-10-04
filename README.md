@@ -52,6 +52,8 @@ arzuz-site/
 ├── admin.html              Private dashboard (Supabase Auth sign-in; sidebar shell —
 │                           styles in assets/admin.css, logic in assets/admin.js)
 │
+├── strategy/               Positioning, market sizing, channels, unit economics —
+│                           one framework per file, each linked to where it lands
 ├── supabase-schema.sql     Fresh install: tables, RLS, grants, views
 ├── supabase-media-booking.sql  Upgrade: booking_requests + the 14-day roommate metric view
 ├── supabase-hardening.sql  Upgrades an existing database — run this one if you already have data
@@ -73,7 +75,10 @@ arzuz-site/
 └── netlify/functions/
     ├── notify.js           Owns TELEGRAM_BOT_TOKEN, formats alerts, status/detect/test
     ├── whatsapp-send.js    Owns OPENWA_* credentials, rate-limited proxy
-    └── cloudinary-sign.js  Signs uploads, enforces the 10 MB limit, stamps © Arzuz metadata
+    ├── cloudinary-sign.js  Signs uploads, enforces the 10 MB limit, stamps © Arzuz metadata
+    └── listing-og.js       Serves /listing with the real listing's preview tags —
+                            scrapers never run JS, so the per-listing card is built
+                            server-side (see strategy/05 for the messaging it carries)
 ```
 
 ---
