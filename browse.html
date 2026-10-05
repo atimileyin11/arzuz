@@ -253,6 +253,7 @@
 
   <script src="assets/config.js"></script>
   <script src="assets/data.js"></script>
+  <script src="assets/arzuz-map.js"></script>
   <script src="assets/app.js"></script>
   <script>
   (function(){
@@ -310,7 +311,9 @@
       var photo = first(p, ['photo']);
       var ut = first(p, ['ut', 'utilities']) || [];
       if (typeof ut === 'string') ut = ut.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
-      var walk = walkText(r.latitude || first(p, ['lat']), r.longitude || first(p, ['lng']));
+      /* measured route beats the straight-line estimate when one is stored */
+      var walk = (typeof ArzuzMap !== 'undefined' && ArzuzMap.passage.walkChip(p.passage)) ||
+                 walkText(r.latitude || first(p, ['lat']), r.longitude || first(p, ['lng']));
       var ref = r.id ? String(r.id).substring(0, 8) : '';
       var vid = first(p, ['video', 'video_url']);
       var nImg = 0, nVid = 0;

@@ -41,6 +41,8 @@ first photo is the cover, every asset carries the © Arzuz credit.
 ```
 arzuz-site/
 ├── index.html              Landing — hero, demand curve, problem, how it works, SEO FAQ
+├── 404.html                Premium animated not-found page (served automatically
+│                           by Netlify at any missing URL — root-absolute paths)
 ├── browse.html             Public verified listings (reads the public_listings view)
 ├── listing.html            Premium listing detail page: gallery, amenities, booking
 ├── register.html           Student: demand register          → demand_records
@@ -53,20 +55,29 @@ arzuz-site/
 │                           styles in assets/admin.css, logic in assets/admin.js)
 │
 ├── strategy/               Positioning, market sizing, channels, unit economics —
-│                           one framework per file, each linked to where it lands
+│                           one framework per file, each linked to where it lands.
+│                           PRIVATE: /strategy/* 404s on the public site; the docs are
+│                           served only to a signed-in dashboard session by /strategy-docs
+│                           (netlify/functions/strategy-docs.js)
 ├── supabase-schema.sql     Fresh install: tables, RLS, grants, views
 ├── supabase-media-booking.sql  Upgrade: booking_requests + the 14-day roommate metric view
 ├── supabase-hardening.sql  Upgrades an existing database — run this one if you already have data
+├── supabase-location.sql   Additive upgrade: pin-quality + passage-flag generated columns + indexes
 ├── supabase-public-view.sql One-paste addition of public_listings for a live, already-hardened DB
 │
 ├── assets/
 │   ├── arzuz.css           Design system — all colours, type, components
 │   ├── admin.css           Admin dashboard only — dark shell, tables, modals
 │   ├── config.js           Public config only (Supabase anon key, session, support number)
-│   ├── auth.js             Supabase Auth session for admin.html
+│   ├── auth.js             Supabase Auth session for admin.html (+ role() from app_metadata)
+│   ├── strategy.js         In-dashboard strategy reader + the Growth (marketing) view
 │   ├── data.js             Demand bands + ArzuzData + PROPERTY_TYPES (the one type list)
 │   ├── admin.js            Dashboard logic: router, tables, add/edit, media, map, amenities
-│   ├── app.js              Page chrome, form engine, Leaflet pin capture, photo upload
+│   ├── arzuz-map.js        Precision mapping engine shared by every map surface:
+│   │                       live-GPS pin capture (accuracy ring, best-fix memory),
+│   │                       route tracing + walk recording, passage capture,
+│   │                       OSRM road routing, listing route map + live tracking
+│   ├── app.js              Page chrome, form engine (pin + passage steps delegate to ArzuzMap), photo upload
 │   │                       (listing.html reuses the form engine for booking requests)
 │   ├── submit.js           Supabase insert, offline queue, retry, post-save notifications
 │   ├── notify.js           Thin client → /api/notify (Telegram lives server-side)
@@ -76,10 +87,36 @@ arzuz-site/
     ├── notify.js           Owns TELEGRAM_BOT_TOKEN, formats alerts, status/detect/test
     ├── whatsapp-send.js    Owns OPENWA_* credentials, rate-limited proxy
     ├── cloudinary-sign.js  Signs uploads, enforces the 10 MB limit, stamps © Arzuz metadata
-    └── listing-og.js       Serves /listing with the real listing's preview tags —
-                            scrapers never run JS, so the per-listing card is built
-                            server-side (see strategy/05 for the messaging it carries)
+    ├── listing-og.js       Serves /listing with the real listing's preview tags —
+    │                       scrapers never run JS, so the per-listing card is built
+    │                       server-side (see strategy/05 for the messaging it carries)
+    └── strategy-docs.js    Serves the strategy pack ONLY to a valid Supabase session —
+                            filename-whitelisted, no-store, /strategy/* itself 404s
 ```
+
+---
+
+## Team logins and roles
+
+Every account is created by the main admin in Supabase → Authentication → Users (public
+sign-ups are off, so there is no self-service). A user's role rides in the session token as
+`app_metadata.role` and the dashboard reads it with `ArzuzAuth.role()`:
+
+| Role | `app_metadata` | Lands on | Sees |
+|---|---|---|---|
+| Main admin (default) | *(unset)* | Overview | Everything, including Growth, Strategy, Settings |
+| Marketing | `{ "role": "marketing" }` | Growth | Growth (traction, funnel, channels, what-to-do-next) + the Strategy docs, marketing ones first. No data tables, no settings |
+
+**Add a marketing teammate:** create her user in Supabase, open it, edit the Raw User JSON so
+`app_metadata` contains `{ "role": "marketing" }`, then send her `arzuz.com/admin.html` with the
+credentials. The same steps (plus screenshots of where to click) live in **admin.html → Settings →
+Team logins & roles**. To revert someone to main admin, remove the `role` key.
+
+Role gating is presentation-level: under the current RLS every authenticated user can read the
+same tables — the marketing login simply is never *shown* them. For a two-person team that
+matches the dashboard's trust model; if data-level separation is ever needed, add a `staff`
+table and RLS policies keyed on it (the strategy pack itself is already enforced at the server:
+`strategy-docs.js` rejects every request without a live Supabase session).
 
 ---
 
@@ -97,6 +134,15 @@ dashboard adds lives in the `amenities` table so every browser sees it.
 **Property types** — one list, `PROPERTY_TYPES` in `data.js`, used by the landlord form and both
 admin modals. Change it there and every form follows.
 
+**Maps and location** — everything lives in `assets/arzuz-map.js` (`ArzuzMap`). The pin-capture
+widget writes `lat`, `lng`, `pin` and `pin_meta` (`source`, `accuracy_m`, `samples`, `captured_at`)
+into the form payload; the passage editor writes `passage` (`landmark`, `gate`, `floor`, numbered
+`steps`, a simplified `route`, and `route_src` of `traced`/`walk`/`osrm`). The listing page draws
+the best route available: a community-traced path first, then a real road route from the free
+FOSSGIS OSRM walking server (no API key, cached in localStorage), then a straight-line estimate.
+`supabase-location.sql` exposes pin quality and passage presence as queryable columns — optional;
+the site works without running it.
+
 **Adding a page** — copy the head and script tags from an existing page, call
 `Arzuz.chrome('student' | 'owner' | null)` at the top and `Arzuz.footer()` at the bottom. Form
 pages that use `UTILITIES` start inside `ArzuzData.ready.then(...)`.
@@ -107,7 +153,7 @@ pages that use `UTILITIES` start inside `ArzuzData.ready.then(...)`.
 |---|---|
 | `o: [...]` | Tappable single-choice options, auto-advances |
 | `c: [...]` | Multi-select chips |
-| `f: [[id, label, type]]` | Text fields. Types: `text`, `tel`, `number`, `sel`, `pin`, `rent-live`, `photo` |
+| `f: [[id, label, type]]` | Text fields. Types: `text`, `tel`, `number`, `sel`, `pin`, `passage`, `rent-live`, `photo` |
 | `ta: "placeholder"` | Textarea |
 | `opt: true` | Button reads "Skip" instead of "Continue" |
 | `ctx: true` | Shows the live demand context box above the question |

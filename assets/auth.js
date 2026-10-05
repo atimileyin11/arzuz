@@ -124,6 +124,27 @@ var ArzuzAuth = (function(){
     });
   }
 
+  /* Role claim from the signed JWT's app_metadata. Set per user in
+     Supabase → Authentication → Users (public sign-ups are off, so
+     every account is created deliberately by the main admin).
+     Unset (or anything unrecognised) = 'admin': the main admin sees
+     the whole dashboard. 'marketing' gets the prioritised Growth +
+     Strategy view only. */
+  function role(){
+    var s = read();
+    var tok = s && s.access_token;
+    if (!tok) return 'admin';
+    try {
+      var b64 = String(tok).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      var json = decodeURIComponent(escape(atob(b64)));
+      var payload = JSON.parse(json);
+      var r = payload && payload.app_metadata && payload.app_metadata.role;
+      return (r === 'marketing') ? 'marketing' : 'admin';
+    } catch (e) {
+      return 'admin';
+    }
+  }
+
   function email(){
     var s = read();
     return (s && s.email) || '';
@@ -141,6 +162,7 @@ var ArzuzAuth = (function(){
     headers:    headers,
     clear:      clear,
     email:      email,
+    role:       role,
     signedIn:   signedIn
   };
 })();

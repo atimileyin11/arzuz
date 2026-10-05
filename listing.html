@@ -76,6 +76,7 @@
   <script src="assets/notify.js"></script>
   <script src="assets/submit.js"></script>
   <script src="assets/whatsapp.js"></script>
+  <script src="assets/arzuz-map.js"></script>
   <script src="assets/app.js"></script>
   <script>
   /* ============================================================
@@ -297,6 +298,84 @@
         'connects you.</p>' +
         '</div></div>';
       return { html: html, mate: MATE };
+    }
+
+    /* ---------- getting there: route map + passage card ---------- */
+    function renderGettingThere(p){
+      if (!ROW.latitude && !ROW.longitude) return '';
+      var passage = ArzuzMap && ArzuzMap.passage ? (ROW.payload || {}).passage : null;
+      var ps = (typeof ArzuzMap !== 'undefined') ? ArzuzMap.passage.normalise(passage) : null;
+      var hasPassage = !!(ps && (ps.landmark || ps.gate || ps.floor || ps.steps.length));
+
+      var html = '<div class="ld-sec" id="getting-there"><h2>Getting there</h2>';
+
+      /* route map */
+      html += '<div class="ld-card route-card">' +
+        '<div class="route-head">' +
+          '<span class="route-src-badge src-direct" id="routeMap-routebadge">\uD83D\uDCD0 estimate</span>' +
+          '<span class="route-meta" id="routeMap-routemeta">Measuring the walk\u2026</span>' +
+        '</div>' +
+        '<div class="route-map-wrap">' +
+          '<div id="routeMap"></div>' +
+          '<div class="map-layer-switcher route-switcher" id="routeMap-switcher">' +
+            '<button type="button" class="map-layer-btn active" data-layer="sat">\uD83D\uDEF0 Satellite</button>' +
+            '<button type="button" class="map-layer-btn" data-layer="street">\uD83D\uDDFA Street</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="route-track-bar">' +
+          '<button type="button" class="route-track-btn" id="routeMap-track">\uD83C\uDFAF Track me there</button>' +
+          '<span class="route-track-meta" id="routeMap-trackmeta">Turn it on when you are walking to the viewing \u2014 your dot follows the route live. Works best on mobile.</span>' +
+        '</div>' +
+        '</div>';
+
+      /* passage card */
+      if (hasPassage) {
+        html += '<div class="ld-card passage-card">' +
+          '<h3>\uD83D\uDEAA How to walk in</h3>' +
+          (ps.landmark ? '<div class="psg-kv"><span class="psg-k">Landmark</span><span>' + esc(ps.landmark) + '</span></div>' : '') +
+          (ps.gate ? '<div class="psg-kv"><span class="psg-k">The gate</span><span>' + esc(ps.gate) + '</span></div>' : '') +
+          (ps.floor ? '<div class="psg-kv"><span class="psg-k">Inside</span><span>' + esc(ps.floor) + '</span></div>' : '') +
+          (ps.steps.length ? '<ol class="psg-steps-live">' +
+            ps.steps.map(function(st){
+              return '<li data-lat="' + (st.lat !== undefined ? st.lat : '') + '" data-lng="' + (st.lng !== undefined ? st.lng : '') + '">' +
+                esc(st.text) + (st.lat !== undefined ? ' <span class="psg-step-dot" title="Show on map">\uD83D\uDCCD</span>' : '') + '</li>';
+            }).join('') + '</ol>' : '') +
+          '</div>';
+      }
+      html += '</div>';
+      return html;
+    }
+
+    /* Wire the route map + live tracking + passage-step interactions.
+       Called once after ldContent is populated. */
+    var activeRouteMap = null;
+    function wireGettingThere(){
+      if (!document.getElementById('routeMap') || typeof ArzuzMap === 'undefined') return;
+
+      activeRouteMap = ArzuzMap.routeMap({
+        containerId: 'routeMap',
+        lat: ROW.latitude || (ROW.payload || {}).lat,
+        lng: ROW.longitude || (ROW.payload || {}).lng,
+        campus: ArzuzMap.CAMPUS,
+        passage: (ROW.payload || {}).passage,
+        name: LNAME,
+        trackable: true
+      });
+
+      /* tapping a passage step pans the map to its waypoint */
+      document.querySelectorAll('.psg-steps-live li').forEach(function(li){
+        li.addEventListener('click', function(){
+          var la = parseFloat(li.dataset.lat), ln = parseFloat(li.dataset.lng);
+          if (!isFinite(la) || !isFinite(ln)) return;
+          if (activeRouteMap && activeRouteMap.panTo) activeRouteMap.panTo(la, ln, 19);
+          toast('Step location \u2014 the map has panned there.');
+        });
+      });
+
+      /* stop tracking when the tab closes or the user leaves */
+      window.addEventListener('pagehide', function(){
+        if (activeRouteMap) activeRouteMap.destroy();
+      });
     }
 
     /* The form engine submits F.answers as-is; this wrapper stamps the
@@ -594,6 +673,7 @@
             renderTitle() +
             renderDescription(p) +
             renderFeatures(p) +
+            renderGettingThere(p) +
             bk.html;
 
           document.getElementById('ldSkeleton').style.display = 'none';
@@ -615,6 +695,7 @@
           wireLightbox();
           wireKebab();
           wireDesc();
+          wireGettingThere();
           wireReveals();
           wireSubmit(bk.mate);
           mountForm(bk.mate);

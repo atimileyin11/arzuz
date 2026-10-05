@@ -1255,6 +1255,375 @@ textarea {
 }
 
 /* ============================================================
+   Precision location — live GPS, trace tools, passage
+   (shared by the forms, the listing page and the admin dashboard)
+   ============================================================ */
+
+/* pair of GPS buttons in the capture bar */
+.map-gps-btns {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.map-follow-btn.on {
+  background: linear-gradient(135deg, #2563EB 0%, #60A5FA 100%);
+  border-color: rgba(147, 197, 253, 0.6);
+  box-shadow: 0 0 14px rgba(59, 130, 246, 0.5);
+}
+
+/* ±m accuracy badge — colour communicates quality at a glance */
+.gps-acc {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 20px;
+  font-size: 11.5px;
+  font-weight: 800;
+  font-family: var(--mono);
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.gps-acc.gps-precise { background: rgba(16, 185, 129, 0.16); color: #059669; border: 1px solid rgba(16, 185, 129, 0.4); }
+.gps-acc.gps-good    { background: rgba(245, 158, 11, 0.14); color: #B45309; border: 1px solid rgba(245, 158, 11, 0.4); }
+.gps-acc.gps-poor    { background: rgba(239, 68, 68, 0.13); color: #B91C1C; border: 1px solid rgba(239, 68, 68, 0.4); }
+
+/* trace toolbar (pin capture widget) */
+.map-tracebar, .admin-trace-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.06);
+  border: 1px dashed rgba(245, 158, 11, 0.45);
+  font-size: 12.5px;
+  color: var(--body-c);
+}
+.admin-trace-bar small, .map-tracebar small {
+  color: var(--mid);
+  width: 100%;
+}
+.admin-trace-bar.tracing, .map-tracebar.tracing {
+  background: rgba(245, 158, 11, 0.12);
+  border-style: solid;
+}
+
+.psg-tool {
+  font-family: var(--body);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 13px;
+  border-radius: 18px;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  background: rgba(255, 255, 255, 0.75);
+  color: #92400E;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.psg-tool:hover { background: rgba(245, 158, 11, 0.16); }
+.psg-tool.on {
+  background: linear-gradient(135deg, #F59E0B, #F97316);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 3px 10px rgba(245, 158, 11, 0.4);
+}
+.psg-count {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: #92400E;
+  font-weight: 700;
+}
+
+/* passage editor (capture surfaces) */
+.psg-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.psg-fld label, .psg-steps > label {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--head-c, #1a1a2e);
+  margin-bottom: 5px;
+}
+.psg-fld label small, .psg-steps > label small {
+  font-weight: 500;
+  color: var(--mid);
+}
+.psg-fld input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 14px;
+  border-radius: 10px;
+  border: 1.5px solid var(--line-strong, #d8d3e3);
+  font-family: var(--body);
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.85);
+}
+.psg-fld input:focus {
+  outline: none;
+  border-color: var(--stamp-vibrant);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.14);
+}
+.psg-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.psg-step-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.psg-step-num {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--stamp), var(--stamp-vibrant));
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.psg-step-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border-radius: 9px;
+  border: 1.5px solid var(--line-strong, #d8d3e3);
+  font-family: var(--body);
+  font-size: 13.5px;
+}
+.psg-step-row input:focus {
+  outline: none;
+  border-color: var(--stamp-vibrant);
+}
+.psg-step-pin {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1.5px solid var(--line-strong, #d8d3e3);
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+.psg-step-pin.on {
+  background: rgba(124, 58, 237, 0.12);
+  border-color: var(--stamp-vibrant);
+}
+.psg-step-del {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1.5px solid rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.05);
+  color: #B91C1C;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+.psg-step-del:hover { background: rgba(239, 68, 68, 0.14); }
+.psg-add {
+  align-self: flex-start;
+  font-family: var(--body);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 1.5px dashed rgba(124, 58, 237, 0.5);
+  background: rgba(124, 58, 237, 0.06);
+  color: var(--stamp-vibrant);
+  cursor: pointer;
+}
+.psg-add:hover { background: rgba(124, 58, 237, 0.13); }
+
+/* mini map inside the passage editor */
+.psg-minimap-wrap { display: flex; flex-direction: column; gap: 7px; }
+.psg-minimap {
+  height: 230px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid rgba(245, 158, 11, 0.35);
+  background: #1a1a2e;
+  z-index: 0;
+}
+.psg-minimap-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ============================================================
+   Getting there — route map + passage card (listing page)
+   ============================================================ */
+
+.route-card { padding: 0; overflow: hidden; }
+.route-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 13px 16px 11px;
+}
+.route-src-badge {
+  font-size: 11.5px;
+  font-weight: 800;
+  padding: 4px 11px;
+  border-radius: 20px;
+  letter-spacing: 0.02em;
+}
+.route-src-badge.src-stored { background: rgba(16, 185, 129, 0.14); color: #047857; }
+.route-src-badge.src-osrm   { background: rgba(37, 99, 235, 0.1); color: #1D4ED8; }
+.route-src-badge.src-direct { background: rgba(107, 114, 128, 0.13); color: #4B5563; }
+.route-meta {
+  font-size: 13px;
+  color: var(--mid);
+  font-family: var(--mono);
+}
+.route-map-wrap { position: relative; }
+.route-map-wrap #routeMap {
+  height: 380px;
+  width: 100%;
+  background: #1a1a2e;
+}
+.route-switcher { top: 10px; }
+.route-track-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+}
+.route-track-btn {
+  font-family: var(--body);
+  font-size: 13.5px;
+  font-weight: 800;
+  padding: 10px 20px;
+  border-radius: 24px;
+  border: none;
+  background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+  transition: transform 0.2s var(--ease-spring, ease), box-shadow 0.2s ease;
+  white-space: nowrap;
+}
+.route-track-btn:hover { transform: translateY(-2px); box-shadow: 0 7px 20px rgba(37, 99, 235, 0.45); }
+.route-track-btn.on {
+  background: linear-gradient(135deg, #DC2626 0%, #F97316 100%);
+  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.45);
+  animation: trackPulse 1.6s ease-in-out infinite;
+}
+@keyframes trackPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); }
+  50% { box-shadow: 0 0 0 9px rgba(220, 38, 38, 0); }
+}
+.route-track-meta {
+  font-size: 12.5px;
+  color: var(--mid);
+  line-height: 1.45;
+  flex: 1;
+  min-width: 180px;
+}
+
+/* passage card on the listing page */
+.passage-card h3 {
+  margin: 0 0 12px;
+  font-size: 15.5px;
+  color: var(--head-c, #1a1a2e);
+}
+.psg-kv {
+  display: flex;
+  gap: 10px;
+  padding: 7px 0;
+  font-size: 14px;
+  line-height: 1.5;
+  border-bottom: 1px dashed var(--line);
+}
+.psg-kv:last-of-type { border-bottom: none; }
+.psg-k {
+  flex: none;
+  width: 76px;
+  font-size: 11.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--stamp-vibrant);
+  padding-top: 2px;
+}
+.psg-steps-live {
+  margin: 12px 0 0;
+  padding: 0 0 0 0;
+  list-style: none;
+  counter-reset: psgstep;
+}
+.psg-steps-live li {
+  counter-increment: psgstep;
+  position: relative;
+  padding: 8px 0 8px 36px;
+  font-size: 14px;
+  line-height: 1.5;
+  border-bottom: 1px dashed var(--line);
+  cursor: default;
+}
+.psg-steps-live li:last-child { border-bottom: none; }
+.psg-steps-live li::before {
+  content: counter(psgstep);
+  position: absolute;
+  left: 0;
+  top: 9px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--stamp), var(--stamp-vibrant));
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.psg-steps-live li[data-lat]:not([data-lat=""]) { cursor: pointer; }
+.psg-steps-live li[data-lat]:not([data-lat=""]):hover { background: rgba(124, 58, 237, 0.05); }
+.psg-step-dot { font-size: 12px; opacity: 0.7; }
+
+/* route markers (origin / destination) on the route map */
+.route-marker {
+  width: 34px;
+  height: 34px;
+  border-radius: 50% 50% 50% 4px;
+  transform: rotate(-45deg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+  border: 2px solid #fff;
+}
+.route-marker > * { transform: rotate(45deg); }
+.route-marker.origin { background: linear-gradient(135deg, #2563EB, #60A5FA); }
+.route-marker.dest { background: linear-gradient(135deg, var(--stamp), var(--stamp-vibrant)); }
+.route-marker .route-marker-inner { transform: rotate(45deg); }
+
+/* admin: the switcher pill keeps its dark look inside light modals */
+.admin-layer-switch {
+  background: rgba(10, 8, 18, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.admin-map-status { margin-top: 10px; }
+
+/* ============================================================
    Photo Upload Component
    ============================================================ */
 

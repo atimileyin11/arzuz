@@ -34,6 +34,7 @@
 <script src="assets/notify.js"></script>
 <script src="assets/submit.js"></script>
 <script src="assets/whatsapp.js"></script>
+<script src="assets/arzuz-map.js"></script>
 <script src="assets/app.js"></script>
 <script>
 
@@ -52,6 +53,9 @@ Arzuz.form({
    {k:'pin', h:"Where exactly is it?",
     hint:"Drop a pin at your gate. We calculate the walking distance to campus ourselves \u2014 you do not have to estimate it, and students trust a measured number far more.",
     f:[["pin","Location","pin"]]},
+   {k:'passage', h:"How does someone walk in?",
+    hint:"Landmarks, the gate, the stairs — the things only someone who knows the compound can tell. Students find the place first time, without calling you twice.",
+    f:[["passage","Passage to the apartment","passage"]]},
    {k:'pr', h:"What are you charging?", ctx:true,
     f:[["rent","Rent per session (\u20A6)","rent-live"],
        ["neg","Negotiable?","sel",["Yes","No","Depends on the tenant"]]]},

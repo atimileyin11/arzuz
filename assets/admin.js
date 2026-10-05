@@ -163,10 +163,13 @@
   function hideGate() {
     gateModal.style.display = 'none';
     var email = ArzuzAuth.email();
-    $('whoBadge').textContent = email || 'Signed in';
+    var role = currentRole();
+    var who = $('whoBadge');
+    if (who) who.textContent = (email || 'Signed in') + (role === 'marketing' ? ' · marketing' : ' · admin');
     var env = $('envBadge');
     env.textContent = (cfg.ENV === 'test' ? 'TEST DB' : 'PRODUCTION DB');
     env.className = 'admin-badge ' + (cfg.ENV === 'test' ? 'warn' : 'ok');
+    applyRoleNav();
   }
 
   function onAuthError(err) {
@@ -223,16 +226,59 @@
     scout_submissions: { title: 'Building Scouts', icon: '📋', label: 'Scouts' },
     bookings: { title: 'Booking Requests', icon: '📅', label: 'Bookings' },
     roommate: { title: 'Roommate Matching', icon: '🤝', label: 'Roommates' },
+    growth: { title: 'Growth', icon: '📈', label: 'Growth' },
+    strategy: { title: 'Strategy', icon: '📚', label: 'Strategy' },
     settings: { title: 'Settings', icon: '⚙', label: 'Settings' }
   };
 
+  /* Sections hidden per role. The marketing login is prioritised for
+     marketing: it lands on Growth and never sees the data tables or
+     settings. Admin (the default) sees everything. */
+  var ROLE_SECTIONS = {
+    admin: null, // no restrictions
+    marketing: ['overview', 'demand_records', 'listings', 'scout_submissions', 'bookings', 'roommate', 'settings']
+  };
+
+  function sectionsFor(role) {
+    var hidden = ROLE_SECTIONS[role] || [];
+    return Object.keys(SECTIONS).filter(function (k) { return hidden.indexOf(k) === -1; });
+  }
+
+  function currentRole() {
+    return (window.ArzuzAuth && ArzuzAuth.role) ? ArzuzAuth.role() : 'admin';
+  }
+
+  /* Split "strategy/<file>.md" sub-routes out of the plain section key. */
   function routeFromHash() {
     var h = (location.hash || '').replace(/^#\/?/, '');
-    return SECTIONS[h] ? h : 'overview';
+    var sec = h.split('/')[0];
+    return SECTIONS[sec] ? sec : 'overview';
+  }
+
+  function routeDoc() {
+    var h = (location.hash || '').replace(/^#\/?/, '');
+    var parts = h.split('/');
+    return parts[0] === 'strategy' && parts[1] ? parts.slice(1).join('/') : '';
+  }
+
+  function applyRoleNav() {
+    var allowed = sectionsFor(currentRole());
+    document.querySelectorAll('.nav-item').forEach(function (b) {
+      b.style.display = (allowed.indexOf(b.dataset.section) !== -1) ? '' : 'none';
+    });
   }
 
   function renderRoute() {
     var sec = routeFromHash();
+
+    /* role gate INSIDE the router: a deep link or stale hash into a
+       section this role cannot see falls back to the landing page */
+    var allowed = sectionsFor(currentRole());
+    if (allowed.indexOf(sec) === -1) {
+      var fallback = (allowed.indexOf('growth') !== -1) ? 'growth' : allowed[0];
+      if (location.hash !== '#/' + fallback) { location.hash = '#/' + fallback; return; }
+      sec = fallback;
+    }
     state.currentSection = sec;
 
     document.querySelectorAll('.section-view').forEach(function (v) {
@@ -243,7 +289,7 @@
     });
     $('sectionTitle').textContent = SECTIONS[sec].title;
 
-    /* shared table toolbar: visible on the three data sections only,
+    /* shared table toolbar: visible on the data sections only,
        with listings-specific controls shown just there */
     var isTable = sec === 'demand_records' || sec === 'listings' || sec === 'scout_submissions' || sec === 'bookings';
     var toolbar = $('dataTableControls');
@@ -253,6 +299,18 @@
 
     if (sec === 'overview') renderOverview();
     if (sec === 'roommate') renderRoommatePanel();
+    if (sec === 'growth' && window.ArzuzStrategy) {
+      ArzuzStrategy.renderGrowth(document.querySelector('[data-section="growth"]'), {
+        demands: state.data.demand_records,
+        listings: state.data.listings,
+        scouts: state.data.scout_submissions,
+        bookings: state.data.booking_requests,
+        roommateSummary: state.roommateSummary
+      });
+    }
+    if (sec === 'strategy' && window.ArzuzStrategy) {
+      ArzuzStrategy.renderStrategy(document.querySelector('[data-section="strategy"]'), routeDoc());
+    }
     if (isTable) {
       state.search = '';
       state.statusFilter = 'all';
@@ -897,8 +955,63 @@
       }
     }
 
+    /* Location + passage editor — listings and scout reports both carry a pin */
+    if (table === 'listings' || table === 'scout_submissions') {
+      var pLat = row.latitude || p.lat || '';
+      var pLng = row.longitude || p.lng || '';
+      var pinStr = p.pin || (pLat && pLng ? pLat + ',' + pLng : '');
+      html += '<div class="edit-fld full"><label>📍 Location Pin <small>live GPS · tap or drag · accuracy and source are stored</small></label>' +
+        '<div class="admin-map-wrap"><div id="editLeafletMap"></div>' +
+        '<div class="map-float-btns" id="editMapLayerSwitcher">' +
+        '<button type="button" class="map-layer-btn active" data-layer="sat">🛰 Satellite</button>' +
+        '<button type="button" class="map-layer-btn" data-layer="street">🗺 Street</button>' +
+        '</div></div>' +
+        '<div class="map-bottom-bar"><span class="map-coords" id="editMapCoordsText">' + (pinStr ? '📍 ' + esc(pinStr) : '📍 Tap map or drag marker to the gate') + '</span>' +
+        '<button type="button" class="gps-btn" id="editBtnLocateMe">🎯 Use GPS</button></div>' +
+        '<div class="map-status-box" id="editMapStatus">Live GPS is off here to save battery — tap Use GPS when you are at the gate.</div>' +
+        '<input type="hidden" id="edit_lat" value="' + esc(pLat) + '">' +
+        '<input type="hidden" id="edit_lng" value="' + esc(pLng) + '">' +
+        '<input type="hidden" id="edit_pin_meta" value=\'' + esc(JSON.stringify(p.pin_meta || null)) + '\'></div>';
+      html += '<div class="edit-fld full"><label>🚶 Passage to the apartment <small>landmark · gate · steps · traced path — shown on the public listing page</small></label>' +
+        '<div id="editPassageMount"></div></div>';
+    }
+
     $('editFieldsContainer').innerHTML = html;
     show(editModal);
+
+    if (table === 'listings' || table === 'scout_submissions') {
+      destroyEditMapAndPassage();
+      if (typeof ArzuzMap !== 'undefined') {
+        editPinCapture = ArzuzMap.pinCapture({
+          containerId: 'editLeafletMap',
+          layerSwitchId: 'editMapLayerSwitcher',
+          coordsBadgeId: 'editMapCoordsText',
+          locateBtnId: 'editBtnLocateMe',
+          statusBoxId: 'editMapStatus',
+          tipBannerId: null,
+          startGps: false,
+          trace: false,
+          lat: pLat || null,
+          lng: pLng || null,
+          onPin: function (lat, lng, meta) {
+            var la = $('edit_lat'), ln = $('edit_lng'), mt = $('edit_pin_meta');
+            if (la) la.value = lat;
+            if (ln) ln.value = lng;
+            if (mt) mt.value = JSON.stringify(meta);
+            var badge = $('editMapCoordsText');
+            if (badge) { badge.textContent = '📍 ' + lat.toFixed(5) + ', ' + lng.toFixed(5); badge.classList.add('set'); }
+          }
+        });
+        editPassageEditor = ArzuzMap.passageEditor({
+          mountId: 'editPassageMount',
+          answers: null,
+          passage: p.passage || null,
+          miniMap: true,
+          pin: pLat ? { lat: pLat, lng: pLng } : null,
+          onChange: null
+        });
+      }
+    }
 
     if (table === 'listings') {
       var unlock = $('edit_ask_unlock');
@@ -960,10 +1073,29 @@
       p.amt = $('edit_amt').value.trim();
       p.vac = $('edit_vac') ? $('edit_vac').value.trim() : (p.vac || '');
     }
+
+    /* Location + passage — only touched where the editor rendered them.
+       pin_meta replaces only when a new fix was captured this session. */
+    if (table === 'listings' || table === 'scout_submissions') {
+      var eLat = $('edit_lat'), eLng = $('edit_lng'), eMeta = $('edit_pin_meta');
+      if (eLat && eLng && eLat.value.trim() && eLng.value.trim()) {
+        p.lat = eLat.value.trim();
+        p.lng = eLng.value.trim();
+        p.pin = Number(eLat.value).toFixed(6) + ',' + Number(eLng.value).toFixed(6);
+      }
+      if (eMeta && eMeta.value && eMeta.value !== 'null') {
+        try { p.pin_meta = JSON.parse(eMeta.value); } catch (e2) { /* keep old */ }
+      }
+      if (editPassageEditor) {
+        var psg = editPassageEditor.get();
+        if (ArzuzMap && ArzuzMap.passage.hasContent(psg)) p.passage = psg;
+        else delete p.passage;
+      }
+    }
     return p;
   }
 
-  $('btnCancelEdit').addEventListener('click', function () { hide(editModal); });
+  $('btnCancelEdit').addEventListener('click', function () { hide(editModal); destroyEditMapAndPassage(); });
 
   $('editRecordForm').addEventListener('submit', function (e) {
     e.preventDefault();
@@ -1041,7 +1173,7 @@
 
   $('btnOpenAddApt').addEventListener('click', function () {
     $('addAptForm').reset();
-    ['add_photo_url', 'add_video_url', 'add_lat', 'add_lng', 'add_pin'].forEach(function (id) { if ($(id)) $(id).value = ''; });
+    ['add_photo_url', 'add_video_url', 'add_lat', 'add_lng', 'add_pin', 'add_pin_meta'].forEach(function (id) { if ($(id)) $(id).value = ''; });
     ['galAddProgress', 'galAddVideoProgress'].forEach(function (id) { var el = $(id); if (el) el.textContent = ''; });
     var amanual = $('add_video_url_manual');
     if (amanual) amanual.value = '';
@@ -1054,13 +1186,18 @@
       wrap.innerHTML = utilitiesList().map(function (u) { return chipHtml('add_ut', u, false); }).join('');
     }
     show(addModal);
-    setTimeout(initAdminMap, 200);
+    setTimeout(function () {
+      initAdminMap();
+      initAdminPassageAdd();
+    }, 200);
   });
 
-  $('btnCancelAddApt').addEventListener('click', function () { hide(addModal); });
-
-  $('addAptForm').addEventListener('submit', function (e) {
+  $('btnCancelAddApt').addEventListener('click', function () {
+    hide(addModal);
+    destroyAdminPassage();
+  });  $('addAptForm').addEventListener('submit', function (e) {
     e.preventDefault();
+    var pinVals = adminPinValues();
     var p = {
       apt_id: $('add_apt_id').value.trim(),
       custom_id: $('add_apt_id').value.trim(),
@@ -1081,9 +1218,11 @@
       media: [],
       split_ok: $('add_split_ok') ? $('add_split_ok').checked : false,
       ut: [],
-      lat: $('add_lat') ? $('add_lat').value.trim() || null : null,
-      lng: $('add_lng') ? $('add_lng').value.trim() || null : null,
-      pin: $('add_pin') ? $('add_pin').value.trim() || null : null,
+      lat: pinVals.lat,
+      lng: pinVals.lng,
+      pin: pinVals.pin,
+      pin_meta: pinVals.meta || null,
+      passage: (pinVals.passage && ArzuzMap && ArzuzMap.passage.hasContent(pinVals.passage)) ? pinVals.passage : null,
       vf: $('add_vf') ? $('add_vf').value : ''
     };
     document.querySelectorAll('input[name="add_ut"]:checked').forEach(function (ck) { p.ut.push(ck.value); });
@@ -1364,70 +1503,80 @@
     if (list[i]) list[i].label = b.value.slice(0, 48);
   });
 
-  /* ================= 9. Map pin (Add Apartment) ================= */
+  /* ================= 9. Map pin (Add Apartment) — via ArzuzMap ================= */
 
-  var adminMap = null, adminMarker = null, adminActiveTile = null;
+  var adminPinCapture = null;
+  var adminPassageEditor = null;
+  var editPinCapture = null;
+  var editPassageEditor = null;
+
+  /* Reads the hidden inputs + passage state the shared widget maintains. */
+  function adminPinValues() {
+    var meta = null;
+    if ($('add_pin_meta') && $('add_pin_meta').value) {
+      try { meta = JSON.parse($('add_pin_meta').value); } catch (e) { meta = null; }
+    }
+    return {
+      lat: $('add_lat') ? $('add_lat').value.trim() || null : null,
+      lng: $('add_lng') ? $('add_lng').value.trim() || null : null,
+      pin: $('add_pin') ? $('add_pin').value.trim() || null : null,
+      meta: meta,
+      passage: adminPassageEditor ? adminPassageEditor.get() : null
+    };
+  }
 
   function initAdminMap() {
-    var MALETE = [8.7113, 4.4697];
+    if (typeof ArzuzMap === 'undefined') return;
     var mapEl = $('admin-leaflet-map');
     if (!mapEl) return;
 
-    function buildMap() {
-      if (adminMap) { try { adminMap.remove(); } catch (e) { } adminMap = null; adminMarker = null; adminActiveTile = null; }
-      adminMap = L.map('admin-leaflet-map', { zoomControl: true }).setView(MALETE, 16);
-      var LAYERS = {
-        sat: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', opt: { maxZoom: 19, attribution: 'Esri' } },
-        street: { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', opt: { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' } }
-      };
-      adminActiveTile = L.tileLayer(LAYERS.sat.url, LAYERS.sat.opt).addTo(adminMap);
-      var pinIcon = L.divIcon({
-        className: '', html: '<div class="map-pin-custom"><div class="map-pin-ring"></div><div class="map-pin-dot"></div></div>',
-        iconSize: [32, 42], iconAnchor: [16, 42]
-      });
-      adminMarker = L.marker(MALETE, { draggable: true, icon: pinIcon }).addTo(adminMap);
+    if (adminPinCapture) { try { adminPinCapture.destroy(); } catch (e) { } adminPinCapture = null; }
 
-      function setPin(lat, lng) {
-        $('add_lat').value = lat;
-        $('add_lng').value = lng;
-        $('add_pin').value = lat.toFixed(6) + ',' + lng.toFixed(6);
+    adminPinCapture = ArzuzMap.pinCapture({
+      containerId: 'admin-leaflet-map',
+      layerSwitchId: 'adminMapLayerSwitcher',
+      coordsBadgeId: 'adminMapCoordsText',
+      locateBtnId: 'adminBtnLocateMe',
+      statusBoxId: 'adminMapStatus',
+      tipBannerId: 'adminMapNote',
+      startGps: false,
+      trace: true,
+      traceBarId: 'adminTraceBar',
+      traceSource: 'traced',
+      onPin: function (lat, lng, meta) {
+        var la = $('add_lat'), ln = $('add_lng'), pn = $('add_pin'), mt = $('add_pin_meta');
+        if (la) { la.value = lat; la.dataset.src = meta.source || 'tapped'; }
+        if (ln) { ln.value = lng; ln.dataset.src = meta.source || 'tapped'; }
+        if (pn) pn.value = lat.toFixed(6) + ',' + lng.toFixed(6);
+        if (mt) mt.value = JSON.stringify(meta);
         var badge = $('adminMapCoordsText');
         if (badge) { badge.textContent = '📍 ' + lat.toFixed(5) + ', ' + lng.toFixed(5); badge.classList.add('set'); }
       }
-      adminMarker.on('dragend', function () { var p = adminMarker.getLatLng(); setPin(p.lat, p.lng); });
-      adminMap.on('click', function (e) { adminMarker.setLatLng(e.latlng); setPin(e.latlng.lat, e.latlng.lng); });
+    });
+  }
 
-      var btnSat = $('adminBtnLayerSat'), btnStr = $('adminBtnLayerStreet');
-      function swLayer(k) {
-        if (adminActiveTile) adminMap.removeLayer(adminActiveTile);
-        adminActiveTile = L.tileLayer(LAYERS[k].url, LAYERS[k].opt).addTo(adminMap);
-        if (adminMarker) adminMarker.bringToFront();
-        if (btnSat) btnSat.classList.toggle('on', k === 'sat');
-        if (btnStr) btnStr.classList.toggle('on', k === 'street');
-      }
-      if (btnSat) btnSat.onclick = function () { swLayer('sat'); };
-      if (btnStr) btnStr.onclick = function () { swLayer('street'); };
+  /* Passage editor inside the Add Apartment modal. The Edit modal keeps
+     its own instance keyed off the payload being edited. */
+  function initAdminPassageAdd() {
+    if (typeof ArzuzMap === 'undefined') return;
+    if (adminPassageEditor) { try { adminPassageEditor.destroy(); } catch (e) { } adminPassageEditor = null; }
+    adminPassageEditor = ArzuzMap.passageEditor({
+      mountId: 'adminPassageMount',
+      answers: null,
+      passage: null,
+      miniMap: true,
+      pin: null
+    });
+  }
 
-      var btnGPS = $('adminBtnLocateMe');
-      if (btnGPS) btnGPS.onclick = function () {
-        if (!navigator.geolocation) { alert('GPS not supported in this browser.'); return; }
-        btnGPS.textContent = '⏳ Locating…';
-        navigator.geolocation.getCurrentPosition(function (pos) {
-          adminMarker.setLatLng([pos.coords.latitude, pos.coords.longitude]);
-          adminMap.setView([pos.coords.latitude, pos.coords.longitude], 18);
-          setPin(pos.coords.latitude, pos.coords.longitude);
-          btnGPS.textContent = '🌍 GPS Locked';
-        }, function () { btnGPS.textContent = '🎯 Use GPS'; }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
-      };
-      setTimeout(function () { if (adminMap) adminMap.invalidateSize(); }, 300);
-    }
+  function destroyAdminPassage() {
+    if (adminPassageEditor) { try { adminPassageEditor.destroy(); } catch (e) { } adminPassageEditor = null; }
+  }
 
-    if (typeof L === 'undefined') {
-      var s = document.createElement('script');
-      s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-      s.onload = buildMap;
-      document.head.appendChild(s);
-    } else buildMap();
+  /* Tear down the Edit-modal map + passage instances before a rebuild */
+  function destroyEditMapAndPassage() {
+    if (editPinCapture) { try { editPinCapture.destroy(); } catch (e) { } editPinCapture = null; }
+    if (editPassageEditor) { try { editPassageEditor.destroy(); } catch (e) { } editPassageEditor = null; }
   }
 
   /* ================= 10. Details modal ================= */
@@ -1465,6 +1614,16 @@
       if (p.pain) html += kv('Current Housing Feedback', esc(p.pain), true);
     } else if (table === 'listings') {
       var aptId = p.apt_id || p.custom_id || shortId(row.id);
+      /* pin quality — tells the verifier how much to trust the pin */
+      var pm = p.pin_meta || {};
+      if (p.pin || row.latitude) {
+        var srcLabel = { gps: '📡 Live GPS', tapped: '🗺 Tapped', dragged: '✋ Dragged', admin: '🛰 Restored' }[pm.source] || '🗺 Placed';
+        var accTxt = pm.accuracy_m != null ? ' ±' + pm.accuracy_m + 'm' : '';
+        html += kv('Pin Quality', srcLabel + accTxt + (pm.samples ? ' · ' + pm.samples + ' samples' : ''));
+      }
+      if (ArzuzMap && ArzuzMap.passage.hasContent(p.passage)) {
+        html += kv('Passage', '🚶 ' + esc(ArzuzMap.passage.summarise(p.passage)), true);
+      }
       html += kv('Apartment ID', '<span class="apt-badge-id">' + esc(aptId) + '</span>');
       html += kv('Property / Lodge Name', esc(pick(row, 'property_name', ['prop_name']) || '—'));
       html += kv('Owner / Caretaker', esc(pick(row, 'owner_name', ['nm']) || '—') + (p.last ? ' ' + esc(p.last) : ''));
@@ -1492,6 +1651,14 @@
       html += kv('Scout Phone', esc(pick(row, 'scout_phone', ['phone']) || '—'));
       html += kv('Vacancy Signal', esc(pick(row, 'vacancy_signal', ['vac']) || '—'));
       html += kv('Rent Collected By', esc(p.who || '—'));
+      var spm = p.pin_meta || {};
+      if (p.pin || row.latitude) {
+        var sSrc = { gps: '📡 Live GPS', tapped: '🗺 Tapped', dragged: '✋ Dragged', admin: '🛰 Restored' }[spm.source] || '🗺 Placed';
+        html += kv('Pin Quality', sSrc + (spm.accuracy_m != null ? ' ±' + spm.accuracy_m + 'm' : ''));
+      }
+      if (ArzuzMap && ArzuzMap.passage.hasContent(p.passage)) {
+        html += kv('Passage', '🚶 ' + esc(ArzuzMap.passage.summarise(p.passage)), true);
+      }
       var scoutPhoto = pick(row, 'photo_url', ['photo']);
       if (scoutPhoto) html += kv('Building Photo', '<img class="details-media" src="' + esc(scoutPhoto) + '" alt="Building photo" data-act="photo" data-url="' + esc(scoutPhoto) + '">', true);
     }
@@ -1747,6 +1914,9 @@
 
   /* ================= boot ================= */
 
+  /* Hide role-restricted nav before anything renders (booting
+     signed-out on a shared screen must not advertise the layout). */
+  applyRoleNav();
   renderRoute();
   checkAuth();
 })();

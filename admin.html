@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
 <link rel="stylesheet" href="assets/arzuz.css">
-<link rel="stylesheet" href="assets/admin.css">
+<link rel="stylesheet" href="assets/admin.css?v=2">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body class="admin-body">
@@ -39,6 +39,8 @@
     <button class="nav-item" data-section="scout_submissions"><span class="ico">📋</span> Scouts</button>
     <button class="nav-item" data-section="bookings"><span class="ico">📅</span> Bookings</button>
     <button class="nav-item" data-section="roommate"><span class="ico">🤝</span> Roommates</button>
+    <button class="nav-item" data-section="growth"><span class="ico">📈</span> Growth</button>
+    <button class="nav-item" data-section="strategy"><span class="ico">📚</span> Strategy</button>
     <button class="nav-item" data-section="settings"><span class="ico">⚙</span> Settings <span class="nav-pill" id="navPillMinors"></span></button>
   </nav>
   <div class="admin-side-foot">
@@ -201,8 +203,49 @@
       <div class="table-card" id="roommatePanel"></div>
     </section>
 
+    <!-- ============ GROWTH (marketing traction) ============ -->
+    <section class="section-view" data-section="growth" style="display:none;"></section>
+
+    <!-- ============ STRATEGY PACK (private docs reader) ============ -->
+    <section class="section-view" data-section="strategy" style="display:none;"></section>
+
     <!-- ============ SETTINGS ============ -->
     <section class="section-view" data-section="settings" style="display:none;">
+
+      <div class="settings-panel">
+        <h3>👥 Team logins &amp; roles</h3>
+        <p style="margin-bottom:12px;">
+          Every team member signs in on this same page with an email + password created in Supabase —
+          public sign-ups are off, so <b>you</b> create every account.
+        </p>
+        <div class="role-grid">
+          <div class="role-card">
+            <h4>👑 Main admin <span class="role-tag">that's you</span></h4>
+            <p>Sees everything: demands, listings, scouts, bookings, roommates, growth, strategy, settings.
+            Any account without a set role is a main admin.</p>
+          </div>
+          <div class="role-card">
+            <h4>📈 Marketing</h4>
+            <p>Lands on <b>Growth</b> — traction, funnel, channels, what to do next — plus the
+            <b>Strategy</b> docs (positioning, channels, growth model first). No student phone
+            numbers, no tables, no settings.</p>
+          </div>
+        </div>
+        <p style="margin-bottom:6px; color:#C4B5FD; font-weight:700; font-size:13px;">To add a marketing teammate (≈2 minutes):</p>
+        <ol style="color:#B3A7BF; font-size:13.5px; line-height:1.7; margin:0 0 10px 18px; padding:0;">
+          <li>Supabase dashboard → <b>Authentication → Users → Add user</b> → her email + a temporary password.</li>
+          <li>Open that user in the list → find the <b>Raw User JSON</b> (or app_metadata editor) and make it read:
+            <pre class="team-json">"app_metadata": { "role": "marketing" }</pre>
+            Leave <code>user_metadata</code> untouched.</li>
+          <li>Send her <b>arzuz.com/admin.html</b> with the email + password; she changes nothing else —
+              her sidebar shows only Growth and Strategy.</li>
+        </ol>
+        <p style="color:#9A8CA8; font-size:12.5px;">
+          The role rides inside her Supabase session token; the dashboard reads it via
+          <code>ArzuzAuth.role()</code>. To make someone a main admin again, remove the
+          <code>role</code> key from <code>app_metadata</code> (or set <code>"role": "admin"</code>).
+        </p>
+      </div>
 
       <div class="settings-panel">
         <h3>Test data</h3>
@@ -374,24 +417,39 @@
           </label>
         </div>
 
-        <!-- Map Location Pin -->
+        <!-- Map Location Pin — powered by ArzuzMap (live GPS + trace) -->
         <div class="edit-fld full">
-          <label>📍 Map Location Pin <small>Satellite + Street — tap to pin the exact gate</small></label>
-          <div class="map-note">🛰️ <b>Satellite view is active.</b> Zoom in and tap the exact gate of the compound to drop a pin.</div>
+          <label>📍 Map Location Pin <small>Live GPS · Satellite + Street — tap to pin the exact gate</small></label>
+          <div class="map-note" id="adminMapNote">🛰️ <b>Satellite view is active.</b> Zoom in and tap the exact gate of the compound to drop a pin.</div>
           <div class="admin-map-wrap">
             <div id="admin-leaflet-map"></div>
-            <div class="map-float-btns">
-              <button type="button" id="adminBtnLayerSat" class="on">🛰 Satellite</button>
-              <button type="button" id="adminBtnLayerStreet">🗺 Street</button>
+            <div class="map-float-btns map-layer-switcher admin-layer-switch" id="adminMapLayerSwitcher">
+              <button type="button" class="map-layer-btn active" data-layer="sat" id="adminBtnLayerSat">🛰 Satellite</button>
+              <button type="button" class="map-layer-btn" data-layer="street" id="adminBtnLayerStreet">🗺 Street</button>
             </div>
           </div>
           <div class="map-bottom-bar">
             <span class="map-coords" id="adminMapCoordsText">📍 Tap map or drag marker to the gate</span>
             <button type="button" id="adminBtnLocateMe" class="gps-btn">🎯 Use GPS</button>
           </div>
+          <div class="map-status-box admin-map-status" id="adminMapStatus">Live GPS starts when you tap Use GPS — accuracy shows here as you stand at the gate.</div>
+          <div class="admin-trace-bar" id="adminTraceBar">
+            <button type="button" class="psg-tool" id="traceToggle">➕ Trace the road</button>
+            <button type="button" class="psg-tool" id="traceUndo">↩ Undo</button>
+            <button type="button" class="psg-tool" id="traceClear">🧹 Clear</button>
+            <span class="psg-count" id="traceCount"></span>
+            <small>Trace the road from the main road to the gate — tap points along the real path on the satellite view.</small>
+          </div>
           <input type="hidden" id="add_lat">
           <input type="hidden" id="add_lng">
           <input type="hidden" id="add_pin">
+          <input type="hidden" id="add_pin_meta">
+        </div>
+
+        <!-- Passage to the apartment -->
+        <div class="edit-fld full">
+          <label>🚶 Passage to the apartment <small>landmark · gate · steps · traced path — shown on the public listing</small></label>
+          <div id="adminPassageMount"></div>
         </div>
 
         <!-- Media gallery -->
@@ -493,11 +551,13 @@
 </div>
 
 <script src="assets/config.js"></script>
-<script src="assets/auth.js"></script>
+<script src="assets/auth.js?v=2"></script>
 <script src="assets/data.js"></script>
+<script src="assets/strategy.js?v=3"></script>
 <script src="assets/notify.js"></script>
 <script src="assets/submit.js"></script>
-<script src="assets/admin.js"></script>
+<script src="assets/arzuz-map.js"></script>
+<script src="assets/admin.js?v=2"></script>
 <script>
 /* shell-only wiring that has no place in admin.js */
 (function(){

@@ -12,9 +12,13 @@
 
 [build]
   publish = "."
+  # 404.html needs no redirect rule: Netlify serves it automatically at every
+  # missing URL. It uses root-absolute paths (/assets/…) because the failed
+  # path is preserved in the browser — /a/b/missing must still load CSS.
   # listing-og.js reads listing.html from the function sandbox to inject
-  # per-listing preview tags — this bundles the page into the deploy.
-  included_files = ["netlify/functions/**", "listing.html"]
+  # per-listing preview tags; strategy-docs.js serves the strategy pack
+  # to signed-in team members only. Both bundle their files into the deploy.
+  included_files = ["netlify/functions/**", "listing.html", "strategy/*.md"]
 
 # Link-preview cards: scrapers (WhatsApp, X, iMessage) never run JS,
 # so /listing is served by a function that writes the real listing's
@@ -28,6 +32,29 @@
   from = "/listing.html"
   to   = "/.netlify/functions/listing-og"
   status = 200
+
+# Private strategy API: the dashboard fetches docs here with the
+# signed-in Supabase token (assets/strategy.js). Without a valid
+# session the function itself returns 401.
+[[redirects]]
+  from = "/strategy-docs"
+  to   = "/.netlify/functions/strategy-docs"
+  status = 200
+
+# The strategy pack is business IP — never public. Force a real 404
+# for every direct path (the files still deploy, but only reach a
+# browser through the authenticated /strategy-docs function).
+[[redirects]]
+  from = "/strategy/*"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/strategy"
+  to   = "/404.html"
+  status = 404
+  force = true
 
 # Clean URLs: /register instead of /register.html
 [[redirects]]
