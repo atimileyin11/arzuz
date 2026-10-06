@@ -121,6 +121,14 @@
   [headers.values]
     Cache-Control = "public, max-age=604800"
 
+# JS files change without a build step, so browsers must revalidate them on
+# every visit — a hard-cached submit.js delayed the last fix for up to a week
+# for returning visitors (304 responses keep this cheap).
+[[headers]]
+  for = "/assets/*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
 [[headers]]
   for = "/*"
   [headers.values]
