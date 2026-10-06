@@ -94,15 +94,13 @@ var ArzuzSubmit = (function(){
       'apikey': key,
       'Authorization': 'Bearer ' + key,
       'Content-Type': 'application/json',
-      'Prefer': row.client_ref
-        ? 'resolution=ignore-duplicates,return=minimal'
-        : 'return=minimal'
+      'Prefer': 'return=minimal'
     };
     if (key && key.indexOf('sb_publishable') === 0) {
       headers['sb-anon-key'] = key;
     }
 
-    var url = row.client_ref ? base + '?on_conflict=client_ref' : base;
+    var url = base;
 
     console.log('[ArzuzSubmit] POSTing to:', url, '\nPayload:', JSON.stringify(row, null, 2));
 
@@ -113,6 +111,10 @@ var ArzuzSubmit = (function(){
           return true;
         }
         return r.text().then(function(body){
+          if (r.status === 409) {
+            console.log('[ArzuzSubmit] Already saved (client_ref duplicate) — treated as success');
+            return true;
+          }
           // client_ref is missing: the hardening SQL has not been run yet.
           // Losing retry safety beats losing the submission entirely.
           if (row.client_ref && /client_ref/.test(body)) {
