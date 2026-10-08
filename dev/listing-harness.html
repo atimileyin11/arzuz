@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dev harness — listing render stress test</title>
+<style>
+  body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 0 auto; max-width: 760px;
+    padding: 28px 18px 60px; color: #16121d; line-height: 1.6; }
+  h1 { font-size: 22px; letter-spacing: -.02em; }
+  code { background: #f5f3ff; padding: 2px 6px; border-radius: 6px; font-size: 13px; }
+  pre { background: #16121d; color: #e9e4f5; padding: 12px 14px; border-radius: 10px; font-size: 12.5px;
+    overflow: auto; }
+  .note { background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; border-radius: 12px;
+    padding: 10px 14px; font-size: 13.5px; }
+</style>
+</head>
+<body>
+<h1>Dev harness — listing render stress test</h1>
+<p>This loads <b>the real <code>listing.html</code></b> — same markup, same scripts — after doing two
+dev-only things: it loads <code>dev/listing-fixture.js</code> first so every Supabase call is answered
+from a local dataset, and it root-prefixes the page's relative asset paths because the page is being
+served from <code>/dev/</code>. Nothing here ships.</p>
+<p>Query options: <code>?case=demo|worst|halfpos|empty|one|huge</code> — a switcher is pinned to the
+bottom of the loaded page so you can flip cases without reloading by hand.</p>
+<p>To see any case on its own at the real URL, run <code>node scripts/test-listing-render.mjs --open</code>.</p>
+<p class="note" id="hbStatus">Booting…</p>
+<pre id="hbLog"></pre>
+
+<script>
+(function () {
+  var log = '';
+  function say(line) {
+    log += line + '\n';
+    var el = document.getElementById('hbLog');
+    if (el) el.textContent = log;
+    else console.log('[harness]', line);
+  }
+
+  var params = new URLSearchParams(location.search);
+  var caseKey = params.get('case') || params.get('fx') || 'demo';
+  var id = params.get('id') || 'fx-harness';
+
+  /* the fixture answers every public_listings read with the selected case
+     row no matter which id is asked for, so any non-empty id will do —
+     boot() only requires one to be present */
+  var url = new URL(location.href);
+  url.searchParams.set('id', id);
+  url.searchParams.set('case', caseKey);
+  history.replaceState(null, '', url.toString());
+
+  fetch('/listing.html')
+    .then(function (r) {
+      if (!r.ok) throw new Error('/listing.html → HTTP ' + r.status);
+      return r.text();
+    })
+    .then(function (html) {
+      /* the fixture's fetches should not be re-entered by the fetch above,
+         but be explicit: the stub is installed before any page script runs */
+      var stub = '<script src="/dev/listing-fixture.js"><\/script>\n';
+      var patched = html.split('"assets/').join('"/assets/');
+      patched = patched.replace('<head>', '<head>\n' + stub);
+      if (patched.indexOf('/dev/listing-fixture.js') === -1) throw new Error('could not inject the fixture');
+      say('booting the real page · case=' + caseKey + ' · ' + patched.length + ' chars');
+      document.open();
+      document.write(patched);
+      document.close();
+      window.addEventListener('error', function (e) {
+        console.log('[harness] page error:', e.message);
+      });
+    })
+    .catch(function (e) {
+      var el = document.getElementById('hbStatus');
+      if (el) {
+        el.textContent = 'Harness failed: ' + e.message +
+          ' — is a dev server running? try: node scripts/dev-server.mjs 8123';
+      } else {
+        alert('Harness failed: ' + e.message);
+      }
+    });
+})();
+</script>
+</body>
+</html>

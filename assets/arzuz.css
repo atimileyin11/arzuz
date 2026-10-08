@@ -1873,6 +1873,11 @@ textarea {
   scrollbar-width: thin;
 }
 .gal-thumb {
+  /* position is load-bearing: .has-video::after uses inset:0 for the ▶
+     marker, and without a positioned thumb the nearest containing block
+     is the page itself — every video thumbnail's marker stacks over the
+     top of the document instead of over its own thumbnail */
+  position: relative;
   flex: 0 0 68px; aspect-ratio: 1; border-radius: 10px; overflow: hidden;
   border: 2px solid transparent; opacity: .62; cursor: pointer;
   padding: 0; background: #ECE5DC;
@@ -1881,7 +1886,6 @@ textarea {
 .gal-thumb img, .gal-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .gal-thumb:hover { opacity: .9; transform: translateY(-2px); }
 .gal-thumb.on { opacity: 1; border-color: var(--stamp-vibrant); }
-.gal-thumb .vt { position: absolute; } /* video marker handled via ::after */
 .gal-thumb.has-video::after {
   content: "▶"; position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
@@ -1901,6 +1905,20 @@ textarea {
   font-size: clamp(30px, 5vw, 40px); color: var(--ink); line-height: 1;
 }
 .ld-per { color: var(--mid); font-size: 13.5px; }
+
+/* Every string below is typed by an owner or a landlord, and nothing
+   upstream enforces a length or a character set. A long name, an unbroken
+   label or a multi-script landmark has to break inside its box rather than
+   widen the page — min-width:0 lets the flex/grid child shrink, and
+   overflow-wrap:anywhere is the only break opportunity an unbroken run of
+   characters has. (Measured at 1440px and 390px by
+   scripts/test-listing-render.mjs — case "worst".) */
+.ld-head h1,
+.ld-sub span,
+.feat,
+.feat > span:last-child,
+.psg-kv > span:last-child,
+.stat-chip { min-width: 0; overflow-wrap: anywhere; }
 
 .kebab-wrap { position: relative; flex: none; }
 .kebab-btn {

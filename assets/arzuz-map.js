@@ -636,6 +636,11 @@ var ArzuzMap = (function () {
     function build() {
       var el = $(opts.containerId);
       if (!el || typeof L === 'undefined') return;
+      /* Half a pin is not a place. build() also runs from the lazy Leaflet
+         onload below, where a throw is an uncaught top-level error rather
+         than a rejected promise the host page can catch — so refuse here,
+         once, for every caller. */
+      if (!isFinite(dest.lat) || !isFinite(dest.lng)) return;
 
       map = L.map(opts.containerId, { zoomControl: true, attributionControl: true, scrollWheelZoom: false })
         .setView([(dest.lat + origin.lat) / 2, (dest.lng + origin.lng) / 2], 15);

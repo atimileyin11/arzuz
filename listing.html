@@ -108,6 +108,25 @@
       }
       return '';
     }
+    /* Rent arrives as whatever the row happens to hold: a number, a plain
+       string of digits, or a formatted "150,000" from an import or a hand
+       edit. Number('150,000') is NaN, and NaN.toLocaleString() prints
+       "NaN" straight into the price line — so normalise once, here, and
+       every consumer of LRENT downstream is safe. */
+    function money(v){
+      if (typeof v === 'number') return isFinite(v) ? v : 0;
+      var n = parseFloat(String(v === null || v === undefined ? '' : v).replace(/[^0-9.]/g, ''));
+      return isFinite(n) ? n : 0;
+    }
+    /* A property pin is a pair. Half a pin (a latitude with no longitude,
+       which is what a cleared or unset field looks like) is not a place:
+       Leaflet throws "Invalid LatLng" and the map never draws. Everything
+       that needs a location asks this first. */
+    function coords(){
+      if (!ROW) return null;
+      var la = parseFloat(ROW.latitude), ln = parseFloat(ROW.longitude);
+      return (isFinite(la) && isFinite(ln)) ? { lat: la, lng: ln } : null;
+    }
     function haversineKm(lat1, lng1, lat2, lng2){
       var R = 6371, toRad = Math.PI / 180;
       var dLat = (lat2 - lat1) * toRad, dLng = (lng2 - lng1) * toRad;
@@ -239,8 +258,8 @@
 
     function renderTitle(){
       var p = ROW.payload || {};
-      var waMsg = 'Hi Arzuz! I saw "' + LNAME + '" (' + (first(p, ['ar']) || 'Malete') + ', \u20A6' +
-        Number(LRENT).toLocaleString() + ' per session, ref ' + ref8() + ') on the listing page. Is it still available?';
+      var pos = coords();
+      var walk = pos ? walkText(pos.lat, pos.lng) : '';
       return '' +
         '<div class="ld-head">' +
           '<h1>' + esc(LNAME) + '</h1>' +
@@ -252,7 +271,7 @@
               '<button type="button" class="kebab-item" id="kSave" role="menuitem"><span class="ki">\u2606</span><span id="kSaveLbl">Save for later</span></button>' +
               '<div class="kebab-sep"></div>' +
               '<button type="button" class="kebab-item" id="kReport" role="menuitem"><span class="ki">\uD83D\uDEA9</span>Report a problem</button>' +
-              (ROW.latitude ? '<button type="button" class="kebab-item" id="kMap" role="menuitem"><span class="ki">\uD83D\uDCCD</span>Open in Google Maps</button>' : '') +
+              (pos ? '<button type="button" class="kebab-item" id="kMap" role="menuitem"><span class="ki">\uD83D\uDCCD</span>Open in Google Maps</button>' : '') +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -263,7 +282,7 @@
         '</div>' +
         '<div class="stat-chips">' +
           '<span class="stat-chip">' + tierBadge(ROW.tier) + '</span>' +
-          (walkText(ROW.latitude, ROW.longitude) ? '<span class="stat-chip">' + walkText(ROW.latitude, ROW.longitude) + '</span>' : '') +
+          (walk ? '<span class="stat-chip">' + walk + '</span>' : '') +
           (first(p, ['neg']) ? '<span class="stat-chip">\uD83D\uDCB0 Negotiable: ' + esc(first(p, ['neg'])) + '</span>' : '') +
         '</div>' +
         '<div class="ld-price-row">' +
@@ -285,8 +304,14 @@
     }
 
     function renderFeatures(p){
+      /* ut is written as an array of strings, but a legacy row can carry a
+         comma-joined string and a hand-edit can leave holes in the array.
+         A hole used to render as a chip with a ✅ and no label — take only
+         non-empty strings, so the grid holds only real amenities. */
       var ut = first(p, ['ut', 'utilities']) || [];
-      if (typeof ut === 'string') ut = ut.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+      if (typeof ut === 'string') ut = ut.split(',');
+      if (!Array.isArray(ut)) ut = [];
+      ut = ut.map(function(s){ return typeof s === 'string' ? s.trim() : ''; }).filter(Boolean);
       if (!ut.length) return '';
       /* the individual features keep their own .rv stagger (wireReveals)
          on top of this — the section is the plate, the chips are the detail */
@@ -320,10 +345,15 @@
 
     /* ---------- getting there: route map + passage card ---------- */
     function renderGettingThere(p){
-      if (!ROW.latitude && !ROW.longitude) return '';
+      /* The map and the passage card are independent: the map needs a
+         complete pin and is dropped when there isn't one, while "how to
+         walk in" is plain text a student can use with no map at all. One
+         missing coordinate must not hide the directions. */
+      var pos = coords();
       var passage = ArzuzMap && ArzuzMap.passage ? (ROW.payload || {}).passage : null;
       var ps = (typeof ArzuzMap !== 'undefined') ? ArzuzMap.passage.normalise(passage) : null;
       var hasPassage = !!(ps && (ps.landmark || ps.gate || ps.floor || ps.steps.length));
+      if (!pos && !hasPassage) return '';
 
       /* This section takes no transform of its own: it contains the route
          map, and Leaflet reads its container's CSS scale when it
@@ -332,8 +362,8 @@
          strip and the passage card (none of them map ancestors) move instead. */
       var html = '<div class="ld-sec" id="getting-there"><h2 data-rise>Getting there</h2>';
 
-      /* route map */
-      html += '<div class="ld-card route-card">' +
+      /* route map — only with a place to centre */
+      if (pos) html += '<div class="ld-card route-card">' +
         '<div class="route-head" data-rise>' +
           '<span class="route-src-badge src-direct" id="routeMap-routebadge">\uD83D\uDCD0 estimate</span>' +
           '<span class="route-meta" id="routeMap-routemeta">Measuring the walk\u2026</span>' +
@@ -374,11 +404,13 @@
     var activeRouteMap = null;
     function wireGettingThere(){
       if (!document.getElementById('routeMap') || typeof ArzuzMap === 'undefined') return;
+      var pos = coords();
+      if (!pos) return;   /* the section is only rendered with a complete pin */
 
       activeRouteMap = ArzuzMap.routeMap({
         containerId: 'routeMap',
-        lat: ROW.latitude || (ROW.payload || {}).lat,
-        lng: ROW.longitude || (ROW.payload || {}).lng,
+        lat: pos.lat,
+        lng: pos.lng,
         campus: ArzuzMap.CAMPUS,
         passage: (ROW.payload || {}).passage,
         name: LNAME,
@@ -707,7 +739,7 @@
           var p = ROW.payload || {};
           LNAME = first(p, ['prop_name']) || 'Unnamed property';
           LTYPE = first(p, ['ty']) || '';
-          LRENT = Number(first(p, ['rent']) || 0);
+          LRENT = money(first(p, ['rent']));
           MEDIA = buildMedia(p);
 
           var bk = renderBooking(p);
