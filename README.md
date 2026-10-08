@@ -69,12 +69,16 @@ arzuz-site/
 ├── supabase-hardening.sql  Upgrades an existing database — run this one if you already have data
 ├── supabase-location.sql   Additive upgrade: pin-quality + passage-flag generated columns + indexes
 ├── supabase-public-view.sql One-paste addition of public_listings for a live, already-hardened DB
+├── supabase-team-roles.sql Enforces the admin/support/marketing roles IN THE DATABASE:
+│                           role-aware RLS + the PII-free growth views marketing reads
 │
 ├── assets/
 │   ├── arzuz.css           Design system — all colours, type, components
 │   ├── admin.css           Admin dashboard only — dark shell, tables, modals
 │   ├── config.js           Public config only (Supabase anon key, session, support number)
 │   ├── auth.js             Supabase Auth session for admin.html (+ role() from app_metadata)
+│   ├── attribution.js      ?ref= channel capture → payload.ref (30-day TTL; never a draft token)
+│   ├── share.js            Share prompt for the confirmation screens; share.css styles it
 │   ├── complete-listing.js Logic for the no-login draft completion page
 │   ├── strategy.js         In-dashboard strategy reader + the Growth (marketing) view
 │   ├── data.js             Demand bands + ArzuzData + PROPERTY_TYPES (the one type list)
@@ -159,6 +163,21 @@ node dev/admin-boot-test.js   # expect: TOTAL 90 · PASS 90 · FAIL 0
 
 See [dev/admin-test-report.md](dev/admin-test-report.md) for the full coverage matrix.
 
+Two more harnesses cover the newer surfaces:
+
+```bash
+node scripts/test-attribution.mjs   # ?ref= capture, TTL and draft-token rules + the share card
+node scripts/verify-cards.mjs       # LIVE: what WhatsApp / X / Telegram actually receive
+```
+
+`verify-cards.mjs` fetches a listing through the deployed `/listing` function with each scraper's
+own agent string and asserts the card that scraper needs — a 200, a real `og:title`, an `og:image`
+that actually resolves, a canonical `og:url`, `twitter:card`, parseable JSON-LD. With no active
+listing it verifies the generic path and says so rather than passing quietly; pass `--id <uuid>`
+to check one room, or `--base http://localhost:8888` to check a local `netlify dev`.
+
+---
+
 ## Support Desk
 
 The **Support Desk** section is the support team's home: tickets from the listing page's
@@ -190,11 +209,55 @@ A user's role rides in the session token as `app_metadata.role`; the dashboard r
 To revert someone to main admin, set their role to “Main admin” in the Team panel (or remove the
 `role` key in Supabase).
 
-Role gating is presentation-level: under the current RLS every authenticated user can read the
-same tables — support simply is never *shown* the sections or buttons outside its scope. For a
-small team that matches the dashboard's trust model; if data-level separation is ever needed, add
-a `staff` table and RLS policies keyed on it (the strategy pack itself is already enforced at the
-server: `strategy-docs.js` rejects every request without a live Supabase session).
+### Where the roles are enforced
+
+That table describes what the dashboard *shows*. `supabase-team-roles.sql` makes the same three
+roles true in the database, because a client-side gate is a hint, not a boundary. Run it after the
+other SQL files; it is additive and safe to re-run.
+
+It adds `public.arzuz_role()`, which reads `app_metadata.role` out of the request's signed JWT and
+answers `anon | marketing | support | admin`. The `auth.role() = 'anon'` branch comes first on
+purpose: an anonymous visitor's token carries no `app_metadata`, so the obvious
+`coalesce(claim, 'admin')` would have made every visitor on the internet the main admin.
+
+The policies then follow the table above: admin gets full read/write; support gets read on demands
+and listings plus read/update on bookings and tickets; **marketing gets no policy on any base
+table at all.** That is the enforcement, not an oversight — with RLS enabled and no applicable
+policy a select returns zero rows, so a marketing login has no path to a student's or landlord's
+phone number.
+
+Marketing still needs its numbers, so the same file adds five definer views —
+`growth_demand_feed`, `growth_listing_feed`, `growth_scout_feed`, `growth_booking_feed` and
+`growth_roommate_summary` — whose `payload` is rebuilt with an explicit `jsonb_build_object`
+allow-list rather than a `payload - 'phone'` subtraction, so a field somebody adds to a form
+tomorrow is invisible until it is named on purpose. `assets/admin.js` reads the base tables for
+admin and those views for every other role; when a view is missing the Growth page says
+"run the role SQL" instead of drawing a funnel of zeros.
+
+Until that file is run, role gating is presentation-only, exactly as it was before: every
+authenticated user can still read the same tables. Running it is what makes the separation real.
+
+---
+
+## Attribution — where a registration came from
+
+Every link Arzuz hands out can carry a channel tag: `arzuz.com/register?ref=flyer-q1`.
+`assets/attribution.js` captures it on whatever page the visitor lands on (index, browse, register,
+listing, owner-list, scout), remembers it for the visit and for 30 days after, and `submit.js`
+copies the surviving tag into the row's `payload.ref`. The Growth view counts `payload.ref` per
+channel, which is what turns doc 06 from a plan into a measurement.
+
+- **Last touch wins.** A tag in the current URL beats a stored one; with none, the session's tag is
+  used, then a stored tag younger than 30 days. An invalid tag never overwrites a valid one.
+- **A tag is not a token.** `/complete-listing` uses the SAME `ref` parameter for the landlord's
+  secret draft token, so attribution is switched off on that page entirely, and `sanitize()`
+  rejects token-shaped values (a 32/40/64-char hex digest, a UUID) everywhere else.
+- **Sharing is a channel too.** The confirmation screens show a share prompt built by
+  `assets/share.js`, and every share carries its own tag — `listing-share`, `student-share`,
+  `landlord-share` — so a referral is a countable channel instead of anonymous traffic.
+- **House style for tags:** lowercase, `[a-z0-9._-]`, up to 40 characters — `whatsapp-status`,
+  `ambassador-ayosha`, `flyer-q1`, `tiktok-bio`. Anything else is dropped rather than stored, and
+  the Growth view shows which registrations still carry no tag so the habit is visible.
 
 ---
 

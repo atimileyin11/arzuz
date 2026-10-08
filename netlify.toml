@@ -23,6 +23,44 @@
   # to signed-in team members only. Both bundle their files into the deploy.
   included_files = ["netlify/functions/**", "listing.html", "strategy/*.md"]
 
+# Repo files that are NOT part of the website. `publish = "."` means Netlify
+# will happily serve any of them as plain text — and it was: supabase-hardening.sql
+# and supabase-media-booking.sql were both publicly readable, handing anyone the
+# complete RLS design, the table shapes and the admin model in one fetch. The
+# database is the real boundary (see supabase-team-roles.sql); this simply stops
+# the map from being handed out with it. None of these paths is requested by the
+# live site, and the dev harnesses are meant to run on localhost (they are
+# localhost-guarded anyway).
+[[redirects]]
+  from = "/*.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/dev/*"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/scripts/*"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/README.md"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/SETUP.md"
+  to   = "/404.html"
+  status = 404
+  force = true
+
 # Link-preview cards: scrapers (WhatsApp, X, iMessage) never run JS,
 # so /listing is served by a function that writes the real listing's
 # tags into the head before the page ships. Query string is preserved.

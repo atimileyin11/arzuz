@@ -39,7 +39,7 @@ not CAC. Say this out loud to investors; "CAC is fine" is not the story,
 
 | Step | Event | Lives in | Drop-off to watch |
 |---|---|---|---|
-| 1. See | Preview card / flyer / ambassador link | OG cards + `/register?ref=` | Card click-through (measure `?ref=` rates) |
+| 1. See | Preview card / flyer / ambassador link | OG cards + `/register?ref=` | Card click-through. **Live**: `assets/attribution.js` captures the tag → `payload.ref`, and the Growth view counts registrations per channel. Impressions themselves are still unmeasured — say so rather than implying otherwise |
 | 2. Register | demand_records row | [register.html](../register.html) → `demand_records` | Form abandonment (steps are tappable — keep them few) |
 | 3. Get matched | Match made to a verified listing | Dashboard flow | Time-to-first-match; the metric that decides urgency |
 | 4. Book | booking_requests row | [listing.html](../listing.html) → `booking_requests` | Landlord response time (gap from doc 02) |
@@ -66,7 +66,9 @@ not CAC. Say this out loud to investors; "CAC is fine" is not the story,
 
 ## Next 3 actions
 
-1. Add the funnel counts query (steps 1→6) to the admin dashboard as one card.
-2. Instrument `?ref=` on register.html submissions (one column) so CAC per channel becomes
-   computable.
+1. **Done** — the funnel counts (steps 1→6) card is on the Overview, and the Growth view draws
+   the same steps from the same definition (`ArzuzStrategy.funnelCard`), so the two can never
+   disagree.
+2. **Done** — `?ref=` is instrumented: `assets/attribution.js` → `payload.ref`, counted per
+   channel in the Growth view. The remaining gap is impressions, i.e. step 1's denominator.
 3. Set premium-tier pricing, then fill the **[ESTIMATE]** slots above with real arithmetic.

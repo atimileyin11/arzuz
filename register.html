@@ -34,13 +34,16 @@
 }
 </script>
 <link rel="stylesheet" href="assets/arzuz.css">
+<link rel="stylesheet" href="assets/share.css">
 </head>
 <body>
 <div class="wrap pad"><div id="form"></div></div>
 <script src="assets/config.js"></script>
 <script src="assets/data.js"></script>
+<script src="assets/attribution.js"></script>
 <script src="assets/notify.js"></script>
-<script src="assets/submit.js?v=2"></script>
+<script src="assets/submit.js?v=3"></script>
+<script src="assets/share.js"></script>
 <script src="assets/whatsapp.js"></script>
 <script src="assets/app.js"></script>
 <script src="assets/motion.js"></script>
@@ -82,6 +85,14 @@ Arzuz.form({
    'something matches what you asked for.</p>'+
    '<p class="sm">You joined early enough to be a <b style="color:var(--stamp)">Founding Member</b> '+
    '\u2014 your reviews carry a badge other students can see.</p></div>'+
+   /* Referral prompt, in the one moment a student is pleased with us.
+      The link carries a ?ref= tag so the Growth view counts it as a
+      channel instead of unlabelled traffic (strategy doc 06). */
+   ArzuzShare.card({
+     url: 'https://arzuz.com/register',
+     tag: 'student-share',
+     text: 'Arzuz is matching students to verified rooms near KWASU \u2014 real prices, zero agent fees. Join the list:'
+   }) +
    '<div class="blk" style="border-bottom:none"><h3>What a match looks like</h3>'+
    '<div class="phone"><div class="wam"><div class="from">Arzuz</div>'+
    'Found one. Self-contain on Campus Road, 11 minutes from the main gate, \u20A6185,000 for the '+
@@ -91,6 +102,10 @@ Arzuz.form({
    'no notification to enable. It arrives where students already are.</p>'+
    '<div class="nav"><a class="next" href="index.html">Done</a></div></div>'
 });
+
+/* Delegated listener lives on the persistent #form container; the form
+   engine injects the share card into it when the last step is saved. */
+ArzuzShare.wire(document.getElementById('form'));
 
 Arzuz.footer();
 </script>

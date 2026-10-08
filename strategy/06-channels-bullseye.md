@@ -11,7 +11,7 @@ wide → rank by ICE → test the centre → only then scale.
 | Channel | Idea | I | C | E | ICE | First test |
 |---|---|---|---|---|---|---|
 | **Campus student ambassadors** | 3–5 paid-per-signup students in Malete share verified listings in their faculty groups | 9 | 7 | 6 | **7.3** | One ambassador, one week, target 50 demand-registers |
-| **WhatsApp share loops** | Every listing page becomes a shareable card; booking confirmation prompts "send to a coursemate" | 9 | 8 | 7 | **8.0** | Add the share prompt (doc 02 gap); measure link shares → visits |
+| **WhatsApp share loops** | Every listing page becomes a shareable card; booking confirmation prompts "send to a coursemate" | 9 | 8 | 7 | **8.0** | **Shipped** — the share prompt is on the booking and registration confirmations, and every share carries a `?ref=` tag; measure tagged registrations per channel |
 | **Scout referrals** | Resident scouts recruit the next building (they live next door to it) | 8 | 7 | 6 | **7.0** | Ask every scout for one neighbouring building at submission |
 | **Flyers at registration points** | QR → /register during the 2-week registration crush | 7 | 6 | 8 | **7.0** | 200 flyers at faculty gates week one; QR scans tracked |
 | **SEO (session-stamped queries)** | "KWASU hostel prices 2026/2027" — buy-intent, low competition, compounds yearly | 8 | 6 | 4 | **6.0** | Already started: homepage FAQ + sitemap; add per-session price pages later |

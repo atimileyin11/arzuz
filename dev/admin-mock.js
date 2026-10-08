@@ -135,6 +135,37 @@
     }
     var db = DB.rows;
 
+    /* --- the scrubbed growth views (supabase-team-roles.sql, section 3) ---
+       The dashboard reads these for every role except admin, so the mock
+       has to serve them or the support/marketing walks read nothing and
+       every modal comes up empty. It aliases each view onto its seeded base
+       table and strips the SAME keys the SQL allow-lists, so the real read
+       path is exercised and a scrubbed field that ever reached the UI would
+       fail this harness instead of passing it. */
+    var GROWTH_VIEW = {
+      growth_demand_feed:  { from: 'demand_records',    keys: ['ref', 'roommate', 'type', 'budget', 'dist', 'when', 'age'],
+                             flat: ['session', 'room_type', 'budget_band', 'distance', 'timing', 'age_band'] },
+      growth_listing_feed: { from: 'listings',          keys: ['prop_name', 'ty', 'ar', 'rm', 'rent'],
+                             flat: ['tier', 'opening_ask_ngn', 'listed_price_ngn', 'property_name', 'property_type', 'area', 'rooms'] },
+      growth_scout_feed:   { from: 'scout_submissions', keys: ['area', 'vac'],
+                             flat: ['area'] },
+      growth_booking_feed: { from: 'booking_requests',  keys: ['when', 'roommate', 'listing_name'],
+                             flat: [] }
+    };
+
+    if (GROWTH_VIEW[table]) {
+      var spec = GROWTH_VIEW[table];
+      return resp(clone(db[spec.from]).map(function (row) {
+        var src = row.payload || {};
+        var payload = {};
+        spec.keys.forEach(function (k) { if (k in src) payload[k] = src[k]; });
+        var out = { id: row.id, created_at: row.created_at, status: row.status, env: row.env, payload: payload };
+        spec.flat.forEach(function (k) { if (k in row) out[k] = row[k]; });
+        return out;
+      }));
+    }
+
+    if (table === 'growth_roommate_summary') return resp(db.roommate_match_summary);
     if (table === 'minors_needing_guardian') return resp(db.minors_needing_guardian);
     if (table === 'roommate_match_summary') return resp(db.roommate_match_summary);
     if (TABLES.indexOf(table) === -1) return errResp(404, { message: 'Unknown table: ' + table });

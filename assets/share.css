@@ -1,0 +1,193 @@
+/* ============================================================
+   Arzuz — the share prompt (assets/share.js)
+
+   Styles only for the markup ArzuzShare.card() produces. Nothing
+   global is touched, and every value comes from the tokens in
+   arzuz.css so the card cannot drift away from the rest of the
+   site when the palette changes.
+
+   The card lands inside the form engine's `done` screen, which is
+   centred and sits in a 560 px column — hence the explicit
+   text-align and the wrapping button row.
+   ============================================================ */
+
+.share-card {
+  /* it can be dropped inside .done, whose children are centred */
+  text-align: left;
+  margin: var(--sp-5) 0 0;
+  padding: var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.045);
+}
+
+.share-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+}
+
+/* drawn rather than typed: an emoji glyph looks different on every
+   phone, a path looks the same on all of them */
+.share-ic {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: linear-gradient(135deg, var(--stamp) 0%, var(--stamp-vibrant) 100%);
+  box-shadow: 0 6px 16px var(--stamp-glow);
+}
+
+.share-ic svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+/* min-width:0 is what lets a long line wrap instead of pushing the
+   icon out of the card on a narrow phone */
+.share-tx {
+  min-width: 0;
+}
+
+.share-tx b {
+  display: block;
+  font-family: var(--display);
+  font-size: var(--fs-lg);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.share-tx span {
+  display: block;
+  margin-top: var(--sp-1);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  color: var(--mid);
+}
+
+.share-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+}
+
+.share-btn {
+  /* flex-basis is what makes the row wrap predictably: two per row
+     when there is room, one per row on a small phone */
+  flex: 1 1 140px;
+  min-height: 44px;                 /* the thumb, not the mouse */
+  padding: 0 var(--sp-4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  font-family: var(--body);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  color: var(--ink);
+  background: var(--glass-bg-light);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  transition: transform var(--dur-1) var(--ease-snappy),
+              background var(--dur-1) ease,
+              border-color var(--dur-1) ease;
+}
+
+.share-btn:hover {
+  background: #fff;
+  border-color: var(--stamp-light);
+  transform: translateY(-1.5px);
+}
+
+.share-btn:active {
+  transform: scale(0.97);
+}
+
+/* .share-btn sets display:inline-flex, which is an author rule and so
+   outranks the browser's own [hidden] rule — without these the native
+   share button would show on a desktop that cannot honour it. The
+   class is the hook the script toggles; the attribute is what keeps
+   it hidden before the script runs at all. */
+.share-card [hidden],
+.share-card .hidden {
+  display: none;
+}
+
+.share-wa {
+  color: #fff;
+  background: var(--whatsapp);
+  border-color: var(--whatsapp);
+  box-shadow: 0 6px 16px rgba(31, 168, 85, 0.22);
+}
+
+.share-wa:hover {
+  background: var(--whatsapp);
+  border-color: var(--whatsapp);
+  filter: brightness(0.95);
+}
+
+.share-btn.ghost {
+  background: transparent;
+}
+
+.share-btn.ghost:hover {
+  background: var(--surface-hover);
+}
+
+/* One reserved line (and the failure message's extra lines are rare)
+   so the row above does not jump when the note swaps to feedback. */
+.share-note {
+  margin-top: var(--sp-3);
+  min-height: 1.5em;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--mid);
+}
+
+.share-note.ok {
+  color: var(--whatsapp);
+  font-weight: 600;
+}
+
+.share-note.err {
+  color: var(--alert);
+}
+
+.share-compact {
+  padding: var(--sp-4);
+}
+
+.share-compact .share-acts {
+  margin-top: var(--sp-3);
+}
+
+/* Below this the three actions stop fitting two-up; stacking them is
+   the standard shape and keeps every tap target full-width. */
+@media (max-width: 420px) {
+  .share-btn {
+    flex-basis: 100%;
+  }
+}
+
+/* arzuz.css already collapses every transition under reduced motion;
+   this removes the one transform this file adds, so the buttons stay
+   perfectly still instead of merely moving instantly. */
+@media (prefers-reduced-motion: reduce) {
+  .share-btn:hover,
+  .share-btn:active {
+    transform: none;
+  }
+}

@@ -131,6 +131,16 @@
         </div>
       </div>
 
+      <!-- The funnel, in the words of strategy doc 07: one card, on the
+           front page of the dashboard. Rendered by ArzuzStrategy.funnelCard
+           from the rows this page already fetched, so the Overview and the
+           Growth page can never show two different funnels. -->
+      <div class="ops-panel" data-motion>
+        <h3><span data-icon="trending"></span> The funnel &mdash; where students drop out</h3>
+        <p class="sub">See &rarr; Register &rarr; Get matched &rarr; Book &rarr; Move in. Fix the widest gap before spending a naira on reach (doc 07).</p>
+        <div id="opsFunnel"></div>
+      </div>
+
       <div class="ops-two-col">
         <div class="ops-panel" data-motion>
           <h3><span data-icon="shield"></span> Safeguarding — check every day</h3>
@@ -768,10 +778,10 @@
 <script src="assets/config.js"></script>
 <script src="assets/auth.js?v=2"></script>
 <script src="assets/data.js"></script>
-<script src="assets/strategy.js?v=3"></script>
+<script src="assets/strategy.js?v=4"></script>
 <script src="assets/notify.js"></script>
 <script src="assets/video.js"></script>
-<script src="assets/submit.js?v=2"></script>
+<script src="assets/submit.js?v=3"></script>
 <script src="assets/arzuz-map.js"></script>
 <script>/* dev-only mock harness — only ever runs on localhost with ?mock=1 (see dev/admin-mock.js) */
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '0.0.0.0') {
@@ -780,7 +790,7 @@
     }
   }
   </script>
-<script src="assets/admin.js?v=10"></script>
+<script src="assets/admin.js?v=13"></script>
 <script>
 /* shell-only wiring that has no place in admin.js */
 (function(){

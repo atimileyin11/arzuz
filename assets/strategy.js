@@ -154,7 +154,33 @@
       var ordered = /^\s*\d+\.\s+/.test(l);
       if (ordered || /^\s*[-*]\s+/.test(l)) {
         var items = [], re = ordered ? /^\s*\d+\.\s+/ : /^\s*[-*]\s+/;
-        while (i < lines.length && re.test(lines[i])) { items.push(lines[i].replace(re, '')); i++; }
+        while (i < lines.length && re.test(lines[i])) {
+          var item = lines[i].replace(re, '');
+          i++;
+          /* A wrapped list item is still ONE item. Without this, the second
+             line of every bullet that ran past 80 columns fell out of the
+             list and became a stray paragraph — and the docs are written in
+             wrapped prose, so that was most of them. A blank line continues
+             the item only when the next line is indented (CommonMark's rule);
+             a new bullet, heading, quote, table or fence ends it. */
+          while (i < lines.length) {
+            var cont = lines[i];
+            if (!cont.trim()) {
+              if (i + 1 < lines.length && /^\s{2,}\S/.test(lines[i + 1])) { i++; continue; }
+              break;
+            }
+            if (/^\s{2,}\S/.test(cont) && !/^\s*```/.test(cont) &&
+                !/^\s*\d+\.\s+/.test(cont) && !/^\s*[-*]\s+/.test(cont) &&
+                !/^#{1,4}\s/.test(cont) && !/^\s*>\s?/.test(cont) &&
+                cont.indexOf('|') === -1) {
+              item += ' ' + cont.trim();
+              i++;
+              continue;
+            }
+            break;
+          }
+          items.push(item);
+        }
         var tag = ordered ? 'ol' : 'ul';
         html.push('<' + tag + ' class="md-list">' + items.map(function (it) { return '<li>' + inline(esc(it)) + '</li>'; }).join('') + '</' + tag + '>');
         continue;
@@ -284,10 +310,97 @@
 
   function funnelRow(label, n, prev, max) {
     var w = max > 0 ? Math.max(4, Math.round(n / max * 100)) : 0;
-    var rel = (prev !== null && prev > 0) ? ' <i>(' + Math.round(n / prev * 100) + '% of step above)</i>' : '';
+
+    /* A percentage only means something while the step is a subset of the
+       one above it. Booking requests are NOT a subset of matches — plenty
+       of students book straight from a listing page — and "133% of step
+       above" reads like a bug. Above 100%, report the raw difference
+       instead, which is both true and useful. */
+    var rel = '';
+    if (prev !== null && prev > 0) {
+      rel = (n <= prev)
+        ? ' <i>(' + Math.round(n / prev * 100) + '% of step above)</i>'
+        : ' <i>(+' + (n - prev) + ' vs the step above \u2014 a parallel path, not a drop-off)</i>';
+    }
     return '<div class="funnel-row"><span class="funnel-lbl">' + esc(label) + '</span>' +
       '<div class="funnel-bar"><div class="funnel-fill" style="width:' + w + '%"></div></div>' +
       '<span class="funnel-num">' + n.toLocaleString('en-NG') + rel + '</span></div>';
+  }
+
+  /* ---- the funnel, in ONE place ----
+     The Growth page and the Overview funnel card both call these, so a
+     change to a step can never make the two disagree — doc 07 asks for
+     exactly one funnel. Step 1 is honesty, not data: nothing records an
+     impression yet, so it is drawn as a ghost bar rather than a number
+     nobody can trace to a record. */
+
+  function funnelModel(ctx) {
+    var demands = live(ctx && ctx.demands);
+    var bookings = live(ctx && ctx.bookings);
+    var won = demands.filter(function (r) {
+      var st = str(r.status).toLowerCase();
+      return st === 'matched' || st === 'fulfilled';
+    });
+    var bkDone = bookings.filter(function (r) {
+      var st = str(r.status).toLowerCase();
+      return st === 'confirmed' || st === 'viewed' || st === 'completed';
+    });
+
+    var steps = [
+      { label: '1 · See (preview card / flyer / link)', n: 0, prev: null, ghost: true },
+      { label: '2 · Register a demand', n: demands.length, prev: null },
+      { label: '3 · Matched to a room', n: won.length, prev: demands.length },
+      { label: '4 · Booking request', n: bookings.length, prev: won.length },
+      { label: '5 · Booked (confirmed+)', n: bkDone.length, prev: bookings.length }
+    ];
+
+    /* The bottleneck is the widest percentage fall between two MEASURED
+       steps — the one place where fixing something actually moves the
+       numbers. A step sitting under an empty one is skipped, never
+       reported as a 0% drop. */
+    var worst = null;
+    steps.forEach(function (s, i) {
+      if (s.ghost || i === 0) return;
+      var above = steps[i - 1];
+      if (!above || above.ghost || above.n <= 0) return;
+      var lost = above.n - s.n;
+      if (lost <= 0) return;
+      var pct = Math.round(lost / above.n * 100);
+      if (!worst || pct > worst.pct) worst = { pct: pct, lost: lost, from: shortStep(above.label), to: shortStep(s.label) };
+    });
+
+    return {
+      steps: steps,
+      max: Math.max(demands.length, bookings.length, 1),
+      worst: worst
+    };
+  }
+
+  /* '3 · Matched to a room' reads better as 'Matched to a room' in a
+     sentence than in a bar chart. */
+  function shortStep(label) { return String(label).replace(/^\d+ · /, ''); }
+
+  function funnelRowsHtml(model) {
+    return model.steps.map(function (s) {
+      if (s.ghost) {
+        return funnelRow(s.label, 0, null, model.max)
+          .replace('<div class="funnel-fill" style="width:0%"></div>',
+                   '<div class="funnel-fill ghost" style="width:4%"></div>');
+      }
+      return funnelRow(s.label, s.n, s.prev, model.max);
+    }).join('');
+  }
+
+  /* The standalone version, used by the Overview card in admin.js. */
+  function funnelCard(ctx) {
+    var m = funnelModel(ctx);
+    return funnelRowsHtml(m) +
+      '<p class="sub" style="margin-top:10px">' +
+      (m.worst
+        ? 'Biggest drop-off: <b>' + m.worst.pct + '% lost</b> between ' + esc(m.worst.from) +
+          ' and ' + esc(m.worst.to) + ' (' + m.worst.lost + '). Fix that step before buying reach.'
+        : 'No drop-off to report until registrations, matches and bookings have been recorded — zeros here would be a guess dressed as a number.') +
+      '</p>';
   }
 
   function renderGrowth(root, ctx) {
@@ -391,15 +504,10 @@
       ? goods.map(function (g) { return '<div class="ops-row good"><span class="ic">✅</span><span class="tx"><b>' + esc(g.t) + '</b><span>' + esc(g.s) + '</span></span></div>'; }).join('')
       : '<div class="ops-row"><span class="ic">🌱</span><span class="tx"><b>No traction signals yet</b><span>The first active listing, first booking and first match will appear here.</span></span></div>';
 
-    /* --- funnel (doc 07) --- */
-    var maxStep = Math.max(demands.length, bookings.length, 1);
+    /* --- funnel (doc 07) — one definition, shared with the Overview card --- */
     var funnelHtml =
-      funnelRow('1 · See (preview card / flyer / link)', 0, null, maxStep).replace('<div class="funnel-fill" style="width:0%"></div>', '<div class="funnel-fill ghost" style="width:4%"></div>') +
-      funnelRow('2 · Register a demand', demands.length, null, maxStep) +
-      funnelRow('3 · Matched to a room', won.length, demands.length, maxStep) +
-      funnelRow('4 · Booking request', bookings.length, won.length, maxStep) +
-      funnelRow('5 · Booked (confirmed+)', bkDone.length, bookings.length, maxStep) +
-      '<p class="sub" style="margin-top:10px">Step 1 is not instrumented yet — <code>?ref=</code> tags make it measurable (doc 06). Step 6, move-in, happens offline on WhatsApp.</p>';
+      funnelRowsHtml(funnelModel(ctx)) +
+      '<p class="sub" style="margin-top:10px">Step 1 is the one unmeasurable step: nothing records an impression yet, so the <code>?ref=</code> tags (doc 06) count the clicks that follow a link, not the views of it. Step 6, move-in, happens offline on WhatsApp.</p>';
 
     /* --- channels --- */
     var channelsHtml;
@@ -461,6 +569,11 @@
 
   window.ArzuzStrategy = {
     renderGrowth: renderGrowth,
-    renderStrategy: renderStrategy
+    renderStrategy: renderStrategy,
+    funnelCard: funnelCard,
+    /* The markdown renderer itself, exported so the docs can be tested
+       without a browser or a Netlify function (scripts/test-strategy-render.mjs).
+       It is deliberately not used by anything else in the dashboard. */
+    mdToHtml: mdToHtml
   };
 })();

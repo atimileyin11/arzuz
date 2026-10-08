@@ -148,10 +148,29 @@ var ArzuzSubmit = (function(){
     } catch(e){ console.warn('[ArzuzSubmit] WhatsApp confirmation failed:', e.message); }
   }
 
+  /* The row that reaches Supabase: a shallow COPY of the form answers
+     plus the request context. payload.ref is the marketing channel tag
+     captured by assets/attribution.js — the Growth view counts it per
+     channel, which is what makes ?ref= links measurable at all.
+
+     Why a copy instead of handing `answers` straight through:
+     listing.html stamps listing_id / roommate / apt_ref onto the very
+     object it passes us, and the attribution key must not ride back
+     into the page's own state. */
   function decorate(answers){
     var c = cfg();
+    var payload = {};
+    Object.keys(answers || {}).forEach(function(k){ payload[k] = answers[k]; });
+
+    /* Attribution is best-effort. A missing, blocked or broken module
+       must never stop a student's submission from going through. */
+    try {
+      var tag = (typeof ArzuzRef !== 'undefined' && ArzuzRef.tag) ? ArzuzRef.tag() : '';
+      if (tag) payload.ref = tag;
+    } catch(e){}
+
     return {
-      payload: answers,
+      payload: payload,
       session: c.SESSION || '2026/2027',
       env: c.ENV || 'production',
       source: window.location.pathname.replace(/^\//,'') || 'index.html',

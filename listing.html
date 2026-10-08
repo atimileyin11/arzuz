@@ -24,9 +24,14 @@
   <meta name="twitter:description" content="Verified student housing near KWASU. Real prices, measured walking time, no agent fees.">
   <meta name="twitter:image" content="https://arzuz.com/assets/social/og-image.png">
   <meta name="twitter:image:alt" content="Arzuz — verified student hostels, zero agent fees">
-  <script type="application/ld+json" id="ldjson">{}</script>
+  <!-- listing-og.js rewrites this block with the real apartment before the
+       page is handed to a scraper, and paintMeta() repaints it in the
+       browser. The generic value is a valid graph rather than {} — a
+       crawler that never runs JavaScript should still read something true. -->
+  <script type="application/ld+json" id="ldjson">{"@context":"https://schema.org","@type":"WebPage","name":"Verified student rooms — Arzuz","url":"https://arzuz.com/browse","isPartOf":{"@type":"WebSite","name":"Arzuz","url":"https://arzuz.com"}}</script>
   <link rel="stylesheet" href="assets/arzuz.css">
   <link rel="stylesheet" href="assets/video.css">
+  <link rel="stylesheet" href="assets/share.css">
 </head>
 <body>
   <div class="ld" id="ldRoot">
@@ -74,8 +79,10 @@
 
   <script src="assets/config.js"></script>
   <script src="assets/data.js"></script>
+  <script src="assets/attribution.js"></script>
   <script src="assets/notify.js"></script>
-  <script src="assets/submit.js?v=2"></script>
+  <script src="assets/submit.js?v=3"></script>
+  <script src="assets/share.js"></script>
   <script src="assets/whatsapp.js"></script>
   <script src="assets/arzuz-map.js"></script>
   <script src="assets/video.js"></script>
@@ -497,10 +504,27 @@
           '<div class="done"><div class="m"><span>az</span></div><h3>Booking request sent.</h3>' +
           '<p>The Arzuz team confirms availability with the owner and messages you on WhatsApp ' +
           'with viewing details. No payment happens on Arzuz \u2014 ever.</p>' +
+          /* The listing itself is the thing worth passing on, so the
+             prompt shares THIS apartment, tagged so the referral is
+             countable. pageUrl() is the canonical /listing?id= form. */
+          ArzuzShare.card({
+            url: pageUrl(),
+            tag: 'listing-share',
+            heading: 'Know someone who needs a room?',
+            body: 'Send them this one \u2014 verified, priced in the open, a measured walk to campus.',
+            text: 'Verified room near KWASU: ' + LNAME + ' \u2014 \u20A6' +
+              Number(LRENT).toLocaleString() + ' per session on Arzuz, zero agent fees.'
+          }) +
           '<div class="nav" style="display:flex;gap:10px;justify-content:center;margin-top:18px">' +
           '<a class="next" href="browse.html">Keep browsing</a></div></div>'
       });
     }
+
+    /* The share prompt arrives inside the form engine's `done` screen,
+       which replaces #form's CONTENTS. The listener sits on #form
+       itself, so it survives that swap. (#form is injected with
+       ldContent, so this cannot run any earlier than here.) */
+    ArzuzShare.wire(document.getElementById('form'));
 
     /* ---------- gallery interaction ---------- */
     var gal = null, track = null;

@@ -636,13 +636,35 @@
 
   /* ================= 3. Data fetch ================= */
 
+  /* Which relation each table is read from in this session.
+     Admin (the default, and the role with no `app_metadata.role`) reads
+     the base tables. Every other role is denied them by row-level
+     security — see supabase-team-roles.sql — so it reads the
+     PII-scrubbed `growth_*` views instead: real counts and channel tags,
+     and no student or landlord contact details. state.feedsMissing
+     records a failed scrubbed view so the Growth page can say "run the
+     role SQL" instead of quietly showing zero as if it were a fact. */
+  var FEED_VIEWS = {
+    demand_records: 'growth_demand_feed',
+    listings: 'growth_listing_feed',
+    scout_submissions: 'growth_scout_feed',
+    booking_requests: 'growth_booking_feed'
+  };
+
+  function relFor(tbl) {
+    return currentRole() === 'admin' ? tbl : (FEED_VIEWS[tbl] || tbl);
+  }
+
   function fetchData() {
     if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) return;
+    state.feedsMissing = false;
+    var role = currentRole();
     ArzuzAuth.headers().then(function (h) {
       var promises = TABLES.map(function (tbl) {
-        var url = apiRoot() + '/rest/v1/' + tbl + '?select=*&order=created_at.desc';
+        var url = apiRoot() + '/rest/v1/' + relFor(tbl) + '?select=*&order=created_at.desc';
         return fetch(url, { headers: h }).then(function (r) {
           if (r.status === 401 || r.status === 403) throw Object.assign(new Error('Not authorised (HTTP ' + r.status + ')'), { auth: true });
+          if (!r.ok && role !== 'admin') state.feedsMissing = true;
           return r.ok ? r.json() : [];
         });
       });
@@ -652,7 +674,10 @@
         .catch(function () { return []; }));
 
       // roommate metric view (the business plan's one number for this line)
-      promises.push(fetch(apiRoot() + '/rest/v1/roommate_match_summary?select=*', { headers: h })
+      // Non-admin roles read the definer twin of that view, which needs no
+      // grant on demand_records — see supabase-team-roles.sql section 3.
+      promises.push(fetch(apiRoot() + '/rest/v1/' +
+        (role === 'admin' ? 'roommate_match_summary' : 'growth_roommate_summary') + '?select=*', { headers: h })
         .then(function (r) { return r.ok ? r.json() : []; })
         .catch(function () { return []; }));
 
@@ -809,6 +834,24 @@
         }).join('') +
           (tix.length > 5 ? '<p class="sub" style="margin-top:10px">…and ' + (tix.length - 5) + ' more in the Support Desk.</p>' : '');
       }
+    }
+
+    /* --- the funnel (strategy doc 07) ---
+       One definition, in ArzuzStrategy, so this card and the Growth page
+       can never show two different funnels. When the role SQL has not been
+       run yet the scrubbed views 404 — say so rather than draw zeros. */
+    var funnelBox = $('opsFunnel');
+    if (funnelBox && window.ArzuzStrategy && ArzuzStrategy.funnelCard) {
+      funnelBox.innerHTML = state.feedsMissing
+        ? '<div class="ops-row alert"><span class="ic">' + ico('alert', 15) + '</span><span class="tx">' +
+          '<b>Growth data is not being served to this login yet</b><span>Run ' +
+          '<code>supabase-team-roles.sql</code> in Supabase &rarr; SQL Editor, then reload. ' +
+          'Until then this role is denied the tables the funnel is built from.</span></span></div>'
+        : ArzuzStrategy.funnelCard({
+            demands: d.demand_records,
+            listings: d.listings,
+            bookings: d.booking_requests
+          });
     }
   }
 

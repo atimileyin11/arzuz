@@ -24,6 +24,7 @@
   <meta name="twitter:image" content="https://arzuz.com/assets/social/og-image.png">
   <meta name="twitter:image:alt" content="Arzuz — verified student hostels, zero agent fees">
 <link rel="stylesheet" href="assets/arzuz.css">
+<link rel="stylesheet" href="assets/share.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body>
@@ -31,8 +32,10 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="assets/config.js"></script>
 <script src="assets/data.js"></script>
+<script src="assets/attribution.js"></script>
 <script src="assets/notify.js"></script>
-<script src="assets/submit.js?v=2"></script>
+<script src="assets/submit.js?v=3"></script>
+<script src="assets/share.js"></script>
 <script src="assets/whatsapp.js"></script>
 <script src="assets/arzuz-map.js"></script>
 <script src="assets/app.js"></script>
@@ -87,9 +90,23 @@ Arzuz.form({
      : 'As soon as your listing is live we will send you the real number of students looking in '+
        'your area for this property \u2014 we never show a count we cannot trace to a record.')+
    '</div>'+
+   /* Supply is the constraint, so the landlord referral prompt matters
+      more than the student one. Tagged `landlord-share` so we can see
+      which compound actually recruited the next landlord. */
+   ArzuzShare.card({
+     url: 'https://arzuz.com/list',
+     tag: 'landlord-share',
+     heading: 'Know another landlord in Malete?',
+     body: 'Send them this \u2014 listing is free, and the students come to them.',
+     text: 'Arzuz lists student rooms near KWASU straight to verified students \u2014 free to list, no agent cut:'
+   }) +
    '<div class="nav"><a class="next" href="index.html">Done</a></div></div>'
 });
 });
+
+/* One delegated listener on the persistent #form container: the share
+   card is injected by the form engine's done screen. */
+ArzuzShare.wire(document.getElementById('form'));
 
 Arzuz.footer();
 </script>
