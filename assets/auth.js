@@ -125,7 +125,7 @@ var ArzuzAuth = (function(){
   }
 
   /* Role claim from the signed JWT's app_metadata. Managed from the
-     dashboard's Settings → Team panel (netlify/functions/team-admin.js)
+     dashboard's Settings → Team panel (netlify/functions/team.js)
      or by hand in Supabase → Authentication → Users.
      Unset (or anything unrecognised) = 'admin': the main admin sees
      the whole dashboard. 'marketing' gets the prioritised Growth +

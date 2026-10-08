@@ -100,7 +100,7 @@ arzuz-site/
 │
 └── netlify/functions/
     ├── notify.js           Owns TELEGRAM_BOT_TOKEN, formats alerts, status/detect/test
-    ├── team-admin.js       Team & roles: verifies the caller is main admin, then uses
+    ├── team.js       Team & roles: verifies the caller is main admin, then uses
     │                       SUPABASE_SERVICE_ROLE_KEY (server-side only) against GoTrue
     ├── whatsapp-send.js    Owns OPENWA_* credentials, rate-limited proxy
     ├── cloudinary-sign.js  Signs uploads, enforces the 10 MB limit, stamps © Arzuz metadata
@@ -280,7 +280,7 @@ The Overview shows open tickets alongside the draft queue.
 
 Every account is created by the main admin — public sign-ups are off, so there is no
 self-service. Use **admin.html → Settings → Team** (create, role, reset password, remove); the
-panel calls `netlify/functions/team-admin.js`, which holds `SUPABASE_SERVICE_ROLE_KEY` server-side
+panel calls `netlify/functions/team.js`, which holds `SUPABASE_SERVICE_ROLE_KEY` server-side
 and only answers callers whose token is a main admin. Without that env var, the panel shows the
 manual fallback: Supabase → Authentication → Users, then edit the Raw User JSON.
 

@@ -43,10 +43,16 @@ function json(statusCode, body) {
   };
 }
 
+/* SUPABASE_URL is public (it ships in config.js and the other
+   functions) so it falls back to the known value; the service-role
+   key is a secret and must come from the environment. `ready` is
+   therefore really "the secret is present". */
+const SUPABASE_URL_FALLBACK = 'https://nihdbhjecdkpvzvjifrm.supabase.co';
+
 function cfg() {
-  const url = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+  const url = (process.env.SUPABASE_URL || process.env.SUPABASE_URL_KEY || SUPABASE_URL_FALLBACK).replace(/\/+$/, '');
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-  return { url, serviceKey, ready: !!(url && serviceKey) };
+  return { url, serviceKey, ready: !!serviceKey };
 }
 
 function adminHeaders() {
@@ -105,7 +111,7 @@ exports.handler = async function (event) {
   const { ready } = cfg();
   if (!ready) {
     return json(503, {
-      error: 'Team management is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Netlify → Environment variables.',
+      error: 'Team management is not configured: SUPABASE_SERVICE_ROLE_KEY is missing in Netlify. Add it under Site settings → Environment variables (Supabase → Project Settings → API → service_role key), then redeploy.',
     });
   }
 
@@ -186,7 +192,7 @@ exports.handler = async function (event) {
 
     return json(400, { error: 'Unknown action.' });
   } catch (err) {
-    console.error('[team-admin]', action, err.message);
+    console.error('[team]', action, err.message);
     return json(502, { error: err.message });
   }
 };

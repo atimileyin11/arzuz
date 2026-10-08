@@ -63,7 +63,7 @@ The anon key is designed to be public — it is in every Supabase site on the in
 
 **Never put the `service_role` key on the website.** That one bypasses every rule — on this
 project it exists only as the Netlify env var `SUPABASE_SERVICE_ROLE_KEY`, read exclusively by
-`netlify/functions/team-admin.js`, which verifies every caller is the main admin before using it.
+`netlify/functions/team.js`, which verifies every caller is the main admin before using it.
 
 ## Step 4 — Fill in the config
 

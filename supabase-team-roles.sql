@@ -12,7 +12,7 @@
 -- Every previous file answered one question: "is the caller signed
 -- in?" — `to authenticated using (true)`. That is one role, not
 -- three. The dashboard now issues marketing logins (created with
--- netlify/functions/team-admin.js, which writes app_metadata.role)
+-- netlify/functions/team.js, which writes app_metadata.role)
 -- so the database has to answer the second question itself: WHICH
 -- signed-in user is this?
 --
@@ -43,7 +43,7 @@
 -- Supabase signs app_metadata into the access token, so the claim
 -- is available to any policy — no extra lookup, no cached copy to
 -- go stale. assets/auth.js decodes the same claim for the UI;
--- netlify/functions/team-admin.js is the only thing that writes it.
+-- netlify/functions/team.js is the only thing that writes it.
 --
 -- The guard on auth.role() is load-bearing. auth.jwt() for an
 -- anonymous visitor is the anon token: it has role='anon' and NO
