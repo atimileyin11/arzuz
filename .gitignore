@@ -21,3 +21,6 @@ Thumbs.db
 .cache/
 dist/
 build/
+
+# Local test artifacts (screen recordings, scratch outputs)
+dev/screenshots/

@@ -166,6 +166,35 @@
   /* Motion physics easings */
   --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-snappy: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Motion durations (used by the admin dashboard; additive, the
+     public site adopts them when it opts in) */
+  --dur-1: 120ms;
+  --dur-2: 200ms;
+  --dur-3: 320ms;
+  --dur-4: 560ms;
+  /* Radius scale */
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 18px;
+  --r-xl: 24px;
+  --r-full: 999px;
+  /* Spacing scale (4px grid) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+  /* Type scale */
+  --fs-xs: 11px;
+  --fs-sm: 12.5px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 21px;
+  --fs-2xl: 28px;
+  --fs-3xl: 36px;
 }
 
 *, *::before, *::after {
@@ -1598,6 +1627,23 @@ textarea {
 .psg-steps-live li[data-lat]:not([data-lat=""]):hover { background: rgba(124, 58, 237, 0.05); }
 .psg-step-dot { font-size: 12px; opacity: 0.7; }
 
+/* numbered passage-step markers on the route map */
+.route-step-marker {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--stamp), var(--stamp-vibrant));
+  border: 2px solid #fff;
+  color: #fff;
+  font-family: var(--body);
+  font-size: 11.5px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
 /* route markers (origin / destination) on the route map */
 .route-marker {
   width: 34px;
@@ -1908,13 +1954,9 @@ textarea {
   padding: 20px 22px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.04);
 }
 
-/* staggered entrance for amenity cards */
-.rv {
-  opacity: 0; transform: translateY(18px) scale(.985);
-  transition: opacity 0.55s var(--ease-spring), transform 0.55s var(--ease-spring);
-  transition-delay: calc(var(--i, 0) * 55ms);
-}
-.rv.in { opacity: 1; transform: none; }
+/* `.rv` deliberately has no rule of its own here: it is the same entrance as
+   [data-rise], defined once in the 3D craft layer near the end of this file.
+   A second definition of one entrance is how two systems drift apart. */
 
 .feat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; }
 .feat {
@@ -2013,3 +2055,388 @@ textarea {
 
 /* empty/404 state on the detail page */
 .ld .empty { margin-top: 10px; }
+
+/* ============================================================
+   3D CRAFT LAYER  (appended last — it supersedes the flat v1
+   treatments above wherever both touch the same component)
+
+   The idea: every surface is a physical plate resting on the paper,
+   the whole site shares one vanishing point, and motion moves plates
+   rather than layout. Only transform and opacity animate.
+
+   Markup contract (see assets/motion.js):
+     [data-scene] → [data-scene-stage] → [data-depth="0..1"]  pointer parallax
+     [data-tilt]  → [data-layer="0..1"]                        hover tilt + sheen
+     [data-rise]                                               3D scroll entrance
+     [data-drift]                                               CSS-only scroll drift
+   ============================================================ */
+
+:root {
+  /* One motion personality for the whole site — Premium:
+     no bounce, no linear, no ease-in on anything entering. */
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* depth: the perspective all plates sit in */
+  --persp: 1200px;
+
+  /* elevation — soft, wide, never a hard dark drop shadow */
+  --elev-1: 0 1px 2px rgba(24, 14, 40, 0.04), 0 8px 20px -12px rgba(24, 14, 40, 0.18);
+  --elev-2: 0 1px 2px rgba(24, 14, 40, 0.05), 0 20px 44px -20px rgba(24, 14, 40, 0.28);
+  --elev-3: 0 2px 6px rgba(24, 14, 40, 0.06), 0 40px 80px -30px rgba(24, 14, 40, 0.4);
+
+  /* the machined bezel: a hairline top highlight over a tight contact
+     shadow, so a card reads as aluminium in a tray rather than a rectangle */
+  --bezel: inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+  --plate: linear-gradient(180deg, #FFFDFA 0%, #FAF5EE 100%);
+  --plate-dark: linear-gradient(180deg, rgba(255, 255, 255, 0.075) 0%, rgba(255, 255, 255, 0.028) 100%);
+  --edge: rgba(226, 217, 206, 0.9);
+}
+
+/* ---------- shared 3D primitives ---------- */
+.stage {
+  perspective: var(--persp);
+  perspective-origin: 50% 40%;
+}
+
+.p3d {
+  transform-style: preserve-3d;
+}
+
+/* ---------- entrance: plates stand up as they arrive ----------
+   transform-origin at the bottom edge makes a card look like it is
+   being stood up on the paper rather than sliding up a flat screen. */
+/* Gated on `html.motion-ready`, which motion.js sets synchronously while the
+   parser is still at the end of <body> — before first paint, so nothing
+   flashes. Hidden-until-revealed is only safe while the reveal engine is
+   actually present: if motion.js is blocked, 404s, or is never fetched, the
+   class never lands, nothing is hidden, and every page still reads. The
+   <noscript> guards only ever covered JavaScript being switched off, never a
+   failed fetch. */
+html.motion-ready [data-rise],
+html.motion-ready .rv {
+  opacity: 0;
+  transform: perspective(1000px) translate3d(0, 30px, 0) rotateX(8deg) scale(0.985);
+  transform-origin: 50% 100%;
+  transition: opacity 0.62s var(--ease-out-strong), transform 0.8s var(--ease-out-strong);
+  transition-delay: calc(var(--i, 0) * 60ms);
+  backface-visibility: hidden;
+}
+
+html.motion-ready [data-rise].in,
+html.motion-ready .rv.in {
+  opacity: 1;
+  transform: none;
+}
+
+/* ---------- hover tilt + sheen ----------
+   The tilt itself is written per-frame by motion.js (a 1:1 read of the
+   pointer). The transition below is what springs the card home, and
+   nothing retargets a keyframe, so an interrupted hover settles from
+   wherever it was. */
+/* Every [data-tilt] rule below carries the same `html.motion-ready` prefix as
+   the entrance above, and sits after it in source order. That is load-bearing:
+   the two rules now tie on specificity, so source order decides, and the tilt
+   must win. Prefixing the entrance without prefixing these made it outrank
+   them — the tilt silently lost `transition: none` and the card lagged behind
+   the pointer, and box-shadow stopped easing on hover. */
+html.motion-ready [data-tilt] {
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.6s var(--ease-out-strong), opacity 0.62s var(--ease-out-strong),
+    box-shadow 0.45s var(--ease-out-strong), border-color 0.3s ease;
+}
+
+/* A card that both rises and tilts has to share one transition list. The
+   shorthand above resets transition-delay, which silently turned the entrance
+   into a snap and wiped the sibling stagger on every rise+tilt card; this
+   buys the delay back. motion.js drops --i again once the card has landed, so
+   it can never sit in front of the hover-out. */
+html.motion-ready [data-rise][data-tilt],
+html.motion-ready .rv[data-tilt] {
+  transition-delay: calc(var(--i, 0) * 60ms);
+}
+
+html.motion-ready [data-tilt].tilt-on {
+  /* transform is deliberately absent from this list: it is written every frame
+     from the pointer and must never be transitioned, or the card trails the
+     cursor. opacity/box-shadow stay on, so a card hovered mid-rise still fades
+     in rather than popping. */
+  transition: opacity 0.62s var(--ease-out-strong), box-shadow 0.45s var(--ease-out-strong),
+    border-color 0.3s ease;
+  will-change: transform;
+}
+
+html.motion-ready [data-tilt]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  background: radial-gradient(
+    300px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(255, 255, 255, 0.4),
+    rgba(255, 255, 255, 0.06) 38%,
+    transparent 60%);
+  mix-blend-mode: soft-light;
+}
+
+html.motion-ready [data-tilt].tilt-on::after {
+  opacity: 1;
+}
+
+/* ---------- plates: the bezel treatment ---------- */
+.h-step,
+.h-tier,
+.h-quote,
+.ld-card,
+.empty {
+  background: var(--plate);
+  border: 1px solid var(--edge);
+  box-shadow: var(--bezel), var(--elev-1);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.h-step:hover,
+.h-tier:hover {
+  box-shadow: var(--bezel), var(--elev-2);
+  border-color: rgba(124, 58, 237, 0.28);
+}
+
+/* the price box keeps its printed-form left rule */
+.pricebox {
+  background: var(--plate);
+  box-shadow: var(--bezel), var(--elev-1);
+}
+
+.mate-box {
+  box-shadow: var(--bezel);
+}
+
+/* ---------- press feedback: the same squash everywhere ---------- */
+.opt:active,
+.chk:active,
+.btn-skip:active,
+.kebab-btn:active,
+.gal-thumb:active {
+  transform: scale(0.975);
+}
+
+/* ---------- ambient life ----------
+   Decorative objects drift as the page scrolls, using a scroll-driven
+   animation so it runs off the main thread and there is no scroll
+   listener anywhere. Browsers without support simply render the object
+   in place — no fallback work, no regression. */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    [data-drift] {
+      animation: drift 1s linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 85%;
+    }
+
+    @keyframes drift {
+      from {
+        opacity: 0.2;
+        transform: perspective(1100px) translate3d(0, 34px, 0) rotateX(12deg) scale(0.96);
+      }
+
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+  }
+}
+
+/* ---------- touch: no hover motion at all ----------
+   A tap must never leave a card stuck mid-lift. */
+@media (hover: none) {
+  .h-step:hover,
+  .h-tier:hover,
+  .opt:hover,
+  .chk:hover,
+  .btn-skip:hover,
+  .gal-thumb:hover,
+  .hrow a:hover .m {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* matched specificity with the gated rule above, or it would lose to it */
+  html.motion-ready [data-rise],
+  html.motion-ready .rv {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  [data-tilt]::after {
+    display: none;
+  }
+}
+
+/* ============================================================
+   SHARED PAGE COMPONENTS
+   .h-btn / .h-p / .h-s / .h-doors / .h-lbl / .h-badge were only
+   ever defined inside index.html's own <style>, so every other
+   page that used that markup (browse's empty state, the listing
+   and 404 badges) rendered it unstyled. Defined once here now,
+   so the buttons, labels and badges are identical site-wide.
+   ============================================================ */
+.h-doors {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.h-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16.5px;
+  font-weight: 700;
+  padding: 17px 30px;
+  border-radius: 10px;
+  text-decoration: none;
+  border: 2px solid var(--stamp);
+  overflow: hidden;
+  transition: transform 0.3s var(--ease-out-strong), box-shadow 0.3s var(--ease-out-strong),
+    background 0.28s ease, border-color 0.28s ease;
+}
+
+.h-btn:active {
+  transform: scale(0.965);
+}
+
+.h-p {
+  background: linear-gradient(135deg, var(--stamp) 0%, var(--stamp-vibrant) 100%);
+  color: #fff;
+  border: none;
+  box-shadow: var(--bezel), 0 10px 26px -10px var(--stamp-glow);
+}
+
+.h-s {
+  background: var(--plate);
+  color: var(--stamp-vibrant);
+  border-color: rgba(124, 58, 237, 0.3);
+  box-shadow: var(--bezel), var(--elev-1);
+}
+
+/* button-in-button: a trailing mark never sits naked beside the label */
+.h-btn-orb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin: 0 -8px 0 12px;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.22);
+  transition: transform 0.3s var(--ease-out-strong), background 0.28s ease;
+}
+
+/* one light streak crosses the primary button, on hover only */
+.h-p::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transform: translate3d(-130%, 0, 0);
+  background: linear-gradient(100deg, transparent 32%, rgba(255, 255, 255, 0.4) 50%, transparent 68%);
+  transition: transform 0.72s var(--ease-out-strong);
+}
+
+.h-lbl {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--stamp-vibrant);
+  padding: 5px 12px;
+  border-radius: var(--r-full);
+  background: rgba(124, 58, 237, 0.07);
+  border: 1px solid rgba(124, 58, 237, 0.16);
+  margin-bottom: 24px;
+}
+
+.h-badge {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 6px 14px;
+  border-radius: 6px;
+  margin-bottom: 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .h-p:hover {
+    transform: translate3d(0, -3px, 0);
+    box-shadow: var(--bezel), 0 18px 34px -12px rgba(124, 58, 237, 0.45);
+  }
+
+  .h-p:hover::before {
+    transform: translate3d(130%, 0, 0);
+  }
+
+  .h-p:hover .h-btn-orb {
+    transform: translate3d(3px, -2px, 0) scale(1.08);
+    background: rgba(255, 255, 255, 0.34);
+  }
+
+  .h-s:hover {
+    transform: translate3d(0, -3px, 0);
+    background: var(--stamp-soft);
+    border-color: var(--stamp-vibrant);
+  }
+}
+
+@media (hover: none) {
+  .h-p:hover,
+  .h-s:hover {
+    transform: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .h-doors {
+    flex-direction: column;
+  }
+
+  .h-doors .h-btn {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+/* ---------- chrome aligns with the page column ----------
+   The header and the footer are chrome: on a wide screen they should sit
+   on the same column as the content, not in a narrow mobile strip through
+   the middle of the monitor. */
+@media (min-width: 940px) {
+  .hrow {
+    max-width: 1128px;
+    padding: 16px 24px;
+  }
+
+  body > .wrap:last-child {
+    max-width: 1128px;
+    padding: 0 24px;
+  }
+}

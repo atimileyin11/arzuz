@@ -36,6 +36,7 @@
 <script src="assets/whatsapp.js"></script>
 <script src="assets/arzuz-map.js"></script>
 <script src="assets/app.js"></script>
+<script src="assets/motion.js"></script>
 <script>
 
 Arzuz.chrome('owner');
@@ -55,7 +56,8 @@ Arzuz.form({
     f:[["pin","Location","pin"]]},
    {k:'passage', h:"How does someone walk in?",
     hint:"Landmarks, the gate, the stairs — the things only someone who knows the compound can tell. Students find the place first time, without calling you twice.",
-    f:[["passage","Passage to the apartment","passage"]]},
+    opt:true,
+    f:[["passage","Passage to the apartment","passage",{opt:true}]]},
    {k:'pr', h:"What are you charging?", ctx:true,
     f:[["rent","Rent per session (\u20A6)","rent-live"],
        ["neg","Negotiable?","sel",["Yes","No","Depends on the tenant"]]]},

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<!-- ============================================================
+  DEV HARNESS — scripts/map-demo.html
+  Exercises ArzuzMap.routeMap + ArzuzMap.pinCapture with synthetic
+  Malete data. Not linked from any page; safe to deploy, but it is
+  a developer tool, not part of the product.
+
+  Open as:  /scripts/map-demo.html?mode=osrm    (live OSRM road route)
+            /scripts/map-demo.html?mode=stored  (community-traced route)
+  ============================================================ -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ArzuzMap dev harness</title>
+<link rel="stylesheet" href="../assets/arzuz.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+</head>
+<body>
+<div class="wrap pad">
+  <h2 style="font-family:var(--body)">ArzuzMap dev harness</h2>
+  <p style="font-family:var(--mono);font-size:12px" id="modeLabel"></p>
+
+  <h3 style="font-family:var(--body)">routeMap — student view</h3>
+  <div class="ld-card route-card">
+    <div class="route-head">
+      <span class="route-src-badge src-direct" id="routeMap-routebadge">📐 estimate</span>
+      <span class="route-meta" id="routeMap-routemeta">Measuring the walk…</span>
+    </div>
+    <div class="route-map-wrap">
+      <div id="routeMap"></div>
+      <div class="map-layer-switcher route-switcher" id="routeMap-switcher">
+        <button type="button" class="map-layer-btn active" data-layer="sat">🛰 Satellite</button>
+        <button type="button" class="map-layer-btn" data-layer="street">🗺 Street</button>
+      </div>
+    </div>
+    <div class="route-track-bar">
+      <button type="button" class="route-track-btn" id="routeMap-track">🎯 Track me there</button>
+      <span class="route-track-meta" id="routeMap-trackmeta">Turn it on when walking to the viewing.</span>
+    </div>
+  </div>
+
+  <h3 style="font-family:var(--body);margin-top:22px">pinCapture — capture widget</h3>
+  <div class="map-wrap" style="height:320px">
+    <div id="capMap" style="height:100%;width:100%"></div>
+    <div class="map-layer-switcher" id="capSwitch">
+      <button type="button" class="map-layer-btn active" data-layer="sat">🛰 Satellite</button>
+      <button type="button" class="map-layer-btn" data-layer="street">🗺 Street</button>
+    </div>
+  </div>
+  <div class="map-controls-bar">
+    <span class="map-coords-badge" id="capCoords">📍 Tap map or drag marker</span>
+    <button type="button" class="btn-locate" id="capGps">🎯 Track my GPS</button>
+  </div>
+  <div class="map-status-box" id="capStatus">Widget status shows here.</div>
+</div>
+
+<script src="../assets/arzuz-map.js"></script>
+<script>
+(function(){
+  var mode = new URLSearchParams(location.search).get('mode') || 'osrm';
+  document.getElementById('modeLabel').textContent = 'mode=' + mode;
+  document.title = 'ArzuzMap harness — ' + mode;
+
+  /* synthetic property ~900 m from the KWASU gate */
+  var PROP = { lat: 8.7156, lng: 4.4761 };
+
+  var passage = mode === 'stored'
+    ? { landmark: 'Opposite the blue mosque',
+        gate: 'Brown double gate, green door beside it',
+        floor: 'Ground floor, past the tap',
+        steps: [
+          { text: 'Enter the gate, take the path on the right', lat: 8.71573, lng: 4.47627 },
+          { text: 'Pass the water tap, block B is ahead',        lat: 8.71555, lng: 4.47602 }
+        ],
+        route: [
+          [8.7210, 4.4840], [8.7202, 4.4828], [8.7191, 4.4813], [8.7180, 4.4796],
+          [8.7171, 4.4782], [8.7164, 4.4772], [8.7159, 4.4765], [8.7156, 4.4761]
+        ],
+        route_src: 'traced', route_km: 1.21, route_min: 16 }
+    : { landmark: 'Opposite the blue mosque',
+        gate: 'Brown double gate, green door beside it',
+        floor: 'Ground floor, past the tap',
+        steps: [
+          { text: 'Enter the gate, take the path on the right', lat: 8.71573, lng: 4.47627 },
+          { text: 'Pass the water tap, block B is ahead',        lat: 8.71555, lng: 4.47602 }
+        ] };
+
+  var rm = ArzuzMap.routeMap({
+    containerId: 'routeMap',
+    lat: PROP.lat, lng: PROP.lng,
+    campus: ArzuzMap.CAMPUS,
+    passage: passage,
+    name: 'Harness Lodge',
+    trackable: true
+  });
+
+  ArzuzMap.pinCapture({
+    containerId: 'capMap',
+    layerSwitchId: 'capSwitch',
+    coordsBadgeId: 'capCoords',
+    locateBtnId: 'capGps',
+    statusBoxId: 'capStatus',
+    startGps: true,
+    lat: null, lng: null,
+    answers: null,
+    onPin: function(){ /* harness ignores */ }
+  });
+
+  window.__harness = { routeMap: rm, passage: passage, PROP: PROP };
+})();
+</script>
+</body>
+</html>

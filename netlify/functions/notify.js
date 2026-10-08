@@ -22,7 +22,7 @@ const RATE_WINDOW_MS = 60_000;
 const MAX_SENDS_PER_WINDOW = 30;
 const recentSends = [];   // best-effort, per function instance
 
-const KNOWN_TABLES = ['demand_records', 'listings', 'scout_submissions'];
+const KNOWN_TABLES = ['demand_records', 'listings', 'scout_submissions', 'booking_requests', 'support_tickets', 'draft_completed'];
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -102,6 +102,20 @@ function formatMessage(table, p) {
       if (p.mate_style) lines.push(`• <b>Style:</b> ${esc(p.mate_style)}`);
     }
     if (p.note) lines.push(`• <b>Note:</b> ${esc(p.note)}`);
+  } else if (table === 'support_tickets') {
+    title = '🎧 <b>New Support Ticket</b>';
+    lines.push(`• <b>Category:</b> ${esc(p.category) || 'other'}`);
+    lines.push(`• <b>Apartment:</b> ${esc(p.listing_name) || '—'}`);
+    lines.push(`• <b>Contact:</b> ${esc(p.name) || '—'}${p.phone ? ' · ' + esc(p.phone) : ''}`);
+    lines.push(`• <b>Report:</b> ${esc(p.message || p.note) || '—'}`);
+  } else if (table === 'draft_completed') {
+    title = '✅ <b>Draft Apartment Completed</b>';
+    lines.push(`• <b>Property:</b> ${esc(p.prop_name) || '—'}`);
+    lines.push(`• <b>Area:</b> ${esc(p.ar) || '—'}`);
+    lines.push(`• <b>Type:</b> ${esc(p.ty) || '—'}`);
+    lines.push(`• <b>Rent:</b> ${p.rent ? '₦' + num(p.rent).toLocaleString() : '—'}`);
+    lines.push(`• <b>Contact:</b> ${esc(p.ph) || '—'}`);
+    lines.push('• <b>Action:</b> open the admin dashboard → Listings → approve or adjust');
   } else if (table === 'scout_submissions') {
     title = '🔍 <b>New Building Scout Report</b>';
     lines.push(`• <b>First Name:</b> ${esc(p.first || p.first_name) || 'N/A'}`);

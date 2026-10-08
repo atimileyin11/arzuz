@@ -94,10 +94,17 @@
       display: flex;
       flex-direction: column;
     }
-    .card:hover {
-      transform: translateY(-5px);
-      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
-      border-color: rgba(124, 58, 237, 0.35);
+    /* hover only where a real pointer exists — on touch this fires on tap,
+       and the card would jump under the finger. The 3D tilt layer owns the
+       transform from here. */
+    @media (hover: hover) and (pointer: fine) {
+      .card:hover {
+        /* the tilt layer writes its own transform while it is active, so
+           this one is the fallback whenever it is not bound (reduced motion) */
+        transform: translateY(-5px);
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
+        border-color: rgba(124, 58, 237, 0.35);
+      }
     }
 
     .card .ph {
@@ -241,9 +248,9 @@
     <h1>Verified rooms near campus</h1>
     <p class="lede">Every listing below was checked before it appeared here — the badge on each photo says how far that check went. Prices are per session, and the walking time to KWASU is measured from the compound's dropped pin, not guessed.</p>
 
-    <div id="listings"><div class="empty"><div class="m"><span>az</span></div><h2>Loading…</h2><p>Fetching verified listings.</p></div></div>
+    <div id="listings"><div class="empty" data-rise><div class="m"><span>az</span></div><h2>Loading…</h2><p>Fetching verified listings.</p></div></div>
 
-    <p class="note">
+    <p class="note" data-rise>
       Arzuz does not collect rent, hold deposits or take payment. Contact goes through the Arzuz team —
       the owner's number is never published. Interested in listing a property?
       <a href="owner-list.html">Add yours here</a>. Looking rather than browsing?
@@ -255,6 +262,7 @@
   <script src="assets/data.js"></script>
   <script src="assets/arzuz-map.js"></script>
   <script src="assets/app.js"></script>
+  <script src="assets/motion.js"></script>
   <script>
   (function(){
     var c = window.ARZUZ_CONFIG || {};
@@ -332,7 +340,7 @@
         ') on the browse page. Is it still available?'
       );
 
-      return '<div class="card">' +
+      return '<div class="card" data-tilt data-rise>' +
         '<div class="ph">' + (photo ? '<img src="' + esc(photo) + '" alt="' + esc(name) + '" loading="lazy">' : '📷 Photo coming soon') +
         (chips ? '<span class="media-chips">' + chips + '</span>' : '') +
         '<span class="ph-cr">© Arzuz</span>' +
@@ -358,7 +366,7 @@
     function render(rows){
       if (!rows.length){
         box.innerHTML =
-          '<div class="empty">' +
+          '<div class="empty" data-rise>' +
             '<div class="m"><span>az</span></div>' +
             '<h2>No verified listings yet.</h2>' +
             '<p>We only show rooms that have been checked — nothing invented, nothing padded. ' +
@@ -393,7 +401,7 @@
       .catch(function(err){
         console.warn('[Arzuz] browse load failed:', err.message);
         box.innerHTML =
-          '<div class="empty">' +
+          '<div class="empty" data-rise>' +
             '<div class="m"><span>az</span></div>' +
             '<h2>Listings are warming up.</h2>' +
             '<p>We could not load the listing board just now — it may be the connection. ' +

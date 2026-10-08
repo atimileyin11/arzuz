@@ -47,25 +47,41 @@
 .doc code{background:var(--surface);padding:2px 6px;border-radius:3px;font-size:14px}
 .doc a{color:var(--stamp)}
 .doc input[type=checkbox]{width:auto;margin-right:8px}
+/* This page settles rather than performs: a shallower entrance than the
+   site-wide one, no stagger, and no tilt anywhere on it. `transition-delay`
+   is reset because a 60ms-per-sibling stagger belongs on a card grid, not
+   on a legal document's headings. */
+[data-rise]{transform:translate3d(0,14px,0) rotateX(3deg);transition-delay:0s}
+[data-rise].in{transform:none}
+/* these pages get printed — never let a heading print invisible */
+@media print{[data-rise]{opacity:1;transform:none}}
+/* Every rule above is re-declared with the shared layer's `html.motion-ready`
+   prefix so it keeps winning on specificity. Without the prefix the shared
+   3D entrance (which is gated on that class) outranks these and the shallower
+   rise, the reset delay and the print safety net all silently stop applying. */
+html.motion-ready [data-rise]{transform:translate3d(0,14px,0) rotateX(3deg);transition-delay:0s}
+html.motion-ready [data-rise].in{transform:none}
+@media print{html.motion-ready [data-rise]{opacity:1;transform:none}}
 </style>
+<noscript><style>[data-rise]{opacity:1;transform:none}</style></noscript>
 </head>
 <body>
 <div class="doc">
-<h1>ARZUZ — TERMS OF USE</h1>
+<h1 data-rise>ARZUZ — TERMS OF USE</h1>
 <hr />
 <p><strong>Last updated:</strong> 2 October 2026</p>
-<h2>The short version</h2>
+<h2 data-rise>The short version</h2>
 <p>Arzuz shows you housing information. <strong>We are not an agent, not a landlord, and we never handle your
 money.</strong> We check what we can and we tell you plainly what we have not checked.</p>
 <p>Landlords cannot delete reviews. Students are never charged. If we inspect a property and get it
 wrong, we fix it and we pay for it — section 7 explains exactly how far that goes.</p>
 <hr />
-<h2>1. Who we are and what these terms cover</h2>
+<h2 data-rise>1. Who we are and what these terms cover</h2>
 <p>Arzuz is operated from <strong>Abuja, Nigeria</strong>.</p>
 <p>By using arzuz.com, registering a housing need, listing a property, or contacting anyone through
 Arzuz, you agree to these terms.</p>
 <hr />
-<h2>2. What Arzuz is — and what it is not</h2>
+<h2 data-rise>2. What Arzuz is — and what it is not</h2>
 <p><strong>Arzuz is an information platform.</strong> We collect what tenants need, we collect and check property
 information, and we put the two in front of each other.</p>
 <p><strong>We are not:</strong></p>
@@ -78,13 +94,13 @@ information, and we put the two in front of each other.</p>
 <p><strong>We do not hold, transfer, or process rent, deposits, or any other money.</strong> Any payment you make
 is directly between you and the landlord, at your own risk, on terms you agree with them.</p>
 <hr />
-<h2>3. Who can use Arzuz</h2>
+<h2 data-rise>3. Who can use Arzuz</h2>
 <p>You must be at least 16.</p>
 <p>If you are under 18, you must give us a parent or guardian's contact details before we send you any
 property match, and we will send them everything we send you. We do not arrange viewings for
 under-18s attending alone. See our <a href="/safety">safeguarding policy</a>.</p>
 <hr />
-<h2>4. What we ask of you</h2>
+<h2 data-rise>4. What we ask of you</h2>
 <p><strong>Everything you tell us must be true.</strong> Your name, your number, your budget, the price you charge,
 the condition of your property, what you paid in rent.</p>
 <p><strong>Do not:</strong></p>
@@ -101,7 +117,7 @@ the condition of your property, what you paid in rent.</p>
 <p>We may suspend or remove any account or listing that breaks these rules, without notice and without
 refund of any fee paid.</p>
 <hr />
-<h2>5. Listings</h2>
+<h2 data-rise>5. Listings</h2>
 <p>Property information comes from landlords, caretakers, agents and residents. <strong>We check what we can
 and we label how much has been checked</strong> — the verification state is shown on every listing.</p>
 <p><strong>A listing marked "Unverified" has not been checked by us at all.</strong> The price and details come
@@ -109,7 +125,7 @@ from whoever submitted it. We say this plainly on the listing itself. Visit befo
 <p>Landlords are responsible for keeping their listing accurate and for telling us when a property is
 no longer available.</p>
 <hr />
-<h2>6. Contacting a landlord</h2>
+<h2 data-rise>6. Contacting a landlord</h2>
 <p>When you tap to contact a landlord, we open WhatsApp and share your first name. <strong>The conversation
 after that point is between you and them, and Arzuz is not part of it.</strong></p>
 <p>We do not screen landlords beyond what the verification state indicates. We do not guarantee that a
@@ -117,7 +133,7 @@ property is available, that a landlord will reply, or that anything discussed wi
 <p><strong>Nobody should ask you for money before you have seen the room.</strong> If they do, refuse and tell us.
 Any money you pay is at your own risk and Arzuz is not liable for it.</p>
 <hr />
-<h2>7. Verification, and what we promise</h2>
+<h2 data-rise>7. Verification, and what we promise</h2>
 <p>This section creates a real obligation, so it is written precisely.</p>
 <h3>7.1 What each state means</h3>
 <p><strong>Unverified</strong> — nobody has checked it. Information is as submitted.</p>
@@ -148,7 +164,7 @@ liability under this clause is limited as set out in section 11.</p>
 <p>We do not check land title, ownership documents, or planning status, and we do not hold ourselves
 out as doing so.</p>
 <hr />
-<h2>8. Reviews</h2>
+<h2 data-rise>8. Reviews</h2>
 <p><strong>Who can review.</strong> Only a user with a verified phone number, and only about a property they have
 lived in or visited.</p>
 <p><strong>Landlords may reply publicly to any review. Landlords cannot delete reviews, and neither can they
@@ -166,7 +182,7 @@ what you write. Do not state as fact something you do not know to be true.</p>
 <p><strong>Our position.</strong> Reviews are the opinions of the people who wrote them, not statements by Arzuz.
 We host them; we do not adopt them.</p>
 <hr />
-<h2>9. Arzuz Care</h2>
+<h2 data-rise>9. Arzuz Care</h2>
 <p>Where offered, Arzuz Care is an optional repair service for the session, at the price stated when
 you buy it.</p>
 <p><strong>What it covers, what it excludes, and the call-out limit are published in full</strong> at
@@ -174,14 +190,14 @@ you buy it.</p>
 for the landlord's own repair obligations under your tenancy.</p>
 <p>We may decline a request that falls outside the published cover, and we will tell you why.</p>
 <hr />
-<h2>10. Fees</h2>
+<h2 data-rise>10. Fees</h2>
 <p><strong>Students and tenants are never charged to register, browse, contact a landlord, or leave a
 review.</strong> This does not change.</p>
 <p>Landlords may pay for verification or other services, at prices published at the time. <strong>Paying for
 verification buys the inspection, never the outcome.</strong> A paid inspection that finds no water will
 publish that there is no water, and no refund is due for an unfavourable result.</p>
 <hr />
-<h2>11. Our liability</h2>
+<h2 data-rise>11. Our liability</h2>
 <p>We provide Arzuz with reasonable care and skill, but:</p>
 <ul>
 <li>we do not guarantee that any listing is accurate, available, or suitable</li>
@@ -195,23 +211,23 @@ paid us in that period, or ₦500,000, whichever is greater</strong>.</p>
 <p><strong>Nothing in these terms excludes liability that cannot lawfully be excluded</strong>, including for death
 or personal injury caused by our negligence, or for fraud.</p>
 <hr />
-<h2>12. Intellectual property</h2>
+<h2 data-rise>12. Intellectual property</h2>
 <p>The Arzuz name, mark, site and software are ours. Listings and reviews you submit remain yours, but
 you grant us a licence to publish, display and use them in the operation of Arzuz — including in
 aggregated form in our price benchmark.</p>
 <p>Do not copy, scrape, or resell our listings, reviews, or data.</p>
 <hr />
-<h2>13. If something goes wrong between us</h2>
+<h2 data-rise>13. If something goes wrong between us</h2>
 <p>Tell us first: <strong><a href="mailto:support@arzuz.com" style="color:var(--stamp)">support@arzuz.com</a></strong> or on WhatsApp at <strong><a href="https://wa.me/2349024814771" target="_blank" rel="noopener noreferrer" style="color:var(--stamp)">09024814771</a></strong>. Most things are fixable in a conversation and
 we would rather have it.</p>
 <p>If we cannot resolve it, these terms are governed by the laws of the Federal Republic of Nigeria,
 and disputes are subject to the jurisdiction of the courts of <strong>Kwara State</strong>.</p>
 <hr />
-<h2>14. Changes</h2>
+<h2 data-rise>14. Changes</h2>
 <p>We may update these terms. If a change materially affects you, we will tell you on WhatsApp before
 it takes effect.</p>
 <hr />
-<h2>15. Ending it</h2>
+<h2 data-rise>15. Ending it</h2>
 <p>You can stop using Arzuz and delete your account at any time.</p>
 <p>We may suspend or end your access if you break these terms, if you put someone at risk, or if we
 reasonably believe you have acted fraudulently.</p>
@@ -221,6 +237,7 @@ reasonably believe you have acted fraudulently.</p>
 <script src="assets/data.js"></script>
 <script src="assets/submit.js?v=2"></script>
 <script src="assets/app.js"></script>
+<script src="assets/motion.js"></script>
 <script>Arzuz.chrome(null);Arzuz.footer();</script>
 </body>
 </html>

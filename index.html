@@ -90,20 +90,29 @@
       }
     }
 
-    /* ---- reveal system ---- */
-    .rv {
+    /* ---- reveal system ----
+       Plates stand up rather than slide: the origin sits on the bottom
+       edge, so a card arrives like paper being lifted off a desk.
+
+       Gated on html.motion-ready (set by assets/motion.js) and kept here only
+       to override the shared rule's stagger delay — this page drives its own
+       .rv observer. If the motion layer never loads, nothing is hidden. */
+    html.motion-ready .rv {
       opacity: 0;
-      transform: translateY(24px);
-      transition: opacity 0.8s var(--ease-spring), transform 0.8s var(--ease-spring);
+      transform: perspective(1000px) translate3d(0, 30px, 0) rotateX(8deg) scale(0.985);
+      transform-origin: 50% 100%;
+      transition: opacity 0.62s var(--ease-out-strong), transform 0.8s var(--ease-out-strong);
+      transition-delay: 0s;
+      backface-visibility: hidden;
     }
 
-    .rv.in {
+    html.motion-ready .rv.in {
       opacity: 1;
       transform: none;
     }
 
     @media(prefers-reduced-motion: reduce) {
-      .rv {
+      html.motion-ready .rv {
         opacity: 1;
         transform: none;
         transition: none;
@@ -113,11 +122,173 @@
     /* ---- hero ---- */
     .h-hero {
       position: relative;
-      padding: 82px 0 98px;
+      padding: 86px 0 104px;
       overflow: hidden;
+      perspective: 1500px;
+      perspective-origin: 64% 30%;
       background:
-        radial-gradient(ellipse at 85% 15%, rgba(124, 58, 237, 0.12) 0%, transparent 55%),
-        radial-gradient(ellipse at 15% 85%, rgba(107, 59, 167, 0.08) 0%, transparent 55%);
+        radial-gradient(ellipse at 78% 12%, rgba(124, 58, 237, 0.13) 0%, transparent 55%),
+        radial-gradient(ellipse at 12% 88%, rgba(107, 59, 167, 0.09) 0%, transparent 55%);
+    }
+
+    /* copy and the object share one stage; the object only takes its own
+       column once there is room for it (see the breakpoints below) */
+    .h-hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 44px;
+    }
+
+    .h-copy {
+      min-width: 0;
+    }
+
+    /* ---- the object: one stage, four plates at four depths ---- */
+    .h-scene {
+      position: relative;
+      min-height: 0;
+      perspective: 1500px;
+      perspective-origin: 62% 34%;
+    }
+
+    .h-scene-stage {
+      position: absolute;
+      inset: 0;
+      transform-style: preserve-3d;
+    }
+
+    /* each depth layer keeps the stage's 3D chain intact, so the plates
+       inside it are drawn in the scene's perspective rather than flattened
+       into an orthographic squash */
+    .h-blueprint,
+    .h-stampwrap,
+    .h-ticketwrap {
+      transform-style: preserve-3d;
+    }
+
+    /* Ambient life is opacity-only on purpose: motion.js owns every
+       transform on the stage, so the aurora must not compete for one. */
+    .h-aurora {
+      position: absolute;
+      inset: -20% -18% -8% -14%;
+      pointer-events: none;
+      background:
+        radial-gradient(52% 48% at 62% 38%, rgba(139, 92, 246, 0.22), transparent 70%),
+        radial-gradient(48% 44% at 30% 72%, rgba(59, 130, 246, 0.11), transparent 70%);
+      filter: blur(30px);
+      animation: auroraPulse 9s ease-in-out infinite;
+    }
+
+    /* far plate — the plan a dropped pin sits on */
+    .h-blueprint {
+      position: absolute;
+      left: 0;
+      top: 2%;
+      width: 60%;
+    }
+
+    .h-blueprint-in {
+      position: relative;
+      aspect-ratio: 5 / 4;
+      border-radius: 18px;
+      border: 1.5px dashed rgba(124, 58, 237, 0.32);
+      background:
+        linear-gradient(rgba(124, 58, 237, 0.07) 1px, transparent 1px) 0 0 / 100% 22px,
+        linear-gradient(90deg, rgba(124, 58, 237, 0.07) 1px, transparent 1px) 0 0 / 22px 100%,
+        rgba(255, 253, 249, 0.55);
+      box-shadow: var(--bezel);
+      transform: rotateY(15deg) rotateZ(-2.4deg);
+    }
+
+    .h-bp-lbl {
+      position: absolute;
+      left: 14px;
+      top: 11px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: rgba(107, 59, 167, 0.7);
+    }
+
+    .h-bp-pin {
+      position: absolute;
+      left: 46%;
+      top: 44%;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: var(--stamp-vibrant);
+      box-shadow:
+        0 0 0 5px rgba(124, 58, 237, 0.16),
+        0 0 0 12px rgba(124, 58, 237, 0.07),
+        0 6px 16px rgba(124, 58, 237, 0.45);
+    }
+
+    /* the seal is positioned by the breakpoints below */
+    .h-stampwrap {
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 212px;
+      height: 212px;
+    }
+
+    /* near plate — what the stamp actually carries */
+    .h-ticketwrap {
+      position: absolute;
+      left: 3%;
+      bottom: 1%;
+      width: 80%;
+    }
+
+    .h-ticket {
+      border-radius: 16px;
+      padding: 19px 22px 15px;
+      background: var(--plate);
+      border: 1px solid var(--edge);
+      box-shadow: var(--bezel), var(--elev-3);
+      transform: rotateY(-13deg) rotateX(6deg);
+    }
+
+    .h-ticket-hd {
+      display: block;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: var(--stamp-vibrant);
+      margin-bottom: 10px;
+    }
+
+    .h-ticket ul {
+      list-style: none;
+    }
+
+    .h-ticket li {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      padding: 7px 0;
+      border-top: 1px solid rgba(226, 217, 206, 0.7);
+      font-size: 13.5px;
+      line-height: 1.4;
+    }
+
+    .h-ticket li:first-child {
+      border-top: none;
+    }
+
+    .h-ticket li b {
+      font-family: var(--display);
+      font-weight: 700;
+      color: var(--ink);
+      min-width: 60px;
+      letter-spacing: -.01em;
+    }
+
+    .h-ticket li span {
+      color: var(--mid);
     }
 
     .h-eyebrow {
@@ -280,13 +451,12 @@
       padding: 6px 0;
     }
 
-    /* hero stamp mark */
+    /* the seal: minted rather than printed — a rim, a soft inner
+       falloff and a real cast shadow, all at a slight tilt */
     .h-stamp {
-      position: absolute;
-      right: -24px;
-      top: 96px;
-      width: 210px;
-      height: 210px;
+      position: relative;
+      width: 100%;
+      height: 100%;
       border-radius: 50%;
       border: 3px solid var(--stamp-vibrant);
       color: var(--stamp-vibrant);
@@ -296,11 +466,13 @@
       justify-content: center;
       text-align: center;
       pointer-events: none;
-      transform: rotate(-8deg);
-      animation: press 0.85s var(--ease-spring) 0.34s both;
-      background: rgba(250, 247, 242, 0.7);
-      backdrop-filter: var(--glass-blur);
-      box-shadow: 0 10px 30px rgba(124, 58, 237, 0.15);
+      background: linear-gradient(150deg, #FFFFFF 0%, #F5EEE5 55%, #E8DFF6 100%);
+      box-shadow:
+        var(--bezel),
+        inset 0 -8px 16px rgba(107, 59, 167, 0.14),
+        0 20px 44px -18px rgba(74, 40, 120, 0.5);
+      transform: rotateX(12deg) rotateY(-16deg) rotateZ(-8deg);
+      animation: coinIn 0.9s var(--ease-out-strong) 0.34s both;
     }
 
     .h-stamp::after {
@@ -343,52 +515,87 @@
       margin: 0;
     }
 
-    @keyframes press {
+    /* the seal turns to face the reader as it lands */
+    @keyframes coinIn {
       0% {
-        transform: rotate(-8deg) scale(2.2);
         opacity: 0;
-      }
-
-      58% {
-        transform: rotate(-8deg) scale(.95);
-        opacity: 1;
+        transform: rotateX(40deg) rotateY(-34deg) rotateZ(-8deg) scale(1.22);
       }
 
       100% {
-        transform: rotate(-8deg) scale(1);
         opacity: 1;
+        transform: rotateX(12deg) rotateY(-16deg) rotateZ(-8deg) scale(1);
       }
     }
 
-    @media(min-width: 760px) {
-      .h-stamp {
-        right: 30px;
-        top: 104px;
-        width: 228px;
-        height: 228px;
+    @keyframes auroraPulse {
+      0%,
+      100% {
+        opacity: .5;
+      }
+
+      50% {
+        opacity: .95;
       }
     }
 
-    @media(max-width: 759px) {
+    @media(min-width: 940px) {
+      .h-hero-grid {
+        grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr);
+        gap: 44px;
+        align-items: center;
+      }
+
+      /* the headline only wraps where it should: each line of the h1 is
+         a mask for its own rise, so a second wrap inside a line would
+         break the effect */
+      .h-h1 {
+        font-size: clamp(44px, 5.2vw, 72px);
+        max-width: none;
+      }
+
+      .h-scene {
+        min-height: 486px;
+      }
+    }
+
+    @media(max-width: 939px) {
       .h-hero {
-        padding-bottom: 144px;
+        padding-bottom: 150px;
       }
 
-      .h-stamp {
-        width: 166px;
-        height: 166px;
-        right: -40px;
-        top: auto;
-        bottom: -32px;
-        opacity: .45;
+      /* below the split, the object retreats to a corner mark — the way
+         it reads today — instead of crowding the headline */
+      .h-scene {
+        position: absolute;
+        right: -46px;
+        bottom: -34px;
+        width: 186px;
+        height: 186px;
+        min-height: 0;
+        opacity: .42;
+        pointer-events: none;
+      }
+
+      .h-blueprint,
+      .h-ticketwrap,
+      .h-aurora {
+        display: none;
+      }
+
+      .h-stampwrap {
+        right: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
       }
 
       .h-stamp strong {
-        font-size: 22px;
+        font-size: 21px;
       }
 
       .h-stamp hr {
-        width: 62px;
+        width: 60px;
       }
 
       .h-doors {
@@ -429,7 +636,7 @@
     .h-band {
       background: #08060E;
       color: #fff;
-      padding: 92px 0 100px;
+      padding: 104px 0 112px;
       position: relative;
       overflow: hidden;
     }
@@ -461,7 +668,7 @@
     .h-band h2 {
       font-family: var(--display);
       font-weight: 800;
-      font-size: clamp(30px, 4.8vw, 46px);
+      font-size: clamp(31px, 5vw, 52px);
       line-height: 1.08;
       letter-spacing: -.038em;
       color: #fff;
@@ -483,6 +690,10 @@
       grid-template-columns: 1.15fr 1fr;
       gap: 38px;
       align-items: start;
+      /* one vanishing point for the console; the bar wall keeps its own
+         nearer perspective so its tracks recede faster */
+      perspective: 1200px;
+      perspective-origin: 34% 46%;
     }
 
     @media(max-width: 760px) {
@@ -508,13 +719,35 @@
       font-weight: 500;
     }
 
+    /* The wall of bars shares one perspective, so every track recedes
+       toward the same vanishing point. Only the track is turned: the
+       label and the count stay flat, because those are the numbers
+       someone is actually reading. */
+    .h-bars {
+      perspective: 950px;
+      perspective-origin: 10% 50%;
+    }
+
+    .h-bars .row {
+      transform-style: preserve-3d;
+    }
+
     .h-bars .t {
       flex: 1;
-      height: 28px;
-      background: rgba(255, 255, 255, 0.06);
-      border-radius: 7px;
+      height: 30px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
       overflow: hidden;
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 12px 24px -16px rgba(0, 0, 0, 0.9);
+      transform-origin: left center;
+      transform: rotateY(-16deg);
+      transition: transform 0.95s var(--ease-out-strong);
+    }
+
+    /* arrive tipped away from the reader, then stand up */
+    .h-bars.rv:not(.in) .t {
+      transform: rotateY(-46deg);
     }
 
     .h-bars .t i {
@@ -524,8 +757,9 @@
       transform: scaleX(0);
       transform-origin: left center;
       background: var(--stamp);
-      border-radius: 7px;
-      transition: transform 0.9s var(--ease-spring), background 0.3s ease;
+      border-radius: 8px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+      transition: transform 0.95s var(--ease-out-strong), background 0.3s ease;
     }
 
     .h-bars .t i.lit {
@@ -544,12 +778,22 @@
     }
 
     .h-ctl {
-      background: var(--glass-bg-dark);
-      backdrop-filter: var(--glass-blur);
+      background:
+        radial-gradient(120% 80% at 18% 0%, rgba(255, 255, 255, 0.1), transparent 62%),
+        var(--plate-dark);
       border: 1px solid var(--glass-border-dark);
       border-radius: 16px;
       padding: 30px 28px;
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 34px 64px -28px rgba(0, 0, 0, 0.8);
+      transform-style: preserve-3d;
+      transform-origin: right center;
+    }
+
+    @media(min-width: 941px) {
+      /* the console faces the wall it controls */
+      .h-ctl {
+        transform: rotateY(-5deg) rotateX(1.5deg);
+      }
     }
 
     .h-ctl .cl {
@@ -650,23 +894,30 @@
 
     /* ---- generic sections ---- */
     .h-sec {
-      padding: 90px 0;
+      padding: 104px 0;
       border-bottom: 1px solid var(--line);
     }
 
     .h-lbl {
-      font-size: 12px;
-      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 800;
       letter-spacing: .2em;
       text-transform: uppercase;
       color: var(--stamp-vibrant);
-      margin-bottom: 22px;
+      padding: 5px 12px;
+      border-radius: var(--r-full);
+      background: rgba(124, 58, 237, 0.07);
+      border: 1px solid rgba(124, 58, 237, 0.16);
+      margin-bottom: 24px;
     }
 
     .h-h2 {
       font-family: var(--display);
       font-weight: 800;
-      font-size: clamp(30px, 4.6vw, 44px);
+      font-size: clamp(31px, 4.8vw, 50px);
       line-height: 1.1;
       letter-spacing: -.035em;
       max-width: 22ch;
@@ -865,7 +1116,7 @@
     .h-close {
       background: #08060E;
       color: #fff;
-      padding: 92px 0;
+      padding: 104px 0;
       position: relative;
       overflow: hidden;
     }
@@ -958,27 +1209,62 @@
 
   <!-- ============ HERO ============ -->
   <section class="h-hero">
-    <div class="h-wrap">
-      <div class="h-stamp">
-        <b>ARZUZ</b>
-        <hr>
-        <strong>INSPECTED</strong>
-        <hr>
-        <span id="hsDate"></span>
+    <div class="h-wrap h-hero-grid">
+      <div class="h-copy">
+        <p class="h-eyebrow">Starting in Malete, Kwara State</p>
+        <h1 class="h-h1">
+          <span class="ln"><i>Tell us the</i></span>
+          <span class="ln"><i>room you need.</i></span>
+          <span class="ln"><i><em>We’ll find it.</em></i></span>
+        </h1>
+        <p class="h-lede">Verified student housing, starting in Malete. Real prices, honest reviews from
+          students who actually live there, and no agent fees.</p>
+        <div class="h-doors">
+          <a class="h-btn h-p" href="register.html">I’m looking for a room<span class="h-btn-orb" aria-hidden="true">→</span></a>
+          <a class="h-btn h-s" href="browse.html">Browse verified rooms</a>
+        </div>
+        <p class="h-third"><a href="owner-list.html">I have a property</a> · <a href="scout.html">I already live somewhere. Register my building.</a></p>
       </div>
-      <p class="h-eyebrow">Starting in Malete, Kwara State</p>
-      <h1 class="h-h1">
-        <span class="ln"><i>Tell us the</i></span>
-        <span class="ln"><i>room you need.</i></span>
-        <span class="ln"><i><em>We’ll find it.</em></i></span>
-      </h1>
-      <p class="h-lede">Verified student housing, starting in Malete. Real prices, honest reviews from
-        students who actually live there, and no agent fees.</p>
-      <div class="h-doors">
-        <a class="h-btn h-p" href="register.html">I’m looking for a room</a>
-        <a class="h-btn h-s" href="browse.html">Browse verified rooms</a>
+
+      <!-- The inspection object: a diagram of what our stamp carries, and
+           labelled as exactly that. No price and no count is invented here.
+           Every claim in it is set out in full under Verification below,
+           so the object is one image to a screen reader rather than four
+           plates read out of order. -->
+      <div class="h-scene stage" data-scene data-drift role="img" aria-label="An Arzuz inspection stamp resting on a compound plan: water tested at the tap, power hours confirmed with residents, walking distance measured on foot, dated and signed by whoever inspected.">
+        <div class="h-scene-stage p3d" data-scene-stage>
+          <div class="h-aurora" data-depth="0.16"></div>
+
+          <div class="h-blueprint" data-depth="0.44" data-z="-70">
+            <div class="h-blueprint-in">
+              <span class="h-bp-lbl">Compound plan</span>
+              <span class="h-bp-pin"></span>
+            </div>
+          </div>
+
+          <div class="h-stampwrap" data-depth="0.72" data-z="26">
+            <div class="h-stamp">
+              <b>ARZUZ</b>
+              <hr>
+              <strong>INSPECTED</strong>
+              <hr>
+              <span id="hsDate"></span>
+            </div>
+          </div>
+
+          <div class="h-ticketwrap" data-depth="1" data-z="74">
+            <div class="h-ticket">
+              <span class="h-ticket-hd">What our stamp carries</span>
+              <ul>
+                <li><b>Water</b><span>tested at the tap, not promised</span></li>
+                <li><b>Power</b><span>hours confirmed with residents</span></li>
+                <li><b>Walk</b><span>measured on foot from the gate</span></li>
+                <li><b>Signed</b><span>dated by whoever inspected</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
       </div>
-      <p class="h-third"><a href="owner-list.html">I have a property</a> · <a href="scout.html">I already live somewhere. Register my building.</a></p>
     </div>
   </section>
 
@@ -1015,7 +1301,7 @@
       <h2 class="h-h2 rv">You pay for a full year before you know whether the water runs.</h2>
       <p class="h-sub rv">The tenant is a blind buyer. The agent controls the information. And when
         the water stops in November, there is nobody to tell.</p>
-      <div class="h-quote rv">
+      <div class="h-quote rv" data-tilt>
         <p>“Closest you will get to campus, and they know it. Water stops for days at a time and
           there is no generator. <b>Not worth what they are charging.</b>”</p>
         <cite>A student in Malete, on a room listed at ₦265,000 a session</cite>
@@ -1040,18 +1326,18 @@
         one, and every inspection carries the name of the person who did it.
         <a href="safety.html">Your safety on Arzuz</a> explains what to do before and after a viewing.</p>
       <div class="h-tiers">
-        <div class="h-tier rv">
+        <div class="h-tier rv" data-tilt>
           <span class="h-badge b0">Unverified</span>
           <h3>Nobody has checked it</h3>
           <p>Submitted by the landlord. We say so plainly rather than hide it. Visit before you pay
             anything.</p>
         </div>
-        <div class="h-tier rv">
+        <div class="h-tier rv" data-tilt>
           <span class="h-badge b1">Community verified</span>
           <h3>A resident confirmed it</h3>
           <p>          Checked by someone who lives there or has been there, but not yet by us.</p>
         </div>
-        <div class="h-tier rv lead">
+        <div class="h-tier rv lead" data-tilt>
           <span class="h-badge b2">Inspected</span>
           <h3>We went there ourselves</h3>
           <p>Water source tested, power hours confirmed with residents, distance measured on foot.
@@ -1075,21 +1361,21 @@
       <p class="h-sub rv">Everything you need to know about renting around Kwara State University (and soon, other campuses) without paying extortionate agent cuts.</p>
       
       <div class="faq-grid">
-        <div class="h-tier faq-card rv">
+        <div class="h-tier faq-card rv" data-tilt>
           <h3>How much is a hostel in Malete?</h3>
           <p>
             Registered student budgets for Malete run from under <strong id="faqLo">&#8358;100,000</strong> to above <strong id="faqHi">&#8358;1,000,000</strong> per academic session. The largest group of students registering for this session can pay between <strong id="faqMidLo">&#8358;100,000</strong> and <strong id="faqMidHi">&#8358;150,000</strong>, and most budgets sit between &#8358;100,000 and &#8358;300,000.
           </p>
         </div>
 
-        <div class="h-tier faq-card rv">
+        <div class="h-tier faq-card rv" data-tilt>
           <h3>How do I get an agent-free hostel in Malete?</h3>
           <p>
             Arzuz connects KWASU students directly with verified property managers and vetted compound caretakers. You view verified photos, inspection notes, and GPS coordinates without paying inspection or middleman fees. Read <a href="safety.html">how we keep you safe</a> while you view.
           </p>
         </div>
 
-        <div class="h-tier faq-card rv">
+        <div class="h-tier faq-card rv" data-tilt>
           <h3>When should I secure my KWASU room?</h3>
           <p>
             The best rooms closest to campus along School Gate, Safari, and Tipper Garage fill up 4-6 weeks before the session resumes. Registering early gives you first pick before prices surge.
@@ -1118,6 +1404,7 @@
   <script src="assets/notify.js"></script>
   <script src="assets/submit.js?v=2"></script>
   <script src="assets/app.js"></script>
+  <script src="assets/motion.js"></script>
   <script>
     Arzuz.chrome();
     document.getElementById('hsDate').textContent = Arzuz.STAMP_DATE;
@@ -1140,7 +1427,7 @@
       ['You get matched', 'When something fits, we message you on WhatsApp with photos, verified details and reviews.'],
       ['Residents keep it honest', 'Only students with a verified number can review. Landlords can reply to any review. They cannot delete one.']];
     document.getElementById('steps').innerHTML = STEPS.map((s, i) =>
-      `<div class="h-step rv"><span class="n">${i + 1}</span><div><h3>${s[0]}</h3><p>${s[1]}</p></div></div>`).join('');
+      `<div class="h-step rv" data-tilt><span class="n" data-layer="0.7">${i + 1}</span><div><h3>${s[0]}</h3><p>${s[1]}</p></div></div>`).join('');
 
     /* ---------- FAQ figures, from the same source as everything else ---------- */
     (() => {

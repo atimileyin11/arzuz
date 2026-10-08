@@ -153,7 +153,7 @@ var ArzuzMap = (function () {
   /* OSRM walking route via the free FOSSGIS server — no API key.
      coords: [[lat,lng],…] — [origin, …optional via points…, destination].
      Resolves { km, min, pts: [[lat,lng],…] } or rejects. */
-  var OSRM_CACHE_PREFIX = 'arzuz_osrm_v1_';
+  var OSRM_CACHE_PREFIX = 'arzuz_osrm_v2_';
   geo.footRoute = function (coords) {
     if (!coords || coords.length < 2) return Promise.reject(new Error('need two points'));
     var coordStr = coords.map(function (c) {
@@ -180,7 +180,7 @@ var ArzuzMap = (function () {
         var pts = route.geometry.coordinates.map(function (c) { return [c[1], c[0]]; });
         var out = {
           km: route.distance / 1000,
-          min: geo.walkMinutes(route.duration),
+          min: Math.round(route.duration / 60), /* OSRM durations are seconds */
           pts: pts,
           fetched_at: new Date().toISOString()
         };
@@ -663,7 +663,22 @@ var ArzuzMap = (function () {
       L.marker([dest.lat, dest.lng], { icon: markerIcon('dest', '\uD83C\uDFE0') }).addTo(map)
         .bindPopup('<b>' + esc(opts.name || 'This property') + '</b><br>' + esc(psg.gate || 'The gate of the compound.'));
 
+      /* geotagged passage steps become numbered markers along the way */
+      psg.steps.forEach(function (st, i) {
+        var sla = Number(st.lat), slg = Number(st.lng);
+        if (!isFinite(sla) || !isFinite(slg)) return;
+        L.marker([sla, slg], {
+          icon: L.divIcon({
+            className: '',
+            html: '<div class="route-step-marker">' + (i + 1) + '</div>',
+            iconSize: [22, 22], iconAnchor: [11, 11]
+          })
+        }).addTo(map).bindPopup('<b>Step ' + (i + 1) + '.</b> ' + esc(st.text));
+      });
+
+      /* the route itself: stored trace > OSRM road walk > dashed estimate */
       drawDirect();
+      fetchBestRoute();
 
       if (opts.trackable !== false) wireTrackControls();
     }
@@ -829,6 +844,8 @@ var ArzuzMap = (function () {
     return {
       destroy: stopTracking,
       routeLevel: function () { return LEVEL.mode; },
+      /* the raw Leaflet map — escape hatch for hosts that need to pan/annotate */
+      _map: function () { return map; },
       panTo: function (lat, lng, zoom) {
         if (map) map.setView([Number(lat), Number(lng)], zoom || 19, { animate: true });
         if (trackDot && trackDot.bringToFront) trackDot.bringToFront();

@@ -31,6 +31,14 @@
       padding: 34px 20px 70px
     }
 
+    /* A reading page reveals itself quietly — a shorter, calmer rise than
+       the marketing pages get. (opacity, then transform) */
+    /* prefixed with the shared layer's gate so this page's shorter rise keeps
+       beating the shared entrance on specificity */
+    html.motion-ready .doc > [data-rise] {
+      transition-duration: .5s, .62s;
+    }
+
     .doc h1 {
       font-family: var(--display);
       font-size: clamp(28px, 5vw, 40px);
@@ -151,23 +159,23 @@
 
 <body>
   <div class="doc">
-    <h1>Your safety on Arzuz</h1>
-    <p><strong>Nobody should ask you for money before you have stood in the room.</strong> Not an inspection fee, not
+    <h1 data-rise>Your safety on Arzuz</h1>
+    <p data-rise><strong>Nobody should ask you for money before you have stood in the room.</strong> Not an inspection fee, not
       a holding fee, not an agent fee. If they do, you can say no and walk away — then tell us. It
       affects whether that listing stays on Arzuz.</p>
-    <p><strong>View in daylight, and take someone with you.</strong> A friend, a sibling, a parent. If you have to go
+    <p data-rise><strong>View in daylight, and take someone with you.</strong> A friend, a sibling, a parent. If you have to go
       alone, tell us before you go and we will check in with you afterwards.</p>
-    <p><strong>Tell someone where you are.</strong> When you tell us you are viewing a property, we can message one
+    <p data-rise><strong>Tell someone where you are.</strong> When you tell us you are viewing a property, we can message one
       person you choose with the address and the time, and let them know when you confirm you are back.</p>
-    <p><strong>If anything feels wrong, leave.</strong> You do not owe anyone an explanation, and you do not owe
+    <p data-rise><strong>If anything feels wrong, leave.</strong> You do not owe anyone an explanation, and you do not owe
       anyone your time because they showed you a room.</p>
-    <p><strong>If you are under 18</strong>, we will ask for a parent or guardian's number, and we will send them
+    <p data-rise><strong>If you are under 18</strong>, we will ask for a parent or guardian's number, and we will send them
       everything we send you. We will not arrange a viewing for you on your own.</p>
-    <p><strong>If you leave a review</strong>, we never tell a landlord who wrote it. On a small compound we will
+    <p data-rise><strong>If you leave a review</strong>, we never tell a landlord who wrote it. On a small compound we will
       offer to hold your review until another resident has also reviewed, so you cannot be identified
       by it. If a landlord ever penalises you for a review, tell us — the property is removed and the
       owner is barred.</p>
-    <p><strong>Something went wrong?</strong> Message us on WhatsApp at <a href="https://wa.me/2349024814771"
+    <p data-rise><strong>Something went wrong?</strong> Message us on WhatsApp at <a href="https://wa.me/2349024814771"
         target="_blank" rel="noopener noreferrer"><strong>09024814771</strong></a> or email <a
         href="mailto:support@arzuz.com"><strong>support@arzuz.com</strong></a>. A person reads every one of
       these.</p>
@@ -177,6 +185,7 @@
   <script src="assets/data.js"></script>
   <script src="assets/submit.js?v=2"></script>
   <script src="assets/app.js"></script>
+  <script src="assets/motion.js"></script>
   <script>Arzuz.chrome(null); Arzuz.footer();</script>
 </body>
 

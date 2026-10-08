@@ -124,12 +124,13 @@ var ArzuzAuth = (function(){
     });
   }
 
-  /* Role claim from the signed JWT's app_metadata. Set per user in
-     Supabase → Authentication → Users (public sign-ups are off, so
-     every account is created deliberately by the main admin).
+  /* Role claim from the signed JWT's app_metadata. Managed from the
+     dashboard's Settings → Team panel (netlify/functions/team-admin.js)
+     or by hand in Supabase → Authentication → Users.
      Unset (or anything unrecognised) = 'admin': the main admin sees
      the whole dashboard. 'marketing' gets the prioritised Growth +
-     Strategy view only. */
+     Strategy view only. 'support' gets the Support Desk, Bookings,
+     Demands and read-only Listings. */
   function role(){
     var s = read();
     var tok = s && s.access_token;
@@ -139,7 +140,9 @@ var ArzuzAuth = (function(){
       var json = decodeURIComponent(escape(atob(b64)));
       var payload = JSON.parse(json);
       var r = payload && payload.app_metadata && payload.app_metadata.role;
-      return (r === 'marketing') ? 'marketing' : 'admin';
+      if (r === 'marketing') return 'marketing';
+      if (r === 'support') return 'support';
+      return 'admin';
     } catch (e) {
       return 'admin';
     }
