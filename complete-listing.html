@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Complete your apartment — Arzuz</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="assets/icons/favicon.ico" sizes="any">
+<meta name="description" content="Fill in the details of your apartment so Arzuz can verify it and show it to students.">
+<link rel="canonical" href="https://arzuz.com/complete-listing">
+<link rel="stylesheet" href="assets/arzuz.css">
+<link rel="stylesheet" href="assets/video.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  .cl-wrap { max-width: 760px; margin: 0 auto; padding: 28px 18px 90px; }
+  .cl-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+  .cl-brand .m { width: 40px; height: 40px; border-radius: 12px; background: var(--ink, #16121d);
+    display: flex; align-items: center; justify-content: center; }
+  .cl-brand .m span { font-weight: 800; color: #fff; font-family: var(--display, sans-serif); }
+  .cl-brand b { font-family: var(--display, sans-serif); font-size: 18px; }
+  .cl-brand b i { font-style: normal; color: var(--stamp, #8B5CF6); }
+  .cl-card { background: var(--panel, #fff); border: 1px solid var(--line, #e8e2f0); border-radius: 18px;
+    padding: 22px 20px; }
+  .cl-card h1 { font-family: var(--display, sans-serif); font-size: clamp(24px, 5.4vw, 34px);
+    letter-spacing: -.03em; line-height: 1.08; margin: 0 0 8px; }
+  .cl-card .lead { color: var(--body-c, #544a63); font-size: 15px; line-height: 1.6; margin: 0 0 18px; }
+  .cl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .cl-grid .full { grid-column: 1 / -1; }
+  @media (max-width: 620px) { .cl-grid { grid-template-columns: 1fr; } }
+  .cl-section-t { font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--stamp, #8B5CF6); margin: 26px 0 10px; }
+  .cl-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .cl-chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 999px;
+    border: 1px solid var(--line, #e8e2f0); background: var(--bg, #faf8fc); font-size: 13.5px;
+    cursor: pointer; user-select: none; }
+  .cl-chip.on { background: var(--stamp, #8B5CF6); border-color: var(--stamp, #8B5CF6); color: #fff; }
+  .cl-chip input { display: none; }
+  .cl-map-wrap { position: relative; height: 320px; border-radius: 14px; overflow: hidden;
+    border: 1px solid var(--line, #e8e2f0); }
+  .cl-map-wrap .map-layer-switcher { position: absolute; top: 10px; right: 10px; z-index: 500; display: flex; gap: 6px; }
+  .cl-map-wrap .map-layer-btn { background: #fff; border: 1px solid var(--line, #e8e2f0); border-radius: 999px;
+    padding: 6px 12px; font-size: 12.5px; cursor: pointer; }
+  .cl-map-wrap .map-layer-btn.active { background: var(--ink, #16121d); color: #fff; }
+  .cl-map-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; }
+  .cl-coords { font-size: 12.5px; color: var(--body-c, #544a63); }
+  .cl-coords.set { color: #16a34a; font-weight: 700; }
+  .cl-gps { border: 1px solid var(--line, #e8e2f0); background: #fff; border-radius: 999px;
+    padding: 7px 14px; font-size: 13px; cursor: pointer; }
+  .cl-status { font-size: 12.5px; color: var(--body-c, #544a63); margin-top: 8px; }
+  .cl-gal { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; margin-top: 12px; }
+  .cl-th { position: relative; border-radius: 12px; overflow: hidden; aspect-ratio: 1; border: 1px solid var(--line, #e8e2f0); }
+  .cl-th img, .cl-th video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cl-th .cover-tag { position: absolute; top: 4px; left: 4px; background: var(--stamp, #8B5CF6);
+    color: #fff; font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 999px; }
+  .cl-th .kind { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,.55); color: #fff;
+    font-size: 11px; padding: 2px 6px; border-radius: 999px; }
+  .cl-th button { position: absolute; bottom: 4px; left: 4px; right: 4px; border: 0; border-radius: 8px;
+    background: rgba(0,0,0,.6); color: #fff; font-size: 11.5px; padding: 4px; cursor: pointer; }
+  .cl-drop { border: 1.5px dashed var(--line, #d8cfe6); border-radius: 14px; padding: 18px; text-align: center;
+    color: var(--body-c, #544a63); font-size: 14px; cursor: pointer; background: var(--bg, #faf8fc); }
+  .cl-drop small { display: block; margin-top: 2px; opacity: .75; }
+  .cl-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 26px; }
+  .cl-actions .next { flex: 1; min-width: 200px; }
+  .cl-state { text-align: center; padding: 46px 10px; }
+  .cl-state .big { font-size: 44px; margin-bottom: 10px; }
+  .cl-note { border-radius: 12px; padding: 10px 14px; font-size: 13px; line-height: 1.5; margin-bottom: 16px;
+    background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
+  .cl-saved { border-radius: 12px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px;
+    background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+  .cl-err { color: #dc2626; font-size: 13.5px; margin-top: 12px; display: none; }
+  .cl-ck { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; line-height: 1.5;
+    color: var(--body-c, #544a63); }
+  .cl-ck input { width: 18px; height: 18px; accent-color: var(--stamp, #8B5CF6); flex: none; margin-top: 1px; }
+</style>
+</head>
+<body>
+<div class="cl-wrap">
+
+  <div class="cl-brand" data-rise>
+    <span class="m"><span>az</span></span>
+    <b>arzuz <i>· apartment invite</i></b>
+  </div>
+
+  <!-- Loading -->
+  <div class="cl-card" id="clLoading" data-rise>
+    <div class="cl-state"><div class="big">⏳</div><p>Opening your apartment…</p></div>
+  </div>
+
+  <!-- Dead link -->
+  <div class="cl-card" id="clDead" style="display:none;" data-rise>
+    <div class="cl-state">
+      <div class="big">🔗</div>
+      <h1>This link is not valid</h1>
+      <p class="lead">The invite link may have been replaced, revoked, or the apartment has already
+      been approved. Ask the Arzuz team to send you a fresh link.</p>
+      <p class="lead" style="font-size:13.5px">WhatsApp us on <b>0902 481 4771</b>.</p>
+    </div>
+  </div>
+
+  <!-- Saved -->
+  <div class="cl-card" id="clDone" style="display:none;" data-rise>
+    <div class="cl-state">
+      <div class="big">✅</div>
+      <h1>Sent to Arzuz</h1>
+      <p class="lead">Thank you! Your apartment details are now with the Arzuz team. They will review,
+      verify, and publish it for students. You can still open this link to adjust the details
+      until it is approved.</p>
+      <button type="button" class="next" id="clBackToForm" style="margin-top:16px;">✎ Keep editing</button>
+    </div>
+  </div>
+
+  <!-- Form -->
+  <div class="cl-card" id="clForm" style="display:none;">
+    <div id="clSavedNote"></div>
+    <h1 id="clTitle" data-rise>Complete your apartment</h1>
+    <p class="lead" data-rise>Fill in what you know and tap <b>Send to Arzuz</b> at the bottom.
+      Everything you write here goes straight to the Arzuz team — nothing is published
+      until they verify and approve it.</p>
+
+    <div class="cl-grid">
+      <div class="fld"><label>Apartment / Lodge name</label>
+        <input type="text" id="cl_prop_name" placeholder="e.g. Blessing Lodge"></div>
+      <div class="fld"><label>Property / Room type</label>
+        <select id="cl_ty"></select></div>
+      <div class="fld"><label>Area / Location</label>
+        <input type="text" id="cl_ar" placeholder="e.g. Behind KWASU Gate, Malete"></div>
+      <div class="fld"><label>Rent (₦ per session)</label>
+        <input type="number" id="cl_rent" placeholder="e.g. 180000" inputmode="numeric"></div>
+      <div class="fld"><label>Available rooms / units</label>
+        <input type="text" id="cl_rm" placeholder="e.g. 3 rooms"></div>
+      <div class="fld"><label>Negotiable?</label>
+        <select id="cl_neg">
+          <option value="">—</option>
+          <option>Yes</option><option>No</option><option>Depends on the tenant</option>
+        </select></div>
+      <div class="fld full"><label>Description &amp; features</label>
+        <textarea id="cl_desc" rows="3" placeholder="Running water, prepaid meter, paved compound, 5 mins walk to school…"></textarea></div>
+    </div>
+
+    <div class="cl-section-t">Amenities — tick all that apply</div>
+    <div class="cl-chips" id="clAmenities"></div>
+
+    <div class="cl-section-t">Who the team should call</div>
+    <div class="cl-grid">
+      <div class="fld"><label>Owner / caretaker first name</label>
+        <input type="text" id="cl_nm" placeholder="e.g. Alh. Kareem"></div>
+      <div class="fld"><label>Owner last name (optional)</label>
+        <input type="text" id="cl_last"></div>
+      <div class="fld"><label>Phone / WhatsApp</label>
+        <input type="tel" id="cl_ph" placeholder="e.g. 08012345678" inputmode="tel"></div>
+      <div class="fld"><label>Who runs the compound?</label>
+        <select id="cl_who">
+          <option value="">—</option>
+          <option>I do, myself</option><option>A caretaker</option>
+          <option>An agent</option><option>Nobody yet</option>
+        </select></div>
+      <div class="fld full"><label class="cl-ck"><input type="checkbox" id="cl_split_ok">
+        <span>Two tenants may share this room and split the cost <small>(helps students looking for roommates)</small></span></label></div>
+    </div>
+
+    <div class="cl-section-t">Pin the exact gate on the map</div>
+    <div class="cl-map-wrap">
+      <div id="cl-map" style="height:100%;"></div>
+      <div class="map-layer-switcher" id="clMapLayerSwitcher">
+        <button type="button" class="map-layer-btn active" data-layer="sat">🛰 Satellite</button>
+        <button type="button" class="map-layer-btn" data-layer="street">🗺 Street</button>
+      </div>
+    </div>
+    <div class="cl-map-foot">
+      <span class="cl-coords" id="clMapCoords">📍 Tap the map at the gate, or use GPS</span>
+      <button type="button" class="cl-gps" id="clBtnGps">🎯 Use GPS</button>
+    </div>
+    <div class="cl-status" id="clMapStatus">Zoom in and tap the exact gate of the compound.</div>
+
+    <div class="cl-section-t">How to find the apartment (passage)</div>
+    <div id="clPassageMount"></div>
+
+    <div class="cl-section-t">Photos &amp; video tour</div>
+    <div class="cl-drop" id="clPhotoZone">📷 Tap to upload photos — select several at once
+      <small>The first photo becomes the cover students see. Every photo is stamped © Arzuz.</small>
+      <input type="file" id="clPhotoInput" accept="image/*" multiple style="display:none;"></div>
+    <div class="cl-drop" id="clVideoZone" style="margin-top:8px;">🎥 Tap to upload a short video tour (optional)
+      <input type="file" id="clVideoInput" accept="video/*" style="display:none;"></div>
+    <div class="cl-status" id="clUploadStatus"></div>
+    <div class="cl-gal" id="clGallery"></div>
+
+    <div class="cl-actions">
+      <button type="button" class="next" id="clSave">✅ Send to Arzuz</button>
+    </div>
+    <div class="cl-err" id="clError"></div>
+    <p class="cl-status" style="margin-top:14px;">Your link is private — anyone who has it can open this page.
+      Don't forward it to people you don't trust.</p>
+  </div>
+</div>
+
+<script src="assets/config.js"></script>
+<script src="assets/data.js"></script>
+<script src="assets/submit.js?v=2"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="assets/arzuz-map.js"></script>
+<script src="assets/video.js"></script>
+<script src="assets/complete-listing.js"></script>
+<script src="assets/motion.js"></script>
+</body>
+</html>

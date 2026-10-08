@@ -58,7 +58,9 @@ deletes are granted only to a signed-in admin (Step 4b).
 
 The anon key is designed to be public — it is in every Supabase site on the internet. It is only safe because of the rules in Step 2, which is why Step 2 comes first.
 
-**Never put the `service_role` key on the website.** That one bypasses every rule.
+**Never put the `service_role` key on the website.** That one bypasses every rule — on this
+project it exists only as the Netlify env var `SUPABASE_SERVICE_ROLE_KEY`, read exclusively by
+`netlify/functions/team-admin.js`, which verifies every caller is the main admin before using it.
 
 ## Step 4 — Fill in the config
 
@@ -87,8 +89,45 @@ Set `ENV` to `'test'` while you are trying things out. Every view in the databas
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | From @BotFather. Alerts go out through `/api/notify` with it |
 | `TELEGRAM_CHAT_ID` | Yours. Get it from the admin dashboard → Auto-Detect Chat ID |
-| `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` / `CLOUDINARY_CLOUD_NAME` | Signed photo uploads |
+| `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` / `CLOUDINARY_CLOUD_NAME` | Signed photo uploads (and video fallback) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `YOUTUBE_REFRESH_TOKEN` | Video tour uploads to an unlisted YouTube video — one-time setup, next section |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | The service-role key — server only. Powers Settings → Team (create users, set roles) and nothing else. Without it the Team panel shows the manual-fallback instructions | |
 | `OPENWA_URL` / `OPENWA_API_KEY` / `OPENWA_SESSION` | WhatsApp confirmations |
+
+### Step 4b-2 — Video tours on YouTube (one-time, ~10 minutes)
+
+Video tours are stored as **unlisted YouTube videos** on your channel. Visitors play them
+inside the site's own player — no YouTube branding, no links — and the video never counts
+against your Cloudinary storage. Set it up once:
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) → create (or pick) a project.
+2. **APIs & Services → Library** → search **YouTube Data API v3** → **Enable**.
+3. **APIs & Services → OAuth consent screen** → External → fill the app name/email → add your
+   own Google account as a **test user** (test mode is enough).
+4. **APIs & Services → Credentials → Create credentials → OAuth client ID → Web application**.
+   Authorized redirect URI: `http://localhost:8765`. Copy the **client ID** and **client secret**.
+5. On your computer, sign the browser into the Google account that owns the channel the tours
+   should live on (a **brand account** keeps your personal channel clean), then run:
+
+   ```
+   node scripts/youtube-auth.mjs <CLIENT_ID> <CLIENT_SECRET>
+   ```
+
+   Open the printed URL, approve access, and the script prints a refresh token.
+6. Put `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `YOUTUBE_REFRESH_TOKEN` into the Netlify
+   environment variables and redeploy. Done — every video tour now streams straight from the
+   uploader's browser to YouTube as an unlisted video.
+
+**Good to know**
+
+- Google's free quota allows about **6 uploads per day**. When it runs out, uploads
+  automatically fall back to Cloudinary (the 10 MB limit applies there), so a tour is never lost —
+  but ask Google for a quota increase if you list more than a handful of videos daily.
+- Unlisted videos do not appear on the channel or in search, but anyone holding the link can
+  open it. That is fine: the stored links are never shown to visitors — they play through the
+  site's masked player.
+- If the token is ever revoked, uploads fail over to Cloudinary and the terminal log shows a
+  reminder to re-run `scripts/youtube-auth.mjs`.
 
 ## Step 4c — Create the admin login
 

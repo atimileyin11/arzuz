@@ -9,6 +9,9 @@
 #   OPENWA_SESSION
 #   TELEGRAM_BOT_TOKEN     (never added to any page source)
 #   TELEGRAM_CHAT_ID       (get it from /api/notify → action: detect)
+#   GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / YOUTUBE_REFRESH_TOKEN
+#                          (video tours upload to unlisted YouTube videos —
+#                           one-time setup: SETUP.md → scripts/youtube-auth.mjs)
 
 [build]
   publish = "."
@@ -31,6 +34,12 @@
 [[redirects]]
   from = "/listing.html"
   to   = "/.netlify/functions/listing-og"
+  status = 200
+
+# Draft invite link page: no login — the secret ?ref= token is the key.
+[[redirects]]
+  from = "/complete-listing"
+  to   = "/complete-listing.html"
   status = 200
 
 # Private strategy API: the dashboard fetches docs here with the
@@ -110,6 +119,12 @@
   [headers.values]
     X-Robots-Tag = "noindex, nofollow"
     Cache-Control = "no-store"
+
+# The draft invite page is per-link, never for search engines.
+[[headers]]
+  for = "/complete-listing.html"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
 
 [[headers]]
   for = "/assets/config.js"

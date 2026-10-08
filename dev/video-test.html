@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arzuz dev — video helper check</title>
+<link rel="stylesheet" href="../assets/video.css">
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 24px auto; padding: 0 16px; background: #faf8fc; }
+  h1 { font-size: 18px; } h2 { font-size: 14px; margin: 22px 0 8px; }
+  .stage { aspect-ratio: 16/9; background: #000; border-radius: 12px; overflow: hidden; max-width: 640px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  button { padding: 8px 14px; border: 1px solid #d8d0e8; border-radius: 999px; background: #fff; cursor: pointer; }
+  #status { font-size: 13px; color: #544a63; margin-top: 10px; min-height: 20px; }
+  #parsed { font-size: 12.5px; color: #544a63; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>Arzuz dev — video helper check</h1>
+<p>Exercises the exact production code paths against dev/upload-mock-server.mjs
+(no Google credentials needed). Upload mints a fake session, streams bytes to the
+mock, then the masked player plays a real demo video through the embed proxy.</p>
+
+<h2>1. Masked player (real playback via /api/video-embed)</h2>
+<div class="stage" id="stage"></div>
+<div class="row" style="margin-top:10px">
+  <button id="mountBtn">Mount player (autoplay)</button>
+  <button id="pauseBtn">Pause all</button>
+  <button id="destroyBtn">Destroy</button>
+</div>
+
+<h2>2. Upload path (mock session + resumable PUT + progress)</h2>
+<button id="uploadBtn">Simulate a 12 MB video upload</button>
+<div id="status"></div>
+<div id="storedUrl" style="font-size:12.5px;color:#16121d"></div>
+
+<h2>3. Parser sanity</h2>
+<div id="parsed"></div>
+
+<script src="../assets/video.js"></script>
+<script>
+(function () {
+  var TOUR = 'https://www.youtube.com/watch?v=aqz-KE-bpKQ';
+  var stage = document.getElementById('stage');
+  var status = document.getElementById('status');
+  var handle = null;
+
+  document.getElementById('mountBtn').onclick = function () {
+    if (handle) handle.destroy();
+    handle = ArzuzVideo.mountPlayer(stage, TOUR, { autoplay: true });
+    status.textContent = 'mounted: ' + (handle ? 'ok' : 'FAILED (not parsed as YouTube)');
+  };
+  document.getElementById('pauseBtn').onclick = function () { ArzuzVideo.pauseAll(); };
+  document.getElementById('destroyBtn').onclick = function () {
+    ArzuzVideo.stopIn(stage); handle = null; status.textContent = 'destroyed';
+  };
+
+  /* same wiring shape as complete-listing.js: live progress, then the
+     stored watch URL — bytes go only through the local mock */
+  document.getElementById('uploadBtn').onclick = function () {
+    var chunks = new Array(12 * 1024).fill('x').join('');
+    var file = new File([chunks], 'tour.mp4', { type: 'video/mp4' });
+    status.textContent = 'preparing…';
+    ArzuzVideo.uploadVideoToYouTube(file, {
+      onProgress: function (p) {
+        if (p.phase === 'uploading') status.innerHTML = '📤 ' + ArzuzVideo.progressHTML(p);
+        else if (p.phase === 'processing') status.textContent = '🎬 Uploaded — processing…';
+        else status.textContent = '⏳ preparing…';
+      },
+    }).then(function (url) {
+      status.textContent = '✅ uploaded';
+      document.getElementById('storedUrl').textContent = 'stored payload url: ' + url;
+      return ArzuzVideo.mountPlayer(stage, url, { autoplay: true }); // replace with fresh player
+    }).then(function (h) { if (handle) handle.destroy(); handle = h; })
+      .catch(function (e) { status.textContent = '❌ ' + e.message; });
+  };
+
+  var samples = [
+    'https://www.youtube.com/watch?v=aqz-KE-bpKQ',
+    'https://youtu.be/aqz-KE-bpKQ',
+    'https://res.cloudinary.com/demo/tour.mp4',
+  ];
+  document.getElementById('parsed').textContent = samples.map(function (u) {
+    return u + '  →  ' + (ArzuzVideo.parseYouTube(u) || '(plain <video> fallback)');
+  }).join('\n');
+})();
+</script>
+</body>
+</html>
