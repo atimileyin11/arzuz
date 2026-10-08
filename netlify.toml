@@ -31,8 +31,54 @@
 # the map from being handed out with it. None of these paths is requested by the
 # live site, and the dev harnesses are meant to run on localhost (they are
 # localhost-guarded anyway).
+# Netlify path patterns cannot wildcard mid-segment (`/*.sql` does NOT match
+# /supabase-schema.sql — only a trailing /* does), so each SQL file is listed.
+# ADD A LINE HERE WHEN YOU ADD A supabase-*.sql FILE. Verified on the live site:
+# every one of these must answer 404, or the whole RLS design is public.
 [[redirects]]
-  from = "/*.sql"
+  from = "/supabase-schema.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-hardening.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-team-roles.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-drafts-support.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-draft-sharing.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-media-booking.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-location.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-public-view.sql"
   to   = "/404.html"
   status = 404
   force = true
