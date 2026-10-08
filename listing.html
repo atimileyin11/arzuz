@@ -26,6 +26,7 @@
   <meta name="twitter:image:alt" content="Arzuz — verified student hostels, zero agent fees">
   <script type="application/ld+json" id="ldjson">{}</script>
   <link rel="stylesheet" href="assets/arzuz.css">
+  <link rel="stylesheet" href="assets/video.css">
 </head>
 <body>
   <div class="ld" id="ldRoot">
@@ -77,7 +78,9 @@
   <script src="assets/submit.js?v=2"></script>
   <script src="assets/whatsapp.js"></script>
   <script src="assets/arzuz-map.js"></script>
+  <script src="assets/video.js"></script>
   <script src="assets/app.js"></script>
+  <script src="assets/motion.js"></script>
   <script>
   /* ============================================================
      Arzuz listing detail — premium single-apartment page.
@@ -188,6 +191,14 @@
     /* ---------- render ---------- */
     function slideInner(m, i){
       if (m.type === 'video') {
+        /* YouTube tours load nothing until tapped — the public
+           poster frame stands in; playback happens in the lightbox
+           inside the masked player */
+        if (window.ArzuzVideo && ArzuzVideo.parseYouTube(m.url)) {
+          return '<div class="azv-slide-poster" data-azv-slide="' + i + '">' +
+            '<img src="' + esc(ArzuzVideo.thumb(m.url)) + '" alt="' + esc(LNAME + ' — video tour') + '">' +
+            '<span class="azv-badge">\u25B6</span></div>';
+        }
         return '<video src="' + esc(m.url) + '" controls preload="metadata" playsinline></video>';
       }
       return '<img src="' + esc(m.url) + '" alt="' + esc(LNAME + ' — ' + (m.label || 'photo ' + (i + 1))) + '"' +
@@ -196,7 +207,7 @@
 
     function renderGallery(){
       var badge = tierBadge(ROW.tier);
-      var html = '<div class="gal" id="gal">' +
+      var html = '<div class="gal" id="gal" data-rise>' +
         '<div class="gal-track" id="galTrack">' +
         MEDIA.map(function(m, i){
           return '<div class="gal-slide" data-i="' + i + '">' + slideInner(m, i) +
@@ -213,7 +224,9 @@
         html += '<div class="gal-thumbs" id="galThumbs">' +
           MEDIA.map(function(m, i){
             var inner = m.type === 'video'
-              ? '<video src="' + esc(m.url) + '" preload="metadata" muted></video>'
+              ? (window.ArzuzVideo && ArzuzVideo.parseYouTube(m.url)
+                  ? '<img src="' + esc(ArzuzVideo.thumb(m.url)) + '" alt="" loading="lazy">'
+                  : '<video src="' + esc(m.url) + '" preload="metadata" muted></video>')
               : '<img src="' + esc(m.url) + '" alt="" loading="lazy">';
             return '<button type="button" class="gal-thumb' + (m.type === 'video' ? ' has-video' : '') +
                    (i === 0 ? ' on' : '') + '" data-i="' + i + '" aria-label="Show item ' + (i + 1) + '">' + inner + '</button>';
@@ -262,7 +275,10 @@
     function renderDescription(p){
       var d = p.desc || p.description || '';
       if (!d) return '';
-      return '<div class="ld-sec"><h2>About this place</h2><div class="ld-card">' +
+      /* the section stands up on arrival; the card inside it takes the
+         pointer tilt (section-level so the copy and the card arrive as one
+         plate rather than two separate pieces) */
+      return '<div class="ld-sec" data-rise><h2>About this place</h2><div class="ld-card" data-tilt>' +
         '<div class="desc clamp" id="descTxt">' + esc(d) + '</div>' +
         '<button type="button" class="desc-more" id="descMore" style="display:none">Read more \u25BE</button>' +
         '</div></div>';
@@ -272,7 +288,9 @@
       var ut = first(p, ['ut', 'utilities']) || [];
       if (typeof ut === 'string') ut = ut.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
       if (!ut.length) return '';
-      return '<div class="ld-sec"><h2>What this place offers</h2>' +
+      /* the individual features keep their own .rv stagger (wireReveals)
+         on top of this — the section is the plate, the chips are the detail */
+      return '<div class="ld-sec" data-rise><h2>What this place offers</h2>' +
         '<div class="feat-grid">' +
         ut.map(function(u, i){
           return '<div class="feat verified rv" style="--i:' + i + '"><span class="ic">' + iconFor(u) + '</span><span>' + esc(u) + '</span></div>';
@@ -285,7 +303,7 @@
     function renderBooking(p){
       var MATE = SHARED_TYPES.indexOf(LTYPE) !== -1 ||
                  p.split_ok === true || p.split_ok === 'yes';
-      var html = '<div class="ld-sec" id="book"><h2>Book this apartment</h2><div class="ld-card">';
+      var html = '<div class="ld-sec" id="book" data-rise><h2>Book this apartment</h2><div class="ld-card">';
       if (MATE) {
         html += '<div class="mate-box"><b>Shared by design.</b> You can book this room and split the ' +
           'cost with a compatible roommate — tell us in the form and we introduce you to each other on ' +
@@ -307,11 +325,16 @@
       var ps = (typeof ArzuzMap !== 'undefined') ? ArzuzMap.passage.normalise(passage) : null;
       var hasPassage = !!(ps && (ps.landmark || ps.gate || ps.floor || ps.steps.length));
 
-      var html = '<div class="ld-sec" id="getting-there"><h2>Getting there</h2>';
+      /* This section takes no transform of its own: it contains the route
+         map, and Leaflet reads its container's CSS scale when it
+         initialises — a transform in flight at that moment would leave the
+         map's internal pixel math permanently off. The heading, the head
+         strip and the passage card (none of them map ancestors) move instead. */
+      var html = '<div class="ld-sec" id="getting-there"><h2 data-rise>Getting there</h2>';
 
       /* route map */
       html += '<div class="ld-card route-card">' +
-        '<div class="route-head">' +
+        '<div class="route-head" data-rise>' +
           '<span class="route-src-badge src-direct" id="routeMap-routebadge">\uD83D\uDCD0 estimate</span>' +
           '<span class="route-meta" id="routeMap-routemeta">Measuring the walk\u2026</span>' +
         '</div>' +
@@ -330,7 +353,7 @@
 
       /* passage card */
       if (hasPassage) {
-        html += '<div class="ld-card passage-card">' +
+        html += '<div class="ld-card passage-card" data-rise data-tilt>' +
           '<h3>\uD83D\uDEAA How to walk in</h3>' +
           (ps.landmark ? '<div class="psg-kv"><span class="psg-k">Landmark</span><span>' + esc(ps.landmark) + '</span></div>' : '') +
           (ps.gate ? '<div class="psg-kv"><span class="psg-k">The gate</span><span>' + esc(ps.gate) + '</span></div>' : '') +
@@ -468,7 +491,7 @@
       if (!gal) return;
       /* tap without drag opens the lightbox — wired even for a single photo */
       gal.addEventListener('click', function(e){
-        if (e.target.closest('video') || e.target.closest('.gal-nav')) return;
+        if (e.target.closest('video') || e.target.closest('.azv-player') || e.target.closest('.gal-nav')) return;
         if (Math.abs(dx) > 8) return;
         openLbx(CUR);
       });
@@ -481,7 +504,7 @@
       /* pointer swipe: drag the track, release past the threshold */
       var sx = 0, dx = 0, down = false, w = 1;
       gal.addEventListener('pointerdown', function(e){
-        if (e.target.closest('video')) return;
+        if (e.target.closest('video') || e.target.closest('.azv-player')) return;
         down = true; sx = e.clientX; dx = 0; w = gal.clientWidth || 1;
         gal.classList.add('dragging');
       });
@@ -505,9 +528,18 @@
       var lbx = document.getElementById('lbx'), stage = document.getElementById('lbxStage');
       var cap = document.getElementById('lbxCap');
       var m = MEDIA[i]; if (!m) return;
-      stage.innerHTML = m.type === 'video'
-        ? '<video src="' + esc(m.url) + '" controls autoplay playsinline></video>'
-        : '<img src="' + esc(m.url) + '" alt="' + esc(LNAME) + '">';
+      /* a previous lightbox item's player must not keep polling */
+      if (window.ArzuzVideo) ArzuzVideo.stopIn(stage);
+      if (m.type === 'video' && window.ArzuzVideo && ArzuzVideo.parseYouTube(m.url)) {
+        /* masked player: our play button, seek bar, mute and
+           fullscreen over the unlisted nocookie embed */
+        stage.innerHTML = '';
+        ArzuzVideo.mountPlayer(stage, m.url, { autoplay: true });
+      } else {
+        stage.innerHTML = m.type === 'video'
+          ? '<video src="' + esc(m.url) + '" controls autoplay playsinline></video>'
+          : '<img src="' + esc(m.url) + '" alt="' + esc(LNAME) + '">';
+      }
       cap.innerHTML = '<span class="crn">\u00A9 Arzuz 2026 \u00B7 Verified media</span>' +
         (m.label ? ' \u2014 ' + esc(m.label) : '') +
         (MEDIA.length > 1 ? ' \u00B7 ' + (i + 1) + ' of ' + MEDIA.length : '');
@@ -518,6 +550,7 @@
     }
     function closeLbx(){
       document.getElementById('lbx').classList.remove('on');
+      if (window.ArzuzVideo) ArzuzVideo.stopIn(document.getElementById('lbxStage'));
       document.getElementById('lbxStage').innerHTML = '';
     }
     function wireLightbox(){
@@ -585,6 +618,17 @@
       });
       document.getElementById('kReport').addEventListener('click', function(){
         menu.classList.remove('open');
+        /* Log the ticket FIRST so the report exists even if the WhatsApp
+           message is never sent; then open the chat to add details.
+           Lands in the dashboard's Support Desk queue. */
+        if (window.ArzuzSubmit && ArzuzSubmit.send) {
+          ArzuzSubmit.send('support_tickets', {
+            category: 'listing_problem',
+            listing_id: ROW ? ROW.id : '',
+            listing_name: LNAME,
+            message: 'Reported from the listing page — details follow in WhatsApp.'
+          });
+        }
         window.open(waSupport('Hi Arzuz! I want to report a problem with "' + LNAME + '" (ref ' + ref8() + '): '), '_blank', 'noopener');
       });
       var km = document.getElementById('kMap');
@@ -669,7 +713,7 @@
           var bk = renderBooking(p);
           document.getElementById('ldContent').innerHTML =
             (MEDIA.length ? renderGallery() :
-              '<div class="gal"><div class="gal-slide" style="cursor:default">\uD83D\uDCF7 Photos coming soon</div></div>') +
+              '<div class="gal" data-rise><div class="gal-slide" style="cursor:default">\uD83D\uDCF7 Photos coming soon</div></div>') +
             renderTitle() +
             renderDescription(p) +
             renderFeatures(p) +

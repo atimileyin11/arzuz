@@ -31,6 +31,14 @@
       padding: 34px 20px 70px
     }
 
+    /* A reading page reveals itself quietly — a shorter, calmer rise than
+       the marketing pages get. (opacity, then transform) */
+    /* prefixed with the shared layer's gate so this page's shorter rise keeps
+       beating the shared entrance on specificity */
+    html.motion-ready .doc > [data-rise] {
+      transition-duration: .5s, .62s;
+    }
+
     .doc h1 {
       font-family: var(--display);
       font-size: clamp(28px, 5vw, 40px);
@@ -157,17 +165,17 @@
 
 <body>
   <div class="doc">
-    <h1>Arzuz Care</h1>
-    <p>Small things break. Landlords are slow. Care is the fix — and this page is the whole of it:
+    <h1 data-rise>Arzuz Care</h1>
+    <p data-rise>Small things break. Landlords are slow. Care is the fix — and this page is the whole of it:
       exactly what it costs, exactly what it covers, and exactly what it does not.</p>
 
-    <div class="pricebox">
+    <div class="pricebox" data-rise data-tilt>
       <div class="p">&#8358;20,000 for the session</div>
       <p>Optional. You choose whether to add it — never automatically, never folded into your rent.
         Cancel before the session starts for a full refund.</p>
     </div>
 
-    <div class="covbox">
+    <div class="covbox" data-rise>
       <h3>Covered</h3>
       <ul class="cov yes">
         <li><span class="ic">&#10003;</span><span>Bulbs, sockets and switches</span></li>
@@ -193,15 +201,15 @@
 
     <hr />
 
-    <h2>Who does the work</h2>
-    <p>Your compound caretaker, or a verified local worker if yours is not on Arzuz. They are paid
+    <h2 data-rise>Who does the work</h2>
+    <p data-rise>Your compound caretaker, or a verified local worker if yours is not on Arzuz. They are paid
       per job through the platform and rated by you afterwards. Their response time is public.</p>
-    <p>If a request falls outside the published cover, we decline it and tell you why.</p>
+    <p data-rise>If a request falls outside the published cover, we decline it and tell you why.</p>
 
     <hr />
 
-    <h2>If the inspection was wrong</h2>
-    <p>Move into a property marked <strong>Inspected</strong> and find the water, power or security are
+    <h2 data-rise>If the inspection was wrong</h2>
+    <p data-rise>Move into a property marked <strong>Inspected</strong> and find the water, power or security are
       materially not as we described: an operator re-inspects within <strong>7 days</strong> (not the
       verifier who filed the original report), the listing is corrected publicly, and <strong>Arzuz
       Care is free for the remainder of your session</strong> — or any Care fee you paid is refunded
@@ -209,7 +217,7 @@
 
     <hr />
 
-    <p class="note">Care is not insurance, and it is not a substitute for the landlord's own repair
+    <p class="note" data-rise>Care is not insurance, and it is not a substitute for the landlord's own repair
       obligations under your tenancy. The covered list, the not-covered list and the call-out limit
       on this page form part of the <a href="terms.html">Arzuz terms</a>. Something not covered but
       broken? Tell us anyway — it goes into the record for your compound.</p>
@@ -218,6 +226,7 @@
   <script src="assets/data.js"></script>
   <script src="assets/submit.js?v=2"></script>
   <script src="assets/app.js"></script>
+  <script src="assets/motion.js"></script>
   <script>Arzuz.chrome(null); Arzuz.footer();</script>
 </body>
 

@@ -53,6 +53,9 @@ arzuz-site/
 ├── terms.html              Terms of use
 ├── admin.html              Private dashboard (Supabase Auth sign-in; sidebar shell —
 │                           styles in assets/admin.css, logic in assets/admin.js)
+├── complete-listing.html   No-login draft completion page behind the invite link
+│                           (arzuz.com/complete-listing?ref=…) — logic in
+│                           assets/complete-listing.js
 │
 ├── strategy/               Positioning, market sizing, channels, unit economics —
 │                           one framework per file, each linked to where it lands.
@@ -60,6 +63,8 @@ arzuz-site/
 │                           served only to a signed-in dashboard session by /strategy-docs
 │                           (netlify/functions/strategy-docs.js)
 ├── supabase-schema.sql     Fresh install: tables, RLS, grants, views
+├── supabase-drafts-support.sql  Additive upgrade: draft invite columns + RPCs,
+│                           support_tickets, RLS and indexes
 ├── supabase-media-booking.sql  Upgrade: booking_requests + the 14-day roommate metric view
 ├── supabase-hardening.sql  Upgrades an existing database — run this one if you already have data
 ├── supabase-location.sql   Additive upgrade: pin-quality + passage-flag generated columns + indexes
@@ -70,6 +75,7 @@ arzuz-site/
 │   ├── admin.css           Admin dashboard only — dark shell, tables, modals
 │   ├── config.js           Public config only (Supabase anon key, session, support number)
 │   ├── auth.js             Supabase Auth session for admin.html (+ role() from app_metadata)
+│   ├── complete-listing.js Logic for the no-login draft completion page
 │   ├── strategy.js         In-dashboard strategy reader + the Growth (marketing) view
 │   ├── data.js             Demand bands + ArzuzData + PROPERTY_TYPES (the one type list)
 │   ├── admin.js            Dashboard logic: router, tables, add/edit, media, map, amenities
@@ -85,8 +91,14 @@ arzuz-site/
 │
 └── netlify/functions/
     ├── notify.js           Owns TELEGRAM_BOT_TOKEN, formats alerts, status/detect/test
+    ├── team-admin.js       Team & roles: verifies the caller is main admin, then uses
+    │                       SUPABASE_SERVICE_ROLE_KEY (server-side only) against GoTrue
     ├── whatsapp-send.js    Owns OPENWA_* credentials, rate-limited proxy
     ├── cloudinary-sign.js  Signs uploads, enforces the 10 MB limit, stamps © Arzuz metadata
+    ├── youtube-upload-start.js  Opens resumable upload sessions so video tours upload as
+    │                       UNLISTED YouTube videos, streamed browser→Google, never via Netlify
+    ├── video-embed.js      /api/video-embed/<id> 302s to the branding-stripped nocookie
+    │                       embed — raw YouTube URLs stay out of the page source
     ├── listing-og.js       Serves /listing with the real listing's preview tags —
     │                       scrapers never run JS, so the per-listing card is built
     │                       server-side (see strategy/05 for the messaging it carries)
@@ -96,27 +108,93 @@ arzuz-site/
 
 ---
 
+## Draft apartments with invite links
+
+Sometimes you find an apartment before you know everything about it. The dashboard's
+**Listings → + Add Apartment → “Save as Draft + Invite Link”** creates the listing as
+`status='draft'` with a secret `draft_token`, then shows a link:
+
+```
+arzuz.com/complete-listing?ref=<draft_token>
+```
+
+Send it to the landlord or agent on WhatsApp (the modal has a button for that). They open it,
+fill in whatever is missing — details, amenities, photos, the gate pin, the passage — and tap
+**Send to Arzuz**. No account, no login; the token is the key. You get a Telegram alert, and the
+draft row shows *“completed — awaiting approval”*. Review it, set the tier, approve it (status
+leaves `draft`), and the link dies automatically. Until then the landlord can re-open the link
+and adjust.
+
+How it is safe: anon never touches the `listings` table. Two security-definer RPCs
+(`listing_draft_get` / `listing_draft_update`, created by `supabase-drafts-support.sql`) read and
+write exactly one row for the token holder, and the update copies an explicit whitelist of fields
+only — status, tier and the opening ask can never be changed through a link. Regenerate or revoke
+the link any time from the Listings table (🔗 / rotate / revoke actions).
+
+## Testing without touching real data
+
+The dashboard has a built-in mock harness, guarded to localhost. Append **`?mock=1`** to the admin
+URL and the page boots with a fake signed-in session and a fully stubbed Supabase/fetch layer —
+nothing leaves your machine, and the sidebar badge reads **MOCK DB** so it can't be mistaken for
+live. The harness seeds realistic rows into every table (drafts, minors, test rows included) and
+exposes a scenario switcher on the console:
+
+```js
+__MOCK__.role('marketing')   // boot as marketing / support / admin
+__MOCK__.empty()             // every table empty (honest empty states)
+__MOCK__.slow(1200)          // add 1.2s latency
+__MOCK__.error('rest')       // inject REST failures
+__MOCK__.reset()             // restore the seed
+__MOCK__.stats()
+```
+
+A headless regression suite runs the same harness through a VM-sandboxed DOM and walks all three
+roles — boot, role gating, every route, overview-metric traceability, table row counts, all
+modals (details/edit/delete), the delete type-to-confirm, add-apartment, CSV export, team and
+amenities management, and the REST-failure scenario:
+
+```bash
+node dev/admin-boot-test.js   # expect: TOTAL 90 · PASS 90 · FAIL 0
+```
+
+See [dev/admin-test-report.md](dev/admin-test-report.md) for the full coverage matrix.
+
+## Support Desk
+
+The **Support Desk** section is the support team's home: tickets from the listing page's
+“Report a problem” button, plus phone complaints logged with the form below the queue. Each
+ticket carries status (`open → in_progress → resolved`), notes, a one-click WhatsApp button and
+an **open-for timer** — anything past 48 hours is flagged red. A canned-replies panel holds
+ready-to-send answers written from the site's own promises (no fees, viewing flow, safety tips).
+The Overview shows open tickets alongside the draft queue.
+
+---
+
 ## Team logins and roles
 
-Every account is created by the main admin in Supabase → Authentication → Users (public
-sign-ups are off, so there is no self-service). A user's role rides in the session token as
-`app_metadata.role` and the dashboard reads it with `ArzuzAuth.role()`:
+Every account is created by the main admin — public sign-ups are off, so there is no
+self-service. Use **admin.html → Settings → Team** (create, role, reset password, remove); the
+panel calls `netlify/functions/team-admin.js`, which holds `SUPABASE_SERVICE_ROLE_KEY` server-side
+and only answers callers whose token is a main admin. Without that env var, the panel shows the
+manual fallback: Supabase → Authentication → Users, then edit the Raw User JSON.
+
+A user's role rides in the session token as `app_metadata.role`; the dashboard reads it with
+`ArzuzAuth.role()`:
 
 | Role | `app_metadata` | Lands on | Sees |
 |---|---|---|---|
-| Main admin (default) | *(unset)* | Overview | Everything, including Growth, Strategy, Settings |
+| Main admin (default) | *(unset)* | Overview | Everything, including Growth, Strategy, Settings — and the Team panel |
+| Support | `{ "role": "support" }` | Support Desk | Tickets, bookings, demands, read-only listings. No delete buttons, no settings/growth/strategy |
 | Marketing | `{ "role": "marketing" }` | Growth | Growth (traction, funnel, channels, what-to-do-next) + the Strategy docs, marketing ones first. No data tables, no settings |
 
-**Add a marketing teammate:** create her user in Supabase, open it, edit the Raw User JSON so
-`app_metadata` contains `{ "role": "marketing" }`, then send her `arzuz.com/admin.html` with the
-credentials. The same steps (plus screenshots of where to click) live in **admin.html → Settings →
-Team logins & roles**. To revert someone to main admin, remove the `role` key.
+To revert someone to main admin, set their role to “Main admin” in the Team panel (or remove the
+`role` key in Supabase).
 
 Role gating is presentation-level: under the current RLS every authenticated user can read the
-same tables — the marketing login simply is never *shown* them. For a two-person team that
-matches the dashboard's trust model; if data-level separation is ever needed, add a `staff`
-table and RLS policies keyed on it (the strategy pack itself is already enforced at the server:
-`strategy-docs.js` rejects every request without a live Supabase session).
+same tables — support simply is never *shown* the sections or buttons outside its scope. For a
+small team that matches the dashboard's trust model; if data-level separation is ever needed, add
+a `staff` table and RLS policies keyed on it (the strategy pack itself is already enforced at the
+server: `strategy-docs.js` rejects every request without a live Supabase session).
 
 ---
 

@@ -47,28 +47,44 @@
 .doc code{background:var(--surface);padding:2px 6px;border-radius:3px;font-size:14px}
 .doc a{color:var(--stamp)}
 .doc input[type=checkbox]{width:auto;margin-right:8px}
+/* This page settles rather than performs: a shallower entrance than the
+   site-wide one, no stagger, and no tilt anywhere on it. `transition-delay`
+   is reset because a 60ms-per-sibling stagger belongs on a card grid, not
+   on a legal document's headings. */
+[data-rise]{transform:translate3d(0,14px,0) rotateX(3deg);transition-delay:0s}
+[data-rise].in{transform:none}
+/* these pages get printed — never let a heading print invisible */
+@media print{[data-rise]{opacity:1;transform:none}}
+/* Every rule above is re-declared with the shared layer's `html.motion-ready`
+   prefix so it keeps winning on specificity. Without the prefix the shared
+   3D entrance (which is gated on that class) outranks these and the shallower
+   rise, the reset delay and the print safety net all silently stop applying. */
+html.motion-ready [data-rise]{transform:translate3d(0,14px,0) rotateX(3deg);transition-delay:0s}
+html.motion-ready [data-rise].in{transform:none}
+@media print{html.motion-ready [data-rise]{opacity:1;transform:none}}
 </style>
+<noscript><style>[data-rise]{opacity:1;transform:none}</style></noscript>
 </head>
 <body>
 <div class="doc">
-<h1>ARZUZ — PRIVACY POLICY</h1>
+<h1 data-rise>ARZUZ — PRIVACY POLICY</h1>
 <hr />
 <p><strong>Last updated:</strong> 2 October 2026</p>
-<h2>The short version</h2>
+<h2 data-rise>The short version</h2>
 <p>We collect your phone number, your name, and what kind of housing you are looking for. We use it to
 find you a room and to message you on WhatsApp when we do.</p>
 <p><strong>We never sell your data. We never show your phone number publicly. We never tell a landlord who
 wrote a review.</strong> We do not take payment from you, and we do not hold your money.</p>
 <p>The rest of this page is the detail.</p>
 <hr />
-<h2>1. Who we are</h2>
+<h2 data-rise>1. Who we are</h2>
 <p>Arzuz is operated from <strong>Abuja, Nigeria</strong>.</p>
 <p>We are the data controller for the information described here.</p>
 <p>Contact us about anything on this page at <a href="mailto:support@arzuz.com"><strong>support@arzuz.com</strong></a> or on WhatsApp at <a href="https://wa.me/2349024814771" target="_blank" rel="noopener noreferrer"><strong>09024814771</strong></a>.</p>
 <hr />
-<h2>2. What we collect</h2>
+<h2 data-rise>2. What we collect</h2>
 <h3>2.1 If you are looking for housing</h3>
-<table>
+<table data-rise>
 <thead>
 <tr>
 <th>What</th>
@@ -121,7 +137,7 @@ location from your IP address.</p>
 all.</strong> We do not collect data about your health, religion, ethnicity, political views, or any other
 special category of personal data under the NDPA.</p>
 <hr />
-<h2>3. Why we are allowed to use it</h2>
+<h2 data-rise>3. Why we are allowed to use it</h2>
 <p>Under the NDPA we rely on:</p>
 <p><strong>Your consent</strong> — for sending you matches on WhatsApp, and for publishing your review. You can
 withdraw either at any time.</p>
@@ -131,7 +147,7 @@ need or listed a property.</p>
 users. We have weighed these against your rights and set out below where we limit ourselves.</p>
 <p><strong>Legal obligation</strong> — where we must keep or disclose records by law.</p>
 <hr />
-<h2>4. How we use it</h2>
+<h2 data-rise>4. How we use it</h2>
 <ul>
 <li>Matching you to properties, and messaging you on WhatsApp when we find one</li>
 <li>Verifying that listings are real and accurately described</li>
@@ -143,7 +159,7 @@ users. We have weighed these against your rights and set out below where we limi
 </ul>
 <p><strong>We do not use your data to advertise to you, and we do not allow anyone else to.</strong></p>
 <hr />
-<h2>5. Who sees what</h2>
+<h2 data-rise>5. Who sees what</h2>
 <h3>5.1 What is public</h3>
 <p>Property listings, including photos, price and area. Reviews, with the reviewer's first name and
 last initial — or anonymously if they choose. Average ratings and the price benchmark, aggregated.</p>
@@ -179,7 +195,7 @@ someone's safety.</p>
 <p><strong>We never sell your personal data to anyone, for any purpose.</strong> There is no version of Arzuz where
 that changes.</p>
 <hr />
-<h2>6. Rent information — a specific protection</h2>
+<h2 data-rise>6. Rent information — a specific protection</h2>
 <p>If you tell us what you actually pay in rent, that figure is treated as sensitive.</p>
 <p><strong>We never publish it attributed to you.</strong> We never tell your landlord that you told us. It is only
 ever shown combined with figures from at least two other residents, so no individual can be
@@ -189,11 +205,11 @@ we did not hold it at all, tell us and we will delete it.</p>
 <p>The same principle applies to reviews on small compounds — see our
 <a href="/safety">safeguarding policy</a>.</p>
 <hr />
-<h2>7. Where your data lives, and for how long</h2>
+<h2 data-rise>7. Where your data lives, and for how long</h2>
 <p>Data is stored on servers operated by our hosting providers, which may be located outside Nigeria.
 Where that happens we rely on the transfer conditions permitted by the NDPA and require adequate
 protection by contract.</p>
-<table>
+<table data-rise>
 <thead>
 <tr>
 <th>Data</th>
@@ -231,7 +247,7 @@ protection by contract.</p>
 by law or for safeguarding. <strong>Reviews you wrote may remain published but are disconnected from your
 identity</strong> — other students rely on them.</p>
 <hr />
-<h2>8. Your rights</h2>
+<h2 data-rise>8. Your rights</h2>
 <p>Under the NDPA you may:</p>
 <ul>
 <li><strong>See</strong> what we hold about you</li>
@@ -244,19 +260,19 @@ identity</strong> — other students rely on them.</p>
 </ul>
 <p>Ask at <strong><a href="mailto:support@arzuz.com" style="color:var(--stamp)">support@arzuz.com</a></strong>. We respond within 30 days and we do not charge.</p>
 <hr />
-<h2>9. Keeping it safe</h2>
+<h2 data-rise>9. Keeping it safe</h2>
 <p>Access is limited to team members who need it. Safeguarding records are restricted to the
 safeguarding lead. Connections are encrypted. We review who has access every session.</p>
 <p>If a breach happens that puts you at risk, we will tell you and notify the NDPC as the law requires.</p>
 <hr />
-<h2>10. Children</h2>
+<h2 data-rise>10. Children</h2>
 <p>Some of our users are 16 or 17. If you are under 18, we ask for a parent or guardian's contact and
 send them everything we send you, and we do not arrange viewings for you alone. Our
 <a href="/safety">safeguarding policy</a> sets out the detail.</p>
 <p><strong>We do not knowingly collect data from anyone under 16.</strong> If you believe we have, contact us and
 we will delete it.</p>
 <hr />
-<h2>11. Changes</h2>
+<h2 data-rise>11. Changes</h2>
 <p>If we change this policy in a way that materially affects you, we will tell you on WhatsApp before
 it takes effect — not quietly update the page.</p>
 <hr />
@@ -265,6 +281,7 @@ it takes effect — not quietly update the page.</p>
 <script src="assets/data.js"></script>
 <script src="assets/submit.js?v=2"></script>
 <script src="assets/app.js"></script>
+<script src="assets/motion.js"></script>
 <script>Arzuz.chrome(null);Arzuz.footer();</script>
 </body>
 </html>

@@ -47,6 +47,7 @@
 <script src="assets/whatsapp.js"></script>
 <script src="assets/arzuz-map.js"></script>
 <script src="assets/app.js"></script>
+<script src="assets/motion.js"></script>
 <script>
 
 Arzuz.chrome('student');
@@ -62,7 +63,8 @@ Arzuz.form({
     f:[["pin","Location","pin"]]},
    {k:'passage', h:"How does someone walk in?",
     hint:"You know this compound — the landmark, the gate, the stairs. This is what makes a listing findable first time.",
-    f:[["passage","Passage to the rooms","passage"]]},
+    opt:true,
+    f:[["passage","Passage to the rooms","passage",{opt:true}]]},
    {k:'paid', h:"What do you actually pay?",
     hint:"The real number for the session \u2014 not the asking price. We never show which tenant told us.",
     f:[["amt","Rent per session (\u20A6)","number"],["lp","Who collects your rent \u2014 number","tel"]]},
@@ -82,7 +84,7 @@ Arzuz.form({
     f:[["first","First name","text"],["last","Last name","text"],["phone","WhatsApp number","tel"]]}
   ],
   done:
-   '<div class="done"><div class="m"><span>az</span></div><h3>That is genuinely useful.</h3>'+
+   '<div class="done" data-rise><div class="m"><span>az</span></div><h3>That is genuinely useful.</h3>'+
    '<p>You know this building better than any agent does. We will verify it and add it with a '+
    '<b>Community verified</b> badge.</p>'+
    '<p class="sm">What you pay is stored privately and only ever shown combined with other tenants. '+

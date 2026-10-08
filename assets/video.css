@@ -1,0 +1,110 @@
+/* ============================================================
+   Arzuz — video.css
+   Styles for the masked video player (.azv-*) rendered by
+   assets/video.js, plus the upload progress bar (.upbar).
+   Loaded by listing.html, admin.html and complete-listing.html.
+   ============================================================ */
+
+/* ---------- masked player ---------- */
+
+.azv-player {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 120px;
+  aspect-ratio: 16 / 9;      /* shapes contexts with no definite height (lightbox) */
+  background: #000;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.azv-stage { position: absolute; inset: 0; }
+
+/* the embed fills the stage; our overlays sit above it */
+.azv-slot, .azv-slot iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+
+/* poster shows until the player is created on first play */
+.azv-poster { position: absolute; inset: 0; }
+.azv-poster img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: .9; }
+.azv-player.is-live .azv-poster { display: none; }
+
+/* shade: swallows every click so YouTube's own UI is untouchable */
+.azv-shade { position: absolute; inset: 0 0 52px; z-index: 2; background: transparent; cursor: pointer; }
+.azv-player.is-playing .azv-shade { inset: 0; }   /* full cover while playing; bar auto-hides */
+
+/* big center play button */
+.azv-big {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  z-index: 4; width: 64px; height: 64px; border-radius: 50%;
+  border: 0; cursor: pointer;
+  background: rgba(10, 8, 16, .62); color: #fff; font-size: 24px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .45);
+  transition: transform .15s ease, background .15s ease;
+}
+.azv-big:hover { transform: translate(-50%, -50%) scale(1.06); background: rgba(139, 92, 246, .8); }
+.azv-player.is-playing .azv-big { display: none; }
+.azv-big.loading { opacity: .55; pointer-events: none; }
+
+/* control bar */
+.azv-bar {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 3;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  background: linear-gradient(to top, rgba(0, 0, 0, .78), rgba(0, 0, 0, 0));
+  transition: opacity .25s ease;
+}
+.azv-player.bar-hidden .azv-bar { opacity: 0; pointer-events: none; }
+.azv-player.bar-hidden .azv-shade { inset: 0; }
+
+.azv-btn {
+  width: 34px; height: 34px; flex: 0 0 34px;
+  border: 0; border-radius: 50%; cursor: pointer;
+  background: rgba(255, 255, 255, .12); color: #fff;
+  font-size: 13px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.azv-btn:hover { background: rgba(255, 255, 255, .26); }
+
+.azv-track {
+  flex: 1 1 auto; height: 18px;          /* fat hit area, thin visual bar */
+  display: flex; align-items: center; cursor: pointer;
+  position: relative;
+}
+.azv-track::before { content: ''; position: absolute; left: 0; right: 0; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .25); }
+.azv-fill {
+  position: absolute; left: 0; height: 4px; border-radius: 2px;
+  background: var(--stamp, #8B5CF6); width: 0;
+}
+.azv-time { color: #fff; font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* fullscreen keeps everything covering the stage */
+.azv-stage:fullscreen { background: #000; }
+.azv-stage:fullscreen .azv-slot, .azv-stage:fullscreen .azv-slot iframe { width: 100%; height: 100%; }
+
+/* ---------- in-slide poster (listing gallery before playback) ---------- */
+
+.azv-slide-poster { position: absolute; inset: 0; cursor: pointer; }
+.azv-slide-poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.azv-slide-poster .azv-badge {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 58px; height: 58px; border-radius: 50%;
+  background: rgba(10, 8, 16, .55); color: #fff; font-size: 20px;
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+
+/* ---------- upload progress ---------- */
+
+.upline { display: block; font-size: 12px; margin-bottom: 3px; }
+.upbar {
+  display: block; height: 5px; border-radius: 3px; overflow: hidden;
+  background: rgba(139, 92, 246, .18);
+}
+.upbar > span {
+  display: block; height: 100%; width: 0;
+  background: var(--stamp, #8B5CF6);
+  border-radius: 3px;
+  transition: width .3s ease;
+}
