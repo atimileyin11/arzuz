@@ -83,10 +83,9 @@ function formatMessage(table, p) {
     lines.push(`• <b>Owner Name:</b> ${esc(p.nm || p.owner_name) || 'N/A'}`);
     lines.push(`• <b>Property Type:</b> ${esc(p.ty || p.property_type) || 'N/A'}`);
     lines.push(`• <b>Area/Street:</b> ${esc(p.ar || p.area) || 'N/A'}`);
-    lines.push(`• <b>Rooms Free:</b> ${esc(p.rm || p.rooms) || 'N/A'}`);
+    lines.push(`• <b>Availability:</b> ${esc(p.rm || p.rooms) || 'N/A'}`);
     lines.push(`• <b>Rent per Session:</b> ₦${num(p.rent || p.listed_price_ngn).toLocaleString()}`);
-    lines.push(`• <b>Negotiable:</b> ${esc(p.neg) || 'N/A'}`);
-    lines.push(`• <b>Run By:</b> ${esc(p.who) || 'N/A'}`);
+    lines.push(`• <b>Run By:</b> ${esc(p.contact_role || p.who) || 'N/A'}`);
     lines.push(`• <b>WhatsApp:</b> ${esc(p.ph || p.owner_phone) || 'N/A'}`);
     if (p.photo) lines.push(`• <b>Photo:</b> <a href="${esc(p.photo, 300)}">view</a>`);
   } else if (table === 'booking_requests') {
@@ -114,7 +113,8 @@ function formatMessage(table, p) {
     lines.push(`• <b>Area:</b> ${esc(p.ar) || '—'}`);
     lines.push(`• <b>Type:</b> ${esc(p.ty) || '—'}`);
     lines.push(`• <b>Rent:</b> ${p.rent ? '₦' + num(p.rent).toLocaleString() : '—'}`);
-    lines.push(`• <b>Contact:</b> ${esc(p.ph) || '—'}`);
+    lines.push(`• <b>Availability:</b> ${esc(p.rooms || p.rm) || '—'}`);
+    lines.push(`• <b>Contact:</b> ${esc(p.ph) || '—'}${p.contact_role ? ' · ' + esc(p.contact_role) : ''}`);
     lines.push('• <b>Action:</b> open the admin dashboard → Listings → approve or adjust');
   } else if (table === 'scout_submissions') {
     title = '🔍 <b>New Building Scout Report</b>';

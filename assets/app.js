@@ -503,10 +503,11 @@ var Arzuz = (function(){
         var val = el ? el.value.trim() : (F.answers[id] || '');
 
         if (type === 'pin') {
+          /* No pin yet: say so. Inventing the town-centre coordinates
+             here used to file the building in the middle of Malete for
+             every visitor who never touched the map. */
           if (req && !F.answers.lat) {
-            F.answers.lat = 8.7113;
-            F.answers.lng = 4.4697;
-            F.answers.pin = '8.711300,4.469700';
+            setFieldError(id, 'Drop the pin on your gate to continue — tap the map, drag the marker, or press “Use My GPS” while you stand there.');
           }
           return;
         }

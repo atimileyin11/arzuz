@@ -284,17 +284,30 @@ var ArzuzMap = (function () {
        locateBtnId   "use my GPS" button id (required)
        statusBoxId   live status box id (required)
        tipBannerId   satellite tip banner id (optional)
+       trace         show the trace-road toolbar (default false)
+       traceBarId / traceToggleId / traceUndoId / traceClearId / traceCountId
+                     override the toolbar element ids — required when two
+                     instances can live in the same document (the Add and
+                     Edit apartment dialogs both build a map)
        lat/lng       initial pin position (defaults: Malete centre)
        answers       object to write lat/lng/pin/pin_meta into (forms)
        onPin         callback (lat, lng, meta) for hidden-input style hosts
        startGps      auto-start live GPS on mount (default: true when no saved pin)
        trace         show the route-trace toolbar (default false)
+       promptText    badge text used while no pin exists yet (optional)
+       onRoute       callback (meta) receiving a traced route alone — used
+                     when the holder traced a path but never placed a pin,
+                     so no coordinates are invented (optional)
+       onPin         callback (lat, lng, meta) for hidden-input style hosts
    */
   function pinCapture(opts) {
     if (!opts || !opts.containerId) return null;
     var host = {
       answers: opts.answers || null,
-      onPin: typeof opts.onPin === 'function' ? opts.onPin : function () {}
+      onPin: typeof opts.onPin === 'function' ? opts.onPin : function () {},
+      /* a traced route with no pin yet: the route is real, the
+         coordinates are not — so the route is reported on its own */
+      onRoute: typeof opts.onRoute === 'function' ? opts.onRoute : function () {}
     };
     var map, marker, tileLayer, accRing, meDot;
     var watchId = null, bestAcc = Infinity, samples = 0;
@@ -305,6 +318,11 @@ var ArzuzMap = (function () {
       lng: isFinite(parseFloat(opts.lng)) ? parseFloat(opts.lng) : MALETE[1]
     };
     var hasSavedPin = isFinite(parseFloat(opts.lat)) && !!parseFloat(opts.lat);
+    /* true the moment a real pin exists (saved, tapped, dragged or a GPS
+       fix). Until then the marker is parked on the map centre as a handle
+       only — reporting it as a pin would file the apartment in the middle
+       of the town. */
+    var pinned = hasSavedPin;
 
     /* ---- write through to the host ---- */
     function commit(lat, lng, source, extraMeta) {
@@ -394,6 +412,7 @@ var ArzuzMap = (function () {
       if (acc < bestAcc) {
         bestAcc = acc;
         marker.setLatLng([lat, lng]);
+        pinned = true;
         if (!hasSavedPin || firstFix) commit(lat, lng, 'gps');
         else commit(lat, lng, 'gps');
       }
@@ -447,6 +466,7 @@ var ArzuzMap = (function () {
       marker.on('dragend', function () {
         var p = marker.getLatLng();
         userMovedMap = true;
+        pinned = true;
         commit(p.lat, p.lng, 'dragged');
         paintCoords(p.lat, p.lng, '\uD83D\uDCCD <b>Pin placed:</b> dragged position stored. Nudge it until it sits on the gate.', 'ok');
       });
@@ -454,6 +474,7 @@ var ArzuzMap = (function () {
       map.on('click', function (e) {
         if (traceMode) { addTraceVertex(e.latlng); return; }
         marker.setLatLng(e.latlng);
+        pinned = true;
         commit(e.latlng.lat, e.latlng.lng, 'tapped');
         paintCoords(e.latlng.lat, e.latlng.lng,
           '\uD83D\uDCCD <b>Pin placed:</b> tapped location stored. Drag to refine if needed.', 'ok');
@@ -509,7 +530,7 @@ var ArzuzMap = (function () {
       if (opts.trace) {
         var bar = $(opts.traceBarId || '');
         if (bar) {
-          var btnTrace = $('traceToggle'), btnUndo = $('traceUndo'), btnClear = $('traceClear');
+          var btnTrace = $(opts.traceToggleId || 'traceToggle'), btnUndo = $(opts.traceUndoId || 'traceUndo'), btnClear = $(opts.traceClearId || 'traceClear');
           if (btnTrace) btnTrace.addEventListener('click', function () {
             traceMode = !traceMode;
             btnTrace.classList.toggle('on', traceMode);
@@ -541,9 +562,11 @@ var ArzuzMap = (function () {
       }
 
       /* seed state */
-      commit(initial.lat, initial.lng, hasSavedPin ? 'admin' : 'tapped');
       if (hasSavedPin) {
+        commit(initial.lat, initial.lng, 'admin');
         paintCoords(initial.lat, initial.lng, '\uD83D\uDCCD <b>Saved pin restored.</b> Tap or drag to move it — live GPS stays on for refinement.', 'ok');
+      } else if (opts.promptText) {
+        paintCoords(initial.lat, initial.lng, opts.promptText, null);
       }
       if (opts.startGps !== false && (!hasSavedPin || opts.startGps === true)) startGpsLive();
 
@@ -561,7 +584,7 @@ var ArzuzMap = (function () {
       if (tracePts.length > 1) {
         traceLine = L.polyline(tracePts, { color: '#F59E0B', weight: 4, opacity: 0.85, dashArray: '1 8', lineCap: 'round' }).addTo(map);
       }
-      var n = $('traceCount');
+      var n = $(opts.traceCountId || 'traceCount');
       if (n) n.textContent = tracePts.length ? tracePts.length + ' pts' : '';
       if (traceMode && tracePts.length > 1) {
         map.fitBounds(traceLine.getBounds(), { padding: [30, 30] });
@@ -583,8 +606,12 @@ var ArzuzMap = (function () {
         ps.route_km = meta.route_km; ps.route_min = meta.route_min;
         host.answers[PASSAGE_KEY] = ps;
       }
-      host.onPin(marker ? marker.getLatLng().lat : initial.lat, marker ? marker.getLatLng().lng : initial.lng,
-        { route: meta.route, route_src: meta.route_src, route_km: meta.route_km, route_min: meta.route_min });
+      var routeMeta = { route: meta.route, route_src: meta.route_src, route_km: meta.route_km, route_min: meta.route_min };
+      if (pinned) {
+        host.onPin(marker.getLatLng().lat, marker.getLatLng().lng, routeMeta);
+      } else {
+        host.onRoute(routeMeta);
+      }
     }
 
     buildMap();

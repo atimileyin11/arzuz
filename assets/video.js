@@ -49,6 +49,38 @@ var ArzuzVideo = (function () {
 
   function watchUrl(id) { return 'https://www.youtube.com/watch?v=' + id; }
 
+  /* ---------------- what the player can actually play ----------------
+     Two things: a YouTube link (any of the four shapes above) and a direct
+     video file. Everything else a phone pastes — a Drive file, a Photos
+     album, a Vimeo page — is a web page, and pointing <video> at one draws
+     a black tile that never loads. Both the dashboard composer and the
+     landlord invite form ask these two questions, so the rule lives here
+     once and the refusal copy is the same in both places. */
+
+  var VIDEO_FILE_RE = /\.(mp4|m4v|mov|webm|ogv|ogg)([?#]|$)/i;
+
+  function isPlayable(url) {
+    var s = String(url || '').trim();
+    return !!parseYouTube(s) || VIDEO_FILE_RE.test(s);
+  }
+
+  /* called with whatever is in the box: "www.youtube.com/x" and
+     "youtu.be/x" are what a phone actually pastes, with no scheme */
+  function normalizeUrl(url) {
+    var s = String(url || '').trim();
+    if (s && !/^[a-z][a-z0-9+.-]*:/i.test(s)) s = 'https://' + s.replace(/^\/+/, '');
+    return s;
+  }
+
+  /* '' when the link is fine, otherwise the sentence to show the user */
+  function playbackProblem(url) {
+    var s = String(url || '').trim();
+    if (/^(javascript|data|vbscript|file):/i.test(s)) return 'That is not a link we can use.';
+    if (isPlayable(s)) return '';
+    if (/vimeo\.com/i.test(s)) return 'Vimeo links will not play in the listing — paste the YouTube link instead.';
+    return 'That link will not play here — paste a YouTube link, or drop the video file instead.';
+  }
+
   /* Poster frames of unlisted videos are publicly served by the
      i.ytimg.com CDN — good enough for gallery thumbnails, and it
      carries no YouTube UI. */
@@ -432,6 +464,9 @@ var ArzuzVideo = (function () {
   return {
     parseYouTube: parseYouTube,
     isYouTube: isYouTube,
+    isPlayable: isPlayable,
+    normalizeUrl: normalizeUrl,
+    playbackProblem: playbackProblem,
     watchUrl: watchUrl,
     thumb: thumb,
     embedProxyUrl: embedProxyUrl,

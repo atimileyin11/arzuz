@@ -40,7 +40,8 @@
     search: '',
     statusFilter: 'all',
     needsAskOnly: false,
-    showTestRows: false
+    showTestRows: false,
+    shareSchemaMissing: false   // true when supabase-draft-sharing.sql has not been run yet
   };
 
   function esc(str) {
@@ -131,9 +132,12 @@
   /* invite state shown next to the status tag on draft rows */
   function draftBadgeHtml(r) {
     if (str(r.status).toLowerCase() !== 'draft') return '';
+    if (!r.draft_token) return '<span class="draft-badge sent">' + ico('pencil', 12) + ' draft · link revoked</span>';
+    if (draftExpired(r)) return '<span class="draft-badge sent">' + ico('alert', 12) + ' link expired</span>';
     return r.draft_completed_at
       ? '<span class="draft-badge done">' + ico('check', 12) + ' completed — awaiting approval</span>'
-      : (r.draft_token ? '<span class="draft-badge sent">' + ico('link', 12) + ' invite sent</span>' : '<span class="draft-badge sent">' + ico('pencil', 12) + ' draft</span>');
+      : '<span class="draft-badge sent">' + ico('link', 12) +
+        (draftPermission(r) === 'view' ? ' view link sent' : ' edit link sent') + '</span>';
   }
 
   /* the Bookings / Support Desk SECTIONS map to different TABLES */
@@ -492,7 +496,7 @@
 
     var DOW = 0, DIX = 0, DIY = 0, DRAGGING = false, MOVED = false,
         OPEN0 = false, CUR = 0, VT = [];
-    var RATIO = 0.18, OPEN_MIN = 0.33, FLICK = 280, TICK = 90, SLOP = 8;
+    var RATIO = 0.18, OPEN_MIN = 0.5, FLICK = 280, TICK = 90, SLOP = 8;
 
     function drawerWidth() {
       var r = side.getBoundingClientRect();
@@ -526,6 +530,8 @@
       else if (raw < -DOW) p = -DOW + (raw + DOW) * RATIO;
       else p = raw;
       side.style.setProperty('--side-x', p + 'px');
+      /* the edge grip rides the drawer's leading edge (see .side-grip) */
+      body.style.setProperty('--side-edge', Math.max(0, DOW + p) + 'px');
       if (scrim) scrim.style.opacity = (Math.max(0, Math.min(1, 1 + p / DOW)) * 0.62).toFixed(3);
     }
 
@@ -604,6 +610,7 @@
          var IS the seam; the transition starts at the live value */
       body.classList.remove('side-dragging');
       side.style.removeProperty('--side-x');
+      body.style.removeProperty('--side-edge');
       if (scrim) scrim.style.opacity = '';
       CUR = 0;
       if (shouldOpen) {
@@ -632,6 +639,149 @@
       else if (typeof mq.addListener === 'function') mq.addListener(onChange);
     }
     syncBtn();
+  })();
+
+  /* ================= 2c. Bottom sheets: swipe down to dismiss.
+
+     On mobile the modals present as bottom sheets. Grabbing the sheet
+     header and pulling down throws it away: 1:1 tracking, resistance
+     when lifted past its resting spot, a flick release with momentum
+     projection, and a click seal so the throw never presses whatever
+     it lands on. Only the header is a grab zone (touch-action: none)
+     so the sheet body keeps scrolling normally. ES5, no deps. */
+
+  (function initSheetGestures() {
+    var body = document.body;
+    var mq = (typeof window.matchMedia === 'function') ? window.matchMedia('(min-width: 861px)') : null;
+    function isDesktop() { return mq ? mq.matches : true; }
+
+    var RATIO = 0.4, OPEN_MIN = 0.3, FAR = 90, FLICK = 280, TICK = 90, SLOP = 8;
+
+    var OV = null, BOX = null, Y0 = 0, X0 = 0, DRAGGING = false, MOVED = false, VT = [];
+
+    function hasTouch(e) {
+      return !!(e.pointerType === 'touch' || e.pointerType === 'pen');
+    }
+    function stamp(e) { return e.timeStamp || Date.now(); }
+
+    /* a flick keeps going: v (px/s) decays exponentially */
+    function project(v) {
+      var rate = 0.998;
+      return (v / 1000) * rate / (1 - rate);
+    }
+    function track(y, t) {
+      VT.push({ y: y, t: t });
+      while (VT.length > 2 && t - VT[0].t > TICK) VT.shift();
+    }
+    function velocity() {
+      if (VT.length < 2) return 0;
+      var a = VT[0], b = VT[VT.length - 1], dt = (b.t - a.t) / 1000;
+      return dt ? (b.y - a.y) / dt : 0;
+    }
+
+    /* a throw that ends over a control must not press it — but our own
+       programmatic clicks (the composer's Cancel, below) are not trusted
+       events and must still land, or the discard prompt would be swallowed */
+    function sealClicks() {
+      var catchIt = function (e) {
+        if (!e.isTrusted) return;
+        e.preventDefault(); e.stopPropagation();
+      };
+      document.addEventListener('click', catchIt, true);
+      setTimeout(function () { document.removeEventListener('click', catchIt, true); }, 300);
+    }
+
+    function clearVars(ov, box) {
+      if (box) box.style.removeProperty('--sheet-y');
+      if (ov) ov.style.removeProperty('--sheet-o');
+    }
+
+    /* the composer has an unsaved-changes prompt, so its swipe travels
+       the same road as its Cancel button instead of hiding outright.
+       Returns whether the sheet actually closed. */
+    function closeVia(ov) {
+      if (ov.id === 'addAptModal' && addDirty) {
+        var cancel = document.getElementById('btnCancelAddApt');
+        if (cancel) cancel.click();       /* surfaces the discard prompt on top */
+        return false;                     /* composer stays — snap it back */
+      }
+      hide(ov);
+      if (ov.id === 'delModal') state.pendingDelete = null;
+      return true;
+    }
+
+    /* hand the sheet to the CSS transition from the live finger position,
+       then close once it is off-screen */
+    function slideAway(ov, box) {
+      var h = box.offsetHeight || 1;
+      box.style.setProperty('--sheet-y', (h + 40) + 'px');
+      ov.style.setProperty('--sheet-o', '0');
+      setTimeout(function () {
+        if (closeVia(ov)) setTimeout(function () { clearVars(ov, box); }, 340);
+        else clearVars(ov, box);          /* stayed open — put it back in place */
+      }, 210);
+    }
+
+    function onDown(e) {
+      if (DRAGGING || isDesktop() || !hasTouch(e) || e.button) return;
+      var t = e.target;
+      if (!t || !t.closest) return;
+      var head = t.closest('.modal-head');
+      if (!head) return;                  /* the header is the grab zone */
+      var box = head.closest('.modal-box');
+      var ov = (box && box.closest) ? box.closest('.modal-overlay') : null;
+      if (!box || !ov || !ov.classList.contains('open')) return;
+      OV = ov; BOX = box;
+      Y0 = e.clientY; X0 = e.clientX;
+      DRAGGING = true; MOVED = false;
+      VT.length = 0;
+      track(Y0, stamp(e));
+    }
+
+    function onMove(e) {
+      if (!DRAGGING) return;
+      var dy = e.clientY - Y0, dx = e.clientX - X0;
+      if (!MOVED) {
+        if (Math.abs(dx) < SLOP && Math.abs(dy) < SLOP) return;
+        if (Math.abs(dx) > Math.abs(dy) || dy <= 0) {   /* sideways or upward: not a dismiss */
+          DRAGGING = false; OV = null; BOX = null;
+          return;
+        }
+        MOVED = true;
+        body.classList.add('sheet-dragging');           /* kills the transition */
+      }
+      track(e.clientY, stamp(e));
+      var h = BOX.offsetHeight || 1;
+      var p = dy > 0 ? dy : dy * RATIO;                 /* resistance when lifted */
+      BOX.style.setProperty('--sheet-y', p + 'px');
+      OV.style.setProperty('--sheet-o', Math.max(0.06, Math.min(1, 1 - dy / (h * 1.4))).toFixed(3));
+      if (e.cancelable) e.preventDefault();             /* we own this gesture */
+    }
+
+    function onUp(e) {
+      if (!DRAGGING) return;
+      var ov = OV, box = BOX, moved = MOVED, v = velocity();
+      DRAGGING = false; MOVED = false; OV = null; BOX = null;
+      if (!moved || !ov || !box) return;                /* plain tap: click proceeds */
+      body.classList.remove('sheet-dragging');
+      sealClicks();
+      var h = box.offsetHeight || 1;
+      var dy = (e && typeof e.clientY === 'number') ? e.clientY - Y0 : 0;
+      if (dy < 0) dy = dy * RATIO;
+      var proj = dy + Math.max(0, Math.min(h, project(v)));
+      if (v > FLICK || proj >= Math.max(FAR, h * OPEN_MIN)) {
+        slideAway(ov, box);
+      } else {
+        box.style.setProperty('--sheet-y', '0px');      /* snap back */
+        ov.style.setProperty('--sheet-o', '1');
+        setTimeout(function () { clearVars(ov, box); }, 260);
+      }
+    }
+
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp, true);
+    document.addEventListener('pointercancel', onUp, true);
   })();
 
   /* ================= 3. Data fetch ================= */
@@ -807,7 +957,7 @@
             '<span>' + esc(pick(r, 'area', ['ar']) || '—') + ' · ' + (done ? 'landlord finished — review and approve' : 'waiting for the landlord') + '</span></span>' +
             '<span class="ops-cta">' +
             (done ? '<button type="button" class="btn-inline green" data-act="draft-approve" data-table="listings" data-id="' + esc(r.id) + '">Review &amp; approve</button>' : '') +
-            '<button type="button" class="btn-inline" data-act="draft-copy" data-table="listings" data-id="' + esc(r.id) + '">' + ico('link', 13) + ' Link</button>' +
+            '<button type="button" class="btn-inline" data-act="draft-share" data-table="listings" data-id="' + esc(r.id) + '">' + ico('link', 13) + ' Share link</button>' +
             '</span></div>';
         }).join('') +
           (drafts.length > 5 ? '<p class="sub" style="margin-top:10px">…and ' + (drafts.length - 5) + ' more in Listings.</p>' : '');
@@ -1050,8 +1200,11 @@
     if (!(isSupport && table === 'listings')) html += actBtn('edit', table, r.id, ico('pencil', 13) + ' Edit');
     if (isAdmin && table === 'listings' && str(r.status).toLowerCase() === 'draft') {
       if (r.draft_token) {
-        html += '<button type="button" class="act-btn" data-act="draft-copy" data-table="listings" data-id="' + esc(r.id) + '">' + ico('link', 13) + ' Link</button>';
+        html += '<button type="button" class="act-btn" data-act="draft-share" data-table="listings" data-id="' + esc(r.id) + '">' + ico('link', 13) + ' Share</button>';
+        html += '<button type="button" class="act-btn" data-act="draft-copy" data-table="listings" data-id="' + esc(r.id) + '">' + ico('copy', 13) + '</button>';
         html += '<button type="button" class="act-btn" data-act="draft-wa" data-table="listings" data-id="' + esc(r.id) + '">' + ico('whatsapp', 13) + '</button>';
+      } else {
+        html += '<button type="button" class="act-btn" data-act="draft-rotate" data-table="listings" data-id="' + esc(r.id) + '">' + ico('refresh', 13) + ' New link</button>';
       }
       if (r.draft_completed_at) {
         html += '<button type="button" class="act-btn act-approve" data-act="draft-approve" data-table="listings" data-id="' + esc(r.id) + '">' + ico('check', 13) + ' Approve</button>';
@@ -1277,7 +1430,8 @@
     else if (act === 'edit') openEditModal(table, id);
     else if (act === 'del') openDeleteModal(table, id);
     else if (act === 'draft-copy') copyDraftLink(table, id);
-    else if (act === 'draft-wa') { var dr = findRow(table, id); if (dr) openInviteModal(dr, false); }
+    else if (act === 'draft-share') { var ds = findRow(table, id); if (ds) openShareModal(ds, false); }
+    else if (act === 'draft-wa') { var dr = findRow(table, id); if (dr) openShareModal(dr, false); }
     else if (act === 'draft-rotate') rotateDraftLink(table, id);
     else if (act === 'draft-revoke') revokeDraftLink(table, id);
     else if (act === 'draft-approve') openEditModal(table, id);   // admin sets tier + status deliberately
@@ -1354,95 +1508,166 @@
       var photoUrl = pick(row, 'photo_url', ['photo']);
       var videoUrl = p.video || p.video_url || '';
       var aptId = p.apt_id || p.custom_id || shortId(row.id);
+      var curRole = str(p.contact_role) || str(p.who);
+      var availMode = str(p.avail) === 'occupied' ? 'occupied' : 'vacant';
+      var unitsVal = str(p.units) || (availMode === 'vacant' ? str(p.rm).replace(/[^0-9]/g, '') : '');
+      var accessNotes = (p.passage && str(p.passage.landmark)) || str(p.access_notes);
+      var pLat = row.latitude || p.lat || '';
+      var pLng = row.longitude || p.lng || '';
+      var pinStr = p.pin || (pLat && pLng ? pLat + ',' + pLng : '');
+      var hasRoute = !!(p.passage && p.passage.route && p.passage.route.length > 1);
 
-      html += '<div class="edit-fld"><label>Apartment ID / Code</label><input type="text" id="edit_apt_id" value="' + esc(aptId) + '" placeholder="e.g. APT-001"></div>';
-      html += '<div class="edit-fld"><label>Property Name</label><input type="text" id="edit_prop_name" value="' + esc(pick(row, 'property_name', ['prop_name'])) + '"></div>';
-      html += '<div class="edit-fld"><label>Owner First Name</label><input type="text" id="edit_nm" value="' + esc(pick(row, 'owner_name', ['nm'])) + '"></div>';
-      html += '<div class="edit-fld"><label>Owner Last Name</label><input type="text" id="edit_nm_last" value="' + esc(p.last || '') + '"></div>';
-      html += '<div class="edit-fld"><label>Phone / WhatsApp</label><input type="tel" id="edit_ph" value="' + esc(pick(row, 'owner_phone', ['ph'])) + '"></div>';
-      html += '<div class="edit-fld"><label>Property Type</label><select id="edit_ty">' +
+      /* Status + admin notes were rendered above; they belong at the top
+         of the first tab. */
+      var sharedFields = html;
+
+      /* ---------------- tab 1 — property details & pricing ---------------- */
+      var specs = '';
+      specs += '<div class="edit-fld"><label>Apartment ID / Code</label><input type="text" id="edit_apt_id" value="' + esc(aptId) + '" placeholder="e.g. APT-001"></div>';
+      specs += '<div class="edit-fld"><label>Property / Lodge Name <small>optional</small></label><input type="text" id="edit_prop_name" value="' + esc(pick(row, 'property_name', ['prop_name'])) + '"></div>';
+      specs += '<div class="edit-fld"><label>Property Type</label><select id="edit_ty">' +
         (typeof PROPERTY_TYPES !== 'undefined' ? PROPERTY_TYPES : []).map(function (t) {
           return '<option' + (pick(row, 'property_type', ['ty']) === t ? ' selected' : '') + '>' + esc(t) + '</option>';
         }).join('') + '</select></div>';
-      html += '<div class="edit-fld"><label>Area / Street</label><input type="text" id="edit_ar" value="' + esc(pick(row, 'area', ['ar'])) + '"></div>';
-      html += '<div class="edit-fld"><label>Rooms Available</label><input type="text" id="edit_rm" value="' + esc(pick(row, 'rooms', ['rm'])) + '"></div>';
-      html += '<div class="edit-fld"><label>Listed Price (₦ / session)</label><input type="number" id="edit_rent" value="' + esc(pick(row, 'listed_price_ngn', ['rent'])) + '"></div>';
+      specs += '<div class="edit-fld"><label>Area / Street</label><input type="text" id="edit_ar" value="' + esc(pick(row, 'area', ['ar'])) + '"></div>';
+      specs += '<div class="edit-fld"><label>Rent Price (₦ / session)</label><input type="number" id="edit_rent" value="' + esc(pick(row, 'listed_price_ngn', ['rent'])) + '"></div>';
 
       /* OPENING ASK — the thesis number. Locked once set. */
       var ask = row.opening_ask_ngn;
-      html += '<div class="edit-fld full"><label>Opening Ask (₦) <small>What the landlord asked BEFORE seeing demand data. Enter it from field notes.</small></label>' +
+      specs += '<div class="edit-fld full"><label>Opening Ask (₦) <small>what the landlord asked BEFORE seeing demand data</small></label>' +
         (ask != null
           ? '<input type="number" id="edit_ask" value="' + esc(ask) + '" disabled>' +
             '<label class="ask-unlock"><input type="checkbox" id="edit_ask_unlock">' +
             '<small>Unlock &amp; override deliberately — overwriting it destroys the only real measurement Arzuz has.</small></label>'
-          : '<input type="number" id="edit_ask" value="" placeholder="e.g. 200000">' +
-            '<small style="color:#9A8CA8">Leave empty only if genuinely unknown.</small>') +
+          : '<input type="number" id="edit_ask" value="" placeholder="e.g. 200000">') +
         '</div>';
 
-      html += '<div class="edit-fld"><label>Verification Tier</label><select id="edit_tier">' +
-        '<option value="0"' + (Number(row.tier) === 0 ? ' selected' : '') + '>Tier 0 — Unverified</option>' +
-        '<option value="1"' + (Number(row.tier) === 1 ? ' selected' : '') + '>Tier 1 — Community Verified</option>' +
-        '<option value="2"' + (Number(row.tier) === 2 ? ' selected' : '') + '>Tier 2 — Inspected</option>' +
-        '</select></div>';
-      html += '<div class="edit-fld"><label>Negotiable?</label><select id="edit_neg">' +
-        ['Yes', 'No', 'Depends on the tenant'].map(function (o) { return '<option' + ((p.neg || '') === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
-        '</select></div>';
+      /* availability — vacant count or fully occupied */
+      specs += '<div class="edit-fld full"><label>Availability</label>' +
+        '<div class="seg" id="editAvailSeg" role="group" aria-label="Availability">' +
+          '<button type="button" class="seg-btn' + (availMode === 'vacant' ? ' on' : '') + '" data-seg="vacant" aria-pressed="' + (availMode === 'vacant' ? 'true' : 'false') + '">' + ico('check', 13) + ' Vacant units available</button>' +
+          '<button type="button" class="seg-btn' + (availMode === 'occupied' ? ' on' : '') + '" data-seg="occupied" aria-pressed="' + (availMode === 'occupied' ? 'true' : 'false') + '">' + ico('x', 13) + ' Fully occupied</button>' +
+        '</div>' +
+        '<div id="editUnitsWrap"' + (availMode === 'occupied' ? ' style="display:none;"' : '') + '>' +
+          '<input type="number" id="edit_units" min="1" step="1" value="' + esc(unitsVal) + '" placeholder="How many units are vacant? e.g. 3">' +
+        '</div>' +
+        '<input type="hidden" id="edit_avail" value="' + esc(availMode) + '"></div>';
 
-      html += '<div class="edit-fld full"><label>Description & Features</label><textarea id="edit_desc" rows="2" placeholder="Running water, prepaid meter…">' + esc(p.desc || p.description || '') + '</textarea></div>';
+      specs += '<div class="edit-fld"><label>Contact Person</label><input type="text" id="edit_nm" value="' + esc((str(pick(row, 'owner_name', ['nm'])) + ' ' + str(p.last)).trim()) + '"></div>';
+      specs += '<div class="edit-fld"><label>Contact Phone / WhatsApp</label><input type="tel" id="edit_ph" value="' + esc(pick(row, 'owner_phone', ['ph'])) + '"></div>';
+      specs += '<div class="edit-fld"><label>Contact Role</label><select id="edit_role">' + roleOptionsHtml(curRole) + '</select></div>';
+      specs += '<div class="edit-fld"><label>Verification Tier</label><select id="edit_tier">' + tierOptionsHtml(row.tier) + '</select></div>';
 
-      var curUt = toList(p.ut || p.utilities);
-      html += '<div class="edit-fld full"><label>Hostel Amenities & Utilities</label><div class="admin-chips-wrap">' +
-        utilitiesList().map(function (u) { return chipHtml('edit_ut', u, curUt.indexOf(u) !== -1); }).join('') +
+      specs += '<div class="edit-fld full"><label>Amenities &amp; Utilities <small>type to search — Enter adds a new one</small></label>' +
+        '<div class="tag-field" id="editAmenityField">' +
+          '<span id="editAmenityChips" style="display:contents;"></span>' +
+          '<input type="text" id="editAmenityInput" placeholder="e.g. solar, borehole, prepaid meter…" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="editAmenitySuggest">' +
+          '<div class="tag-suggest" id="editAmenitySuggest" role="listbox" aria-label="Amenity suggestions"></div>' +
         '</div></div>';
 
-      /* media gallery — several assets per listing, each carrying the © credit */
-      html += '<div class="edit-fld full"><label>Apartment Media Gallery <small>first photo is the cover · every asset is stamped © Arzuz</small></label>' +
-        '<div class="admin-media-zone" id="galEditZone">' + ico('image', 15) + ' Click to upload photos (select several)' +
+      specs += '<div class="edit-fld full"><label>Description &amp; Features</label><textarea id="edit_desc" rows="2" placeholder="Running water, prepaid meter…">' + esc(p.desc || p.description || '') + '</textarea></div>';
+      specs += '<div class="edit-fld full"><label class="ck-line"><input type="checkbox" id="edit_split_ok"' +
+        ((p.split_ok === true || p.split_ok === 'yes') ? ' checked' : '') +
+        '> <span>Landlord consents to this room being shared by two tenants who split the cost <small>(enables roommate matching on the public page)</small></span></label></div>';
+
+      /* ---------------- tab 2 — location & access ---------------- */
+      var loc = '';
+      loc += '<div class="edit-fld full"><label>' + ico('pin', 13) + ' Map <small>one map — pin the gate, or trace the walk-in path</small></label>' +
+        '<div class="map-mode-bar">' +
+          '<div class="seg" id="editMapModeSeg" role="group" aria-label="Map mode">' +
+            '<button type="button" class="seg-btn on" data-seg="pin" aria-pressed="true">' + ico('pin', 13) + ' Pin location</button>' +
+            '<button type="button" class="seg-btn" data-seg="path" aria-pressed="false">' + ico('trending', 13) + ' Draw path</button>' +
+          '</div>' +
+          '<span class="map-coords" id="editMapCoordsText">' + (pinStr ? ico('pin', 13) + ' ' + esc(pinStr) : ico('pin', 13) + ' Tap the map at the gate') + '</span>' +
+        '</div>' +
+        '<div class="admin-map-wrap"><div id="editLeafletMap"></div>' +
+          '<div class="map-float-btns" id="editMapLayerSwitcher">' +
+            '<button type="button" class="map-layer-btn active" data-layer="sat">' + ico('image', 12) + ' Satellite</button>' +
+            '<button type="button" class="map-layer-btn" data-layer="street">' + ico('search', 12) + ' Street</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="map-bottom-bar">' +
+          '<div class="admin-trace-bar" id="editTraceBar" style="display:none;">' +
+            '<button type="button" id="editTraceToggle" style="display:none;">Trace</button>' +
+            '<button type="button" class="psg-tool" id="editTraceUndo">' + ico('chevL', 12) + ' Undo</button>' +
+            '<button type="button" class="psg-tool" id="editTraceClear">' + ico('x', 12) + ' Clear path</button>' +
+            '<span class="psg-count" id="editTraceCount"></span>' +
+          '</div>' +
+          '<button type="button" class="gps-btn" id="editBtnLocateMe">' + ico('pin', 13) + ' Use GPS</button>' +
+        '</div>' +
+        '<div class="map-status-box" id="editMapStatus">Live GPS is off here to save battery — tap Use GPS when you are at the gate.</div>' +
+        '<input type="hidden" id="edit_lat" value="' + esc(pLat) + '">' +
+        '<input type="hidden" id="edit_lng" value="' + esc(pLng) + '">' +
+        '<input type="hidden" id="edit_pin_meta" value=\'' + esc(JSON.stringify(p.pin_meta || null)) + '\'>' +
+        (hasRoute ? '<div class="apt-hint" style="margin-top:8px;">A ' + p.passage.route.length + '-point walk path is stored on this listing. Switch to <b>Draw path</b> to see or change it.</div>' : '') +
+        '</div>';
+
+      loc += '<div class="edit-fld full"><label>' + ico('pin', 13) + ' Access &amp; Navigation Notes <small>optional — landmark, gate colour, stairs, what to look for</small></label>' +
+        '<textarea id="edit_access_notes" rows="3" placeholder="e.g. Opposite the blue mosque, brown double gate with a small green door, first floor — stairs at the back.">' + esc(accessNotes) + '</textarea></div>';
+
+      /* ---------------- tab 3 — media & draft sharing ---------------- */
+      var media = '';
+      media += '<div class="edit-fld full"><label>' + ico('image', 13) + ' Photos <small>drag &amp; drop or click · compressed in the browser before upload</small></label>' +
+        '<div class="admin-media-zone" id="galEditZone" role="button" tabindex="0">' + ico('image', 15) + ' Add photos — drop them here, or click to choose several' +
         '<input type="file" id="galEditInput" accept="image/*" multiple style="display:none;">' +
-        '<div id="galEditProgress" class="media-upload-status"></div>' +
-        '</div>' +
-        '<div class="admin-media-zone" id="galEditVideoZone" style="margin-top:8px;">' + ico('video', 15) + ' Click to upload a video tour' +
+        '</div><div class="media-upload-status" id="galEditProgress"></div></div>';
+
+      media += '<div class="edit-fld full"><label>' + ico('video', 13) + ' Video tour <small>drag &amp; drop a file, or paste a link</small></label>' +
+        '<div class="admin-media-zone" id="galEditVideoZone" role="button" tabindex="0">' + ico('video', 15) + ' Drop a video tour here, or click to choose' +
         '<input type="file" id="galEditVideoInput" accept="video/*" style="display:none;">' +
-        '<div id="galEditVideoProgress" class="media-upload-status"></div>' +
-        '</div>' +
-        '<input type="url" id="edit_video_manual" value="' + esc(videoUrl) + '" placeholder="Or paste direct video URL" style="margin-top:6px;font-size:12.5px">' +
+        '</div><div class="media-upload-status" id="galEditVideoProgress"></div>' +
+        '<div class="admin-media-zone url-zone" style="margin-top:8px;"><div class="url-row">' +
+        '<input type="url" id="edit_video_manual" value="' + esc(videoUrl) + '" placeholder="…or paste a YouTube link">' +
+        '<button type="button" id="edit_video_url_add">' + ico('plus', 12) + ' Embed</button>' +
+        '</div></div></div>';
+
+      media += '<div class="edit-fld full"><label>Staged media <small>nothing is sent until it lands here · ✕ removes · ★ sets the cover</small></label>' +
         '<div class="gal-mgr" id="galEditGrid"></div>' +
         '<input type="hidden" id="edit_photo" value="' + esc(photoUrl) + '">' +
         '<input type="hidden" id="edit_video" value="' + esc(videoUrl) + '">' +
         '</div>';
-      html += '<div class="edit-fld full"><label class="ck-line"><input type="checkbox" id="edit_split_ok"' +
-        ((p.split_ok === true || p.split_ok === 'yes') ? ' checked' : '') +
-        '> <span>Landlord consents to this room being shared by two tenants who split the cost <small>(enables roommate matching on the public page)</small></span></label></div>';
-    }
 
-    else if (table === 'scout_submissions') {
-      var scoutPhoto = pick(row, 'photo_url', ['photo']);
-      html += '<div class="edit-fld"><label>Area / Street</label><input type="text" id="edit_area" value="' + esc(pick(row, 'area', ['area'])) + '"></div>';
-      html += '<div class="edit-fld"><label>Scout Phone</label><input type="tel" id="edit_phone" value="' + esc(pick(row, 'scout_phone', ['phone'])) + '"></div>';
-      html += '<div class="edit-fld"><label>Rent Paid (₦)</label><input type="number" id="edit_amt" value="' + esc(pick(row, 'rent_reported', ['amt'])) + '"></div>';
-      html += '<div class="edit-fld"><label>Vacancy Signal</label><input type="text" id="edit_vac" value="' + esc(pick(row, 'vacancy_signal', ['vac'])) + '"></div>';
-      if (scoutPhoto) {
-        html += '<div class="edit-fld full"><label>Building Photo</label>' +
-          '<img class="details-media" src="' + esc(scoutPhoto) + '" alt="Building photo" data-act="photo" data-url="' + esc(scoutPhoto) + '"></div>';
+      if (str(row.status).toLowerCase() === 'draft') {
+        media += '<div class="edit-fld full"><label>' + ico('link', 13) + ' Draft link &amp; permissions</label>' +
+          '<div class="apt-hint">' + (row.draft_token
+            ? 'Permission: <b>' + esc(draftPermission(row) === 'view' ? 'View only' : 'Can edit') + '</b> · ' + esc(expiryLabel(row)) + '.'
+            : 'The link is revoked — issue a new one below.') +
+          '</div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">' +
+            '<button type="button" class="btn-inline green" data-act="draft-share" data-table="listings" data-id="' + esc(row.id) + '">' + ico('link', 13) + ' Manage permissions</button>' +
+            (row.draft_token ? '<button type="button" class="btn-inline" data-act="draft-copy" data-table="listings" data-id="' + esc(row.id) + '">' + ico('copy', 13) + ' Copy link</button>' : '') +
+            '<button type="button" class="btn-inline" data-act="draft-wa" data-table="listings" data-id="' + esc(row.id) + '">' + ico('whatsapp', 13) + ' Send</button>' +
+            '<button type="button" class="btn-inline" data-act="draft-rotate" data-table="listings" data-id="' + esc(row.id) + '">' + ico('refresh', 13) + ' New link</button>' +
+            (row.draft_token ? '<button type="button" class="btn-inline" data-act="draft-revoke" data-table="listings" data-id="' + esc(row.id) + '">' + ico('x', 13) + ' Revoke</button>' : '') +
+          '</div></div>';
       }
-    }
 
-    /* Location + passage editor — listings and scout reports both carry a pin */
-    if (table === 'listings' || table === 'scout_submissions') {
-      var pLat = row.latitude || p.lat || '';
-      var pLng = row.longitude || p.lng || '';
-      var pinStr = p.pin || (pLat && pLng ? pLat + ',' + pLng : '');
+      html = '<div class="apt-tabs" role="tablist" aria-label="Apartment sections">' +
+        '<button type="button" class="apt-tab active" role="tab" aria-selected="true" data-apt-tab="specs">' + ico('home', 15) + ' Property &amp; Pricing</button>' +
+        '<button type="button" class="apt-tab" role="tab" aria-selected="false" data-apt-tab="location">' + ico('pin', 15) + ' Location &amp; Access</button>' +
+        '<button type="button" class="apt-tab" role="tab" aria-selected="false" data-apt-tab="media">' + ico('image', 15) + ' Media &amp; Draft</button>' +
+        '</div>' +
+        '<div class="apt-panel" data-apt-panel="specs"><div class="edit-form-grid">' + sharedFields + specs + '</div></div>' +
+        '<div class="apt-panel" data-apt-panel="location" hidden><div class="edit-form-grid">' + loc + '</div></div>' +
+        '<div class="apt-panel" data-apt-panel="media" hidden><div class="edit-form-grid">' + media + '</div></div>';
+    }
+    /* Location + passage editor — scout reports keep the flat grid;
+       apartment listings carry the same widgets inside their tabs. */
+    if (table === 'scout_submissions') {
+      var sLat = row.latitude || p.lat || '';
+      var sLng = row.longitude || p.lng || '';
+      var sPin = p.pin || (sLat && sLng ? sLat + ',' + sLng : '');
       html += '<div class="edit-fld full"><label>' + ico('pin', 13) + ' Location Pin <small>live GPS · tap or drag · accuracy and source are stored</small></label>' +
         '<div class="admin-map-wrap"><div id="editLeafletMap"></div>' +
         '<div class="map-float-btns" id="editMapLayerSwitcher">' +
         '<button type="button" class="map-layer-btn active" data-layer="sat">' + ico('image', 12) + ' Satellite</button>' +
         '<button type="button" class="map-layer-btn" data-layer="street">' + ico('search', 12) + ' Street</button>' +
         '</div></div>' +
-        '<div class="map-bottom-bar"><span class="map-coords" id="editMapCoordsText">' + (pinStr ? ico('pin', 13) + ' ' + esc(pinStr) : ico('pin', 13) + ' Tap map or drag marker to the gate') + '</span>' +
+        '<div class="map-bottom-bar"><span class="map-coords" id="editMapCoordsText">' + (sPin ? ico('pin', 13) + ' ' + esc(sPin) : ico('pin', 13) + ' Tap map or drag marker to the gate') + '</span>' +
         '<button type="button" class="gps-btn" id="editBtnLocateMe">' + ico('pin', 13) + ' Use GPS</button></div>' +
         '<div class="map-status-box" id="editMapStatus">Live GPS is off here to save battery — tap Use GPS when you are at the gate.</div>' +
-        '<input type="hidden" id="edit_lat" value="' + esc(pLat) + '">' +
-        '<input type="hidden" id="edit_lng" value="' + esc(pLng) + '">' +
+        '<input type="hidden" id="edit_lat" value="' + esc(sLat) + '">' +
+        '<input type="hidden" id="edit_lng" value="' + esc(sLng) + '">' +
         '<input type="hidden" id="edit_pin_meta" value=\'' + esc(JSON.stringify(p.pin_meta || null)) + '\'></div>';
       html += '<div class="edit-fld full"><label>' + ico('pin', 13) + ' Passage to the apartment <small>landmark · gate · steps · traced path — shown on the public listing page</small></label>' +
         '<div id="editPassageMount"></div></div>';
@@ -1451,8 +1676,8 @@
     $('editFieldsContainer').innerHTML = html;
     show(editModal);
 
-    if (table === 'listings' || table === 'scout_submissions') {
-      destroyEditMapAndPassage();
+    if (table === 'scout_submissions') {
+      destroyEditMap();
       if (typeof ArzuzMap !== 'undefined') {
         editPinCapture = ArzuzMap.pinCapture({
           containerId: 'editLeafletMap',
@@ -1463,8 +1688,8 @@
           tipBannerId: null,
           startGps: false,
           trace: false,
-          lat: pLat || null,
-          lng: pLng || null,
+          lat: sLat || null,
+          lng: sLng || null,
           onPin: function (lat, lng, meta) {
             var la = $('edit_lat'), ln = $('edit_lng'), mt = $('edit_pin_meta');
             if (la) la.value = lat;
@@ -1479,26 +1704,87 @@
           answers: null,
           passage: p.passage || null,
           miniMap: true,
-          pin: pLat ? { lat: pLat, lng: pLng } : null,
+          pin: sLat ? { lat: sLat, lng: sLng } : null,
           onChange: null
         });
       }
     }
 
     if (table === 'listings') {
+      /* The map and the media queue are built when their tab is first
+         revealed — Leaflet cannot size a container that is display:none. */
+      initAptTabs($('editFieldsContainer'), 'edit', {
+        location: function () {
+          if (editMapReady) return;
+          editMapReady = true;
+          initEditListingMap(row);
+        }
+      });
+      APT_TAG.edit = initTagField({
+        fieldId: 'editAmenityField', chipsId: 'editAmenityChips',
+        inputId: 'editAmenityInput', suggestId: 'editAmenitySuggest',
+        value: toList(p.ut || p.utilities)
+      });
+      var availSeg = initSeg('editAvailSeg', function (mode) {
+        var wrap = $('editUnitsWrap');
+        if (wrap) wrap.style.display = (mode === 'occupied') ? 'none' : '';
+        if ($('edit_avail')) $('edit_avail').value = mode;
+      });
+      if ($('edit_avail')) $('edit_avail').value = availSeg ? availSeg.get() : availMode;
+      editMapMode = initSeg('editMapModeSeg', function (mode) { setEditMapMode(mode); });
+
       var unlock = $('edit_ask_unlock');
       if (unlock) unlock.addEventListener('change', function () { $('edit_ask').disabled = !this.checked; });
+
       initGalleryManager('edit', seedMedia(p, photoUrl, videoUrl));
-      var manual = $('edit_video_manual');
-      if (manual) manual.addEventListener('change', function () {
-        var url = manual.value.trim();
+
+      var emanual = $('edit_video_manual');
+      var eadd = $('edit_video_url_add');
+      function embedEditUrl() {
+        var url = emanual ? str(emanual.value).trim() : '';
         if (!url) return;
-        var has = galList('edit').some(function (m) { return m.url === url; });
-        if (!has) { galList('edit').push({ type: 'video', url: url, label: 'Video tour', credit: credit() }); renderGal('edit'); }
-      });
+        /* same rule as the add form — see video.js:playbackProblem */
+        if (window.ArzuzVideo && ArzuzVideo.normalizeUrl) url = ArzuzVideo.normalizeUrl(url);
+        if (!/^https?:\/\/[a-z0-9.-]+\.[a-z]{2,}([/?#]|$)/i.test(url)) {
+          if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('That does not look like a link.', 'error');
+          return;
+        }
+        if (window.ArzuzVideo && ArzuzVideo.playbackProblem) {
+          var eproblem = ArzuzVideo.playbackProblem(url);
+          if (eproblem) {
+            if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast(eproblem, 'error');
+            return;
+          }
+        }
+        var list = galList('edit');
+        if (!list.some(function (m) { return m.url === url; })) {
+          list.push({ type: 'video', url: url, label: 'Video tour', credit: credit() });
+          renderGal('edit');
+        }
+        emanual.value = '';
+        if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('Video tour attached.', 'success');
+      }
+      if (eadd) eadd.addEventListener('click', embedEditUrl);
+      if (emanual) emanual.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); embedEditUrl(); } });
     }
   };
 
+  /* Contact-role + tier selects shared by the composer and the editor */
+  var CONTACT_ROLES = ['Landlord', 'Caretaker', 'Agent', 'Admin'];
+
+  function roleOptionsHtml(current) {
+    var cur = str(current);
+    return ['<option value="">—</option>'].concat(CONTACT_ROLES.map(function (r) {
+      return '<option value="' + esc(r) + '"' + (cur === r ? ' selected' : '') + '>' + esc(r) + '</option>';
+    })).join('');
+  }
+
+  function tierOptionsHtml(tier) {
+    var t = Number(tier);
+    return ['Tier 0 — Unverified', 'Tier 1 — Community Verified', 'Tier 2 — Inspected'].map(function (label, i) {
+      return '<option value="' + i + '"' + (t === i ? ' selected' : '') + '>' + esc(label) + '</option>';
+    }).join('');
+  }
   function collectEditPayload(table, row) {
     var p = Object.assign({}, payloadOf(row));
 
@@ -1513,19 +1799,28 @@
     } else if (table === 'listings') {
       p.apt_id = $('edit_apt_id') ? $('edit_apt_id').value.trim() : '';
       p.custom_id = p.apt_id;
-      p.prop_name = $('edit_prop_name').value.trim();
-      p.nm = $('edit_nm').value.trim();
-      p.last = $('edit_nm_last') ? $('edit_nm_last').value.trim() : (p.last || '');
-      p.ph = $('edit_ph').value.trim();
+      p.prop_name = $('edit_prop_name') ? $('edit_prop_name').value.trim() : '';
+      p.nm = $('edit_nm') ? $('edit_nm').value.trim() : '';
+      /* one contact-name field now — the legacy split column is cleared */
+      p.last = '';
+      p.ph = $('edit_ph') ? $('edit_ph').value.trim() : '';
+      var eRole = $('edit_role') ? $('edit_role').value : '';
+      p.contact_role = eRole;
+      p.who = eRole || p.who || '';
       p.ty = $('edit_ty') ? $('edit_ty').value : p.ty;
-      p.ar = $('edit_ar').value.trim();
-      p.rm = $('edit_rm') ? $('edit_rm').value.trim() : (p.rm || '');
-      p.rent = $('edit_rent').value.trim();
-      if ($('edit_neg')) p.neg = $('edit_neg').value;
+      p.ar = $('edit_ar') ? $('edit_ar').value.trim() : '';
+      var eMode = $('edit_avail') ? $('edit_avail').value : (str(p.avail) === 'occupied' ? 'occupied' : 'vacant');
+      var eUnitsRaw = $('edit_units') ? str($('edit_units').value).trim() : '';
+      var eUnits = parseInt(eUnitsRaw, 10);
+      p.avail = eMode;
+      p.units = (eMode === 'vacant' && isFinite(eUnits) && eUnits > 0) ? eUnits : (eMode === 'occupied' ? 0 : null);
+      if (eMode === 'occupied') p.rm = 'Fully occupied';
+      else if (p.units) p.rm = p.units + (p.units === 1 ? ' room available' : ' rooms available');
+      else p.rm = 'Units available';
+      p.rent = $('edit_rent') ? $('edit_rent').value.trim() : '';
       if ($('edit_desc')) p.desc = $('edit_desc').value.trim();
-      var sel = [];
-      document.querySelectorAll('input[name="edit_ut"]:checked').forEach(function (ck) { sel.push(ck.value); });
-      p.ut = sel; p.utilities = sel;
+      var sel = APT_TAG.edit ? APT_TAG.edit.get() : toList(p.ut || p.utilities);
+      p.ut = sel; p.utilities = sel.slice();
       var gl = galList('edit');
       p.media = gl.map(function (m) { return { type: m.type, url: m.url, label: m.label || '', credit: m.credit || credit() }; });
       var coverM = gl.filter(function (m) { return m.type === 'image'; })[0];
@@ -1558,9 +1853,30 @@
       if (eMeta && eMeta.value && eMeta.value !== 'null') {
         try { p.pin_meta = JSON.parse(eMeta.value); } catch (e2) { /* keep old */ }
       }
-      if (editPassageEditor) {
+      if (table === 'scout_submissions' && editPassageEditor) {
         var psg = editPassageEditor.get();
         if (ArzuzMap && ArzuzMap.passage.hasContent(psg)) p.passage = psg;
+        else delete p.passage;
+      }
+      /* listings: one access-notes box + whatever route was traced on
+         the map. Both live in the passage object so the public listing
+         page (and the route map) keep working unchanged. */
+      if (table === 'listings') {
+        var notes = $('edit_access_notes') ? str($('edit_access_notes').value).trim() : '';
+        var meta = readPinMeta('edit_pin_meta') || {};
+        var prev = (p.passage && typeof p.passage === 'object') ? p.passage : {};
+        var route = (meta.route && meta.route.length > 1) ? meta.route : (prev.route || []);
+        var next = {
+          landmark: notes,
+          gate: str(prev.gate),
+          floor: str(prev.floor),
+          steps: Array.isArray(prev.steps) ? prev.steps : [],
+          route: route,
+          route_src: str(meta.route_src) || str(prev.route_src),
+          route_km: meta.route_km || prev.route_km || null,
+          route_min: meta.route_min || prev.route_min || null
+        };
+        if (ArzuzMap && ArzuzMap.passage.hasContent(next)) p.passage = next;
         else delete p.passage;
       }
     }
@@ -1629,9 +1945,258 @@
     if (prev) { prev.innerHTML = ''; prev.style.display = 'none'; }
   });
 
-  /* ================= 7. Add Apartment ================= */
+    /* ================= 6b. Apartment composer primitives =================
+     One home for the pieces the two apartment surfaces (Add and Edit)
+     share: the tab shell, the segmented toggles, the amenity combobox
+     and the staged media queue. Plain DOM — no framework — so both
+     builders stay independent of each other.
+     ------------------------------------------------------------ */
+
+  var APT_HOOKS = { add: null, edit: null };   // tab-key → callback
+  var APT_GO = { add: null, edit: null };      // tab activator per surface
+  var APT_TAG = { add: null, edit: null };     // amenity combobox per surface
+
+  /* Only the active panel is shown; every control stays in the DOM so
+     the collectors (and the map / gallery widgets) keep working. The
+     hooks let a panel initialise the first time it is revealed — that
+     is how the Leaflet map avoids being built inside a display:none
+     container. */
+  function initAptTabs(scope, ctx, hooks) {
+    if (!scope || typeof scope.querySelectorAll !== 'function') return null;
+    var tabs = scope.querySelectorAll('[data-apt-tab]');
+    var panels = scope.querySelectorAll('[data-apt-panel]');
+    if (!tabs.length || !panels.length) return null;
+    APT_HOOKS[ctx] = hooks || {};
+
+    function activate(key) {
+      var found = false;
+      Array.prototype.forEach.call(tabs, function (t) {
+        var on = t.getAttribute('data-apt-tab') === key;
+        if (on) found = true;
+        t.classList.toggle('active', on);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      if (!found) return;
+      Array.prototype.forEach.call(panels, function (p) {
+        if (p.getAttribute('data-apt-panel') === key) p.removeAttribute('hidden');
+        else p.setAttribute('hidden', 'hidden');
+      });
+      var fn = APT_HOOKS[ctx] && APT_HOOKS[ctx][key];
+      if (fn) { try { fn(); } catch (e) { if (window.console) console.warn('[Arzuz Admin] tab hook', e && e.message); } }
+    }
+
+    Array.prototype.forEach.call(tabs, function (t) {
+      t.addEventListener('click', function () { activate(t.getAttribute('data-apt-tab')); });
+    });
+    APT_GO[ctx] = activate;
+    activate(tabs[0].getAttribute('data-apt-tab') || 'specs');
+    return activate;
+  }
+
+  /* Segmented control: data-seg carries the value of each button. */
+  function initSeg(segId, onChange) {
+    var seg = $(segId);
+    if (!seg || typeof seg.querySelectorAll !== 'function') return null;
+    var btns = seg.querySelectorAll('.seg-btn');
+    if (!btns.length) return null;
+    var value = null;
+
+    function apply(v, fire) {
+      value = v;
+      Array.prototype.forEach.call(btns, function (b) {
+        var on = b.getAttribute('data-seg') === v;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      if (fire && onChange) onChange(v);
+    }
+
+    Array.prototype.forEach.call(btns, function (b) {
+      b.addEventListener('click', function () { apply(b.getAttribute('data-seg'), true); });
+    });
+    apply(btns[0].getAttribute('data-seg'), false);
+
+    return {
+      get: function () { return value; },
+      set: function (v) { apply(v, true); },
+      setSilent: function (v) { apply(v, false); }
+    };
+  }
+
+  /* Amenity combobox / tag input. Presets come from the shared UTILITIES
+     list (the Settings → Amenities manager writes to the same source);
+     anything typed that is not on the list becomes a custom tag on this
+     listing only — promote it in Settings to make it a preset. */
+  function initTagField(opts) {
+    var field = $(opts.fieldId), box = $(opts.chipsId), input = $(opts.inputId), menu = $(opts.suggestId);
+    if (!field || !box || !input) return null;
+    var selected = (opts.value || []).slice();
+    var hi = -1;
+
+    function presets() { return utilitiesList().map(function (u) { return str(u); }); }
+    function has(name) {
+      var n = str(name).trim().toLowerCase();
+      return selected.some(function (x) { return str(x).trim().toLowerCase() === n; });
+    }
+    function isCustom(name) {
+      var n = str(name).trim().toLowerCase();
+      return !presets().some(function (p) { return p.trim().toLowerCase() === n; });
+    }
+    function matchesFor(q) {
+      var query = str(q).trim().toLowerCase();
+      var out = [];
+      presets().concat(selected).forEach(function (u) {
+        var name = str(u);
+        if (!name || has(name)) return;
+        if (query && name.toLowerCase().indexOf(query) === -1) return;
+        if (out.some(function (x) { return x.toLowerCase() === name.toLowerCase(); })) return;
+        out.push(name);
+      });
+      return out.slice(0, 40);
+    }
+    function sync() {
+      if (opts.hiddenId && $(opts.hiddenId)) $(opts.hiddenId).value = JSON.stringify(selected);
+      if (opts.onChange) opts.onChange(selected.slice());
+    }
+    function paintChips() {
+      box.innerHTML = selected.map(function (u, i) {
+        return '<span class="tag-chip' + (isCustom(u) ? ' custom' : '') + '">' +
+          '<span>' + esc(u) + '</span>' +
+          '<button type="button" data-tag-remove="' + i + '" title="Remove ' + esc(u) + '" aria-label="Remove ' + esc(u) + '">✕</button>' +
+          '</span>';
+      }).join('');
+    }
+    function paintMenu(open) {
+      if (!menu) return;
+      var q = str(input.value).trim();
+      var hits = matchesFor(q);
+      var html = hits.slice(0, 8).map(function (u, i) {
+        return '<button type="button" role="option" data-tag-pick="' + esc(u) + '"' + (i === hi ? ' class="hi"' : '') + '>' + esc(u) + '</button>';
+      }).join('');
+      if (q && !has(q) && !hits.some(function (h) { return h.toLowerCase() === q.toLowerCase(); })) {
+        html += '<button type="button" role="option" class="tag-new" data-tag-pick="' + esc(q) + '">Create “' + esc(q) + '”</button>';
+      }
+      if (!html) html = '<button type="button" disabled style="cursor:default;opacity:.6">' + (q ? 'Nothing matches.' : 'All presets are already on this listing.') + '</button>';
+      menu.innerHTML = html;
+      menu.classList.toggle('open', !!open);
+      input.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    function add(name) {
+      var n = str(name).trim();
+      if (n && !has(n)) selected.push(n);
+      input.value = '';
+      hi = -1;
+      paintChips(); sync();
+      paintMenu(true);
+    }
+    function removeAt(i) {
+      if (i < 0 || i >= selected.length) return;
+      selected.splice(i, 1);
+      paintChips(); sync();
+      paintMenu(true);
+    }
+
+    field.addEventListener('click', function (e) {
+      var x = e.target && e.target.closest ? e.target.closest('[data-tag-remove]') : null;
+      if (x) { removeAt(parseInt(x.getAttribute('data-tag-remove'), 10)); return; }
+      if (e.target === field || e.target === box) input.focus();
+    });
+    if (menu) {
+      menu.addEventListener('mousedown', function (e) {
+        var b = e.target && e.target.closest ? e.target.closest('[data-tag-pick]') : null;
+        if (!b) return;
+        e.preventDefault();
+        add(b.getAttribute('data-tag-pick'));
+      });
+    }
+    input.addEventListener('focus', function () { paintMenu(true); });
+    input.addEventListener('blur', function () { setTimeout(function () { paintMenu(false); }, 140); });
+    input.addEventListener('input', function () { hi = -1; paintMenu(true); });
+    input.addEventListener('keydown', function (e) {
+      var q = str(input.value).trim();
+      var hits = matchesFor(q).slice(0, 8);
+      if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        if (hi >= 0 && hits[hi]) add(hits[hi]);
+        else add(q);
+        return;
+      }
+      if (e.key === 'Backspace' && !q && selected.length) { removeAt(selected.length - 1); return; }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!hits.length) return;
+        hi = e.key === 'ArrowDown' ? (hi + 1) % hits.length : (hi <= 0 ? hits.length - 1 : hi - 1);
+        paintMenu(true);
+        return;
+      }
+      if (e.key === 'Escape') { paintMenu(false); }
+    });
+
+    paintChips();
+    paintMenu(false);
+    sync();
+
+    return {
+      get: function () { return selected.slice(); },
+      set: function (list) { selected = (list || []).slice(); paintChips(); sync(); paintMenu(false); }
+    };
+  }
+
+  /* Downscale + re-encode a phone photo in the browser. A 6 MB HEIC-ish
+     JPEG lands around 300–600 KB, which is the difference between a
+     usable listing page and a slow one. Any failure (canvas missing,
+     the file is already small, a format we must not touch) hands the
+     original file straight back. */
+  function compressImage(file, cb) {
+    var type = str(file && file.type);
+    if (!/^image\//.test(type) || /gif|svg|heic|heif/i.test(type)) return cb(file);
+    if (typeof URL === 'undefined' || !URL.createObjectURL || typeof Image === 'undefined') return cb(file);
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    var done = false;
+    function bail() {
+      if (done) return;
+      done = true;
+      try { URL.revokeObjectURL(url); } catch (e) { /* ignore */ }
+      cb(file);
+    }
+    img.onerror = bail;
+    img.onload = function () {
+      try {
+        var MAX = 1920;
+        var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+        if (!w || !h) return bail();
+        var scale = Math.min(1, MAX / Math.max(w, h));
+        var cw = Math.round(w * scale), ch = Math.round(h * scale);
+        var canvas = document.createElement('canvas');
+        canvas.width = cw; canvas.height = ch;
+        var ctx2d = canvas.getContext && canvas.getContext('2d');
+        if (!ctx2d) return bail();
+        ctx2d.drawImage(img, 0, 0, cw, ch);
+        if (!canvas.toBlob) return bail();
+        canvas.toBlob(function (blob) {
+          if (done) return;
+          done = true;
+          try { URL.revokeObjectURL(url); } catch (e) { /* ignore */ }
+          if (!blob || blob.size >= file.size) return cb(file);
+          var name = str(file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg';
+          try { cb(new File([blob], name, { type: 'image/jpeg' })); }
+          catch (e) { cb(blob); }
+        }, 'image/jpeg', 0.82);
+      } catch (e) { bail(); }
+    };
+    try { img.src = url; } catch (e) { bail(); }
+  }
+
+  /* ================= 7. Add Apartment — the composer ================= */
 
   var addModal = $('addAptModal');
+  var exitModal = $('draftExitModal');
+  var addTabs = null;
+  var addSegAvail = null;
+  var addSegMap = null;
+  var addMapReady = false;
+  var addDirty = false;
 
   function nextAptId() {
     var max = 0;
@@ -1643,63 +2208,181 @@
     return 'APT-' + String(max + 1).padStart(3, '0');
   }
 
-  $('btnOpenAddApt').addEventListener('click', function () {
-    $('addAptForm').reset();
-    ['add_photo_url', 'add_video_url', 'add_lat', 'add_lng', 'add_pin', 'add_pin_meta'].forEach(function (id) { if ($(id)) $(id).value = ''; });
-    ['galAddProgress', 'galAddVideoProgress'].forEach(function (id) { var el = $(id); if (el) el.textContent = ''; });
-    var amanual = $('add_video_url_manual');
-    if (amanual) amanual.value = '';
-    initGalleryManager('add', []);
-    $('add_apt_id').value = nextAptId();
-    setError('addModalError', '');
+  /* The name is optional: a readable placeholder is derived from the
+     type + area so the browse page never shows a blank card. */
+  function autoAptTitle(ty, area) {
+    var t = str(ty).trim(), a = str(area).trim();
+    if (t && a) return t + ' in ' + a;
+    if (a) return 'Apartment in ' + a;
+    if (t) return t + ' apartment';
+    return 'Untitled apartment';
+  }
 
-    var wrap = $('addAptUtilitiesWrap');
-    if (wrap) {
-      wrap.innerHTML = utilitiesList().map(function (u) { return chipHtml('add_ut', u, false); }).join('');
+  /* ---- availability ---- */
+
+  function availabilityState() {
+    var mode = addSegAvail ? addSegAvail.get() : 'vacant';
+    var raw = $('add_units') ? str($('add_units').value).trim() : '';
+    var n = parseInt(raw, 10);
+    return { mode: mode, units: (isFinite(n) && n > 0) ? n : null };
+  }
+
+  function roomsText(st) {
+    if (st.mode === 'occupied') return 'Fully occupied';
+    if (!st.units) return 'Units available';
+    return st.units + (st.units === 1 ? ' room available' : ' rooms available');
+  }
+
+  function syncAvailabilityUi() {
+    var mode = addSegAvail ? addSegAvail.get() : 'vacant';
+    var wrap = $('addUnitsWrap');
+    if (wrap) wrap.style.display = (mode === 'occupied') ? 'none' : '';
+    if ($('add_avail')) $('add_avail').value = mode;
+  }
+
+  /* ---- the map is built the first time its tab is revealed ---- */
+
+  function setMapMode(mode) {
+    var bar = $('adminTraceBar');
+    var tgl = $('traceToggle');
+    var tracing = !!(bar && bar.classList && bar.classList.contains('tracing'));
+    if (tgl) {
+      if (mode === 'path' && !tracing) tgl.click();
+      else if (mode === 'pin' && tracing) tgl.click();
     }
+    if (bar) bar.style.display = (mode === 'path') ? 'flex' : 'none';
+  }
+
+  function destroyAdminMap() {
+    if (adminPinCapture) { try { adminPinCapture.destroy(); } catch (e) { /* ignore */ } adminPinCapture = null; }
+    addMapReady = false;
+  }
+
+  /* ---- open / reset ---- */
+
+  function resetComposer() {
+    var form = $('addAptForm');
+    if (form && typeof form.reset === 'function') form.reset();
+    ['add_photo_url', 'add_video_url', 'add_lat', 'add_lng', 'add_pin', 'add_pin_meta'].forEach(function (id) {
+      if ($(id)) $(id).value = '';
+    });
+    ['galAddProgress', 'galAddVideoProgress'].forEach(function (id) {
+      var el = $(id);
+      if (el) { el.className = 'media-upload-status'; el.textContent = ''; }
+    });
+    initGalleryManager('add', []);
+    if (APT_TAG.add) APT_TAG.add.set([]);
+    if (addSegAvail) { addSegAvail.setSilent('vacant'); syncAvailabilityUi(); }
+    if (addSegMap) addSegMap.setSilent('pin');
+    destroyAdminMap();
+    addDirty = false;
+    setError('addModalError', '');
+  }
+
+  function openAddApt() {
+    resetComposer();
+    $('add_apt_id').value = nextAptId();
+    if (addSegAvail) syncAvailabilityUi();
+    if (addTabs) addTabs('specs');
     show(addModal);
-    setTimeout(function () {
-      initAdminMap();
-      initAdminPassageAdd();
-    }, 200);
-  });
+  }
+
+  $('btnOpenAddApt').addEventListener('click', openAddApt);
 
   $('btnCancelAddApt').addEventListener('click', function () {
+    if (!addDirty) { hide(addModal); destroyAdminMap(); return; }
+    show(exitModal);
+  });
+
+  $('btnExitKeep').addEventListener('click', function () { hide(exitModal); });
+  $('btnExitDiscard').addEventListener('click', function () {
+    hide(exitModal);
     hide(addModal);
-    destroyAdminPassage();
-  });  /* Shared payload builder for BOTH save paths: the complete listing
-     and the draft-with-invite-link. A draft skips nothing — the admin
-     can still record the opening ask and a pin from field notes. */
+    destroyAdminMap();
+    addDirty = false;
+    if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('Changes discarded.', 'info');
+  });
+  $('btnExitSaveDraft').addEventListener('click', function () {
+    hide(exitModal);
+    saveApartment(true);
+  });
+
+  /* Any edit inside the form arms the unsaved-changes prompt. */
+  (function bindAddDirtyWatcher() {
+    var form = $('addAptForm');
+    if (!form || typeof form.addEventListener !== 'function') return;
+    form.addEventListener('input', function () { addDirty = true; }, true);
+    form.addEventListener('change', function () { addDirty = true; }, true);
+  })();
+
+  /* ---- validation ---- */
+
+  function addProblems() {
+    var out = [];
+    if (!str($('add_apt_id') ? $('add_apt_id').value : '').trim()) out.push({ id: 'add_apt_id', tab: 'specs', msg: 'Apartment ID / code is required.' });
+    if (!str($('add_ar') ? $('add_ar').value : '').trim()) out.push({ id: 'add_ar', tab: 'specs', msg: 'Area / location is required.' });
+    if (!str($('add_rent') ? $('add_rent').value : '').trim()) out.push({ id: 'add_rent', tab: 'specs', msg: 'Rent price is required.' });
+    return out;
+  }
+
+  /* ---- payload ---- */
+
+  /* Shared builder for BOTH save paths: the complete listing and the
+     private draft. A draft skips nothing — the admin can still record
+     the opening ask and a pin from field notes. */
   function buildAddAptListing(isDraft) {
     var pinVals = adminPinValues();
+    var meta = pinVals.meta || {};
+    var notes = $('add_access_notes') ? str($('add_access_notes').value).trim() : '';
+    var hasRoute = !!(meta.route && meta.route.length > 1);
+    var passage = (notes || hasRoute) ? {
+      landmark: notes,
+      gate: '',
+      floor: '',
+      steps: [],
+      route: meta.route || [],
+      route_src: meta.route_src || '',
+      route_km: meta.route_km || null,
+      route_min: meta.route_min || null
+    } : null;
+
+    var avail = availabilityState();
+    var area = $('add_ar') ? str($('add_ar').value).trim() : '';
+    var name = $('add_prop_name') ? str($('add_prop_name').value).trim() : '';
+    var ty = $('add_ty') ? str($('add_ty').value) : '';
+    if (!ty && typeof PROPERTY_TYPES !== 'undefined' && PROPERTY_TYPES.length) ty = PROPERTY_TYPES[0];
+    var role = $('add_role') ? str($('add_role').value) : '';
+
     var p = {
-      apt_id: $('add_apt_id').value.trim(),
-      custom_id: $('add_apt_id').value.trim(),
-      prop_name: $('add_prop_name').value.trim(),
-      ty: $('add_ty').value,
-      ar: $('add_ar').value.trim(),
-      rent: $('add_rent').value.trim(),
-      rm: $('add_rm').value.trim(),
-      nm: $('add_nm').value.trim(),
-      last: $('add_nm_last') ? $('add_nm_last').value.trim() : '',
-      ph: $('add_ph').value.trim(),
-      neg: $('add_neg') ? $('add_neg').value : '',
-      who: $('add_who') ? $('add_who').value : '',
-      desc: $('add_desc') ? $('add_desc').value.trim() : '',
+      apt_id: str($('add_apt_id').value).trim(),
+      custom_id: str($('add_apt_id').value).trim(),
+      prop_name: name || autoAptTitle(ty, area),
+      name_generated: !name,
+      ty: ty,
+      ar: area,
+      rent: str($('add_rent').value).trim(),
+      rm: roomsText(avail),
+      avail: avail.mode,
+      units: avail.units,
+      nm: $('add_nm') ? str($('add_nm').value).trim() : '',
+      ph: $('add_ph') ? str($('add_ph').value).trim() : '',
+      contact_role: role,
+      who: role,
+      desc: $('add_desc') ? str($('add_desc').value).trim() : '',
       photo: '',
       video: '',
       video_url: '',
       media: [],
-      split_ok: $('add_split_ok') ? $('add_split_ok').checked : false,
+      split_ok: $('add_split_ok') ? !!$('add_split_ok').checked : false,
       ut: [],
       lat: pinVals.lat,
       lng: pinVals.lng,
       pin: pinVals.pin,
-      pin_meta: pinVals.meta || null,
-      passage: (pinVals.passage && ArzuzMap && ArzuzMap.passage.hasContent(pinVals.passage)) ? pinVals.passage : null,
-      vf: $('add_vf') ? $('add_vf').value : ''
+      pin_meta: meta || null,
+      passage: (passage && ArzuzMap && ArzuzMap.passage.hasContent(passage)) ? passage : null,
+      vf: $('add_vf') ? str($('add_vf').value) : ''
     };
-    document.querySelectorAll('input[name="add_ut"]:checked').forEach(function (ck) { p.ut.push(ck.value); });
+    p.ut = APT_TAG.add ? APT_TAG.add.get() : [];
     p.utilities = p.ut.slice();
 
     /* media gallery → payload.media, with photo/video kept in sync */
@@ -1715,126 +2398,337 @@
       session: cfg.SESSION || '2026/2027',
       env: cfg.ENV || 'production',
       source: isDraft ? 'admin_dashboard_draft' : 'admin_dashboard',
-      status: isDraft ? 'draft' : $('add_status').value,
-      tier: parseInt($('add_tier').value, 10) || 0,
-      notes: isDraft ? 'Draft — invite link created in dashboard (' + p.apt_id + ')' : 'Added via Admin Dashboard (' + p.apt_id + ')',
+      status: isDraft ? 'draft' : ($('add_status') ? $('add_status').value : 'active'),
+      tier: parseInt($('add_tier') ? $('add_tier').value : '0', 10) || 0,
+      notes: isDraft ? 'Draft — shareable verification link created in the dashboard (' + p.apt_id + ')'
+                     : 'Added via Admin Dashboard (' + p.apt_id + ')',
       payload: p
     };
-    var askRaw = $('add_ask') ? $('add_ask').value.trim() : '';
+    var askRaw = $('add_ask') ? str($('add_ask').value).trim() : '';
     if (askRaw !== '') {
       var askNum = parseInt(askRaw, 10);
       if (!isNaN(askNum)) listing.opening_ask_ngn = askNum;
     }
-    if (isDraft) listing.draft_token = newToken();
+    if (isDraft) {
+      listing.draft_token = newToken();
+      var perm = sharePermSelection();
+      listing.draft_permission = perm;
+      listing.draft_expires_at = defaultExpiryIso(shareExpiryDays());
+    }
     return listing;
   }
 
+  /* ---- insert with a graceful transition path ----
+     The permission + expiry columns arrive with
+     supabase-draft-sharing.sql. Until that file is run, PostgREST
+     rejects the insert with the unknown-column error — we retry once
+     without them so draft creation never breaks, and the dashboard
+     tells the admin what to run to switch the controls on. */
+
+  function unknownShareColumn(status, body) {
+    return status === 400 && /draft_permission|draft_expires_at/.test(str(body));
+  }
+
+  function postListing(headers, listing) {
+    return fetch(apiRoot() + '/rest/v1/listings', {
+      method: 'POST', headers: headers, body: JSON.stringify(listing)
+    }).then(function (r) {
+      if (r.ok) return r.json();
+      return r.text().then(function (body) {
+        if (unknownShareColumn(r.status, body)) {
+          state.shareSchemaMissing = true;
+          var slim = Object.assign({}, listing);
+          delete slim.draft_permission;
+          delete slim.draft_expires_at;
+          return fetch(apiRoot() + '/rest/v1/listings', {
+            method: 'POST', headers: headers, body: JSON.stringify(slim)
+          }).then(function (r2) {
+            if (r2.status === 401 || r2.status === 403) { onAuthError(new Error('Insert rejected')); throw new Error('Your session has expired.'); }
+            if (!r2.ok) throw new Error('Insert failed (HTTP ' + r2.status + ')');
+            return r2.json();
+          });
+        }
+        if (r.status === 401 || r.status === 403) { onAuthError(new Error('Insert rejected')); throw new Error('Your session has expired.'); }
+        throw new Error('Insert failed (HTTP ' + r.status + ')');
+      });
+    });
+  }
+
+  function saveApartment(isDraft) {
+    var listing = buildAddAptListing(isDraft);
+    var p = listing.payload;
+    var btn = isDraft ? $('btnSaveDraftApt') : $('btnSaveAddApt');
+    if (window.ArzuzUI) ArzuzUI.setBusy(btn, true, isDraft ? 'Creating draft…' : 'Saving…');
+    else if (btn) btn.disabled = true;
+    setError('addModalError', '');
+
+    ArzuzAuth.headers().then(function (h) {
+      h['Prefer'] = 'return=representation';
+      return postListing(h, listing);
+    })
+      .then(function (created) {
+        var inserted = (created && created[0]) ? created[0] : listing;
+        state.data.listings.unshift(inserted);
+        addDirty = false;
+        hide(addModal);
+        destroyAdminMap();
+        location.hash = '#/listings';
+        renderRoute();
+        if (state.shareSchemaMissing) warnShareSchema();
+        if (isDraft) openShareModal(inserted, true);
+        else if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('Apartment ' + p.apt_id + ' saved.', 'success');
+      })
+      .catch(function (err) { setError('addModalError', (isDraft ? 'Could not create the draft: ' : 'Could not save the apartment: ') + err.message); })
+      .then(function () { if (window.ArzuzUI) ArzuzUI.setBusy(btn, false); else if (btn) btn.disabled = false; });
+  }
+
+  $('btnSaveDraftApt').addEventListener('click', function () {
+    var problems = addProblems();
+    if (problems.length) {
+      if (addTabs) addTabs(problems[0].tab);
+      setError('addModalError', problems[0].msg);
+      var el = $(problems[0].id);
+      if (el && el.focus) el.focus();
+      return;
+    }
+    saveApartment(true);
+  });
+
   $('addAptForm').addEventListener('submit', function (e) {
     e.preventDefault();
-
-    var listing = buildAddAptListing(false);
-    var p = listing.payload;
-
-    var btn = $('btnSaveAddApt');
-    btn.textContent = 'Saving…';
-    btn.disabled = true;
-    setError('addModalError', '');
-
-    ArzuzAuth.headers().then(function (h) {
-      h['Prefer'] = 'return=representation';
-      return fetch(apiRoot() + '/rest/v1/listings', {
-        method: 'POST', headers: h, body: JSON.stringify(listing)
-      });
-    })
-      .then(function (r) {
-        if (r.status === 401 || r.status === 403) { onAuthError(new Error('Insert rejected')); throw new Error('Your session has expired.'); }
-        if (!r.ok) throw new Error('Insert failed (HTTP ' + r.status + ')');
-        return r.json();
-      })
-      .then(function (created) {
-        var inserted = (created && created[0]) ? created[0] : listing;
-        state.data.listings.unshift(inserted);
-        hide(addModal);
-        location.hash = '#/listings';
-        renderRoute();
-        if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('Apartment ' + p.apt_id + ' added successfully!', 'success');
-      })
-      .catch(function (err) { setError('addModalError', 'Could not add apartment: ' + err.message); })
-      .finally(function () { btn.textContent = 'Save Apartment'; btn.disabled = false; });
+    var problems = addProblems();
+    if (problems.length) {
+      if (addTabs) addTabs(problems[0].tab);
+      setError('addModalError', problems[0].msg);
+      var el = $(problems[0].id);
+      if (el && el.focus) el.focus();
+      return;
+    }
+    saveApartment(false);
   });
 
-  /* Draft path: create the apartment as status='draft' with a fresh
-     invite token, then show the link to send. */
-  $('btnSaveDraftApt').addEventListener('click', function () {
-    var listing = buildAddAptListing(true);
-    var p = listing.payload;
-    var btn = $('btnSaveDraftApt');
-    btn.disabled = true;
-    btn.textContent = 'Creating draft…';
-    setError('addModalError', '');
+  /* ---- wire the composer controls (once) ---- */
 
-    ArzuzAuth.headers().then(function (h) {
-      h['Prefer'] = 'return=representation';
-      return fetch(apiRoot() + '/rest/v1/listings', {
-        method: 'POST', headers: h, body: JSON.stringify(listing)
-      });
-    })
-      .then(function (r) {
-        if (r.status === 401 || r.status === 403) { onAuthError(new Error('Insert rejected')); throw new Error('Your session has expired.'); }
-        if (!r.ok) throw new Error('Insert failed (HTTP ' + r.status + ')');
-        return r.json();
-      })
-      .then(function (created) {
-        var inserted = (created && created[0]) ? created[0] : listing;
-        state.data.listings.unshift(inserted);
-        hide(addModal);
-        location.hash = '#/listings';
-        renderRoute();
-        openInviteModal(inserted, true);
-      })
-      .catch(function (err) { setError('addModalError', 'Could not create the draft: ' + err.message); })
-      .finally(function () { btn.textContent = 'Save as Draft + Invite Link'; btn.disabled = false; });
-  });
+  (function initAddComposer() {
+    addSegAvail = initSeg('addAvailSeg', function () { syncAvailabilityUi(); });
+    var units = $('add_units');
+    if (units) units.addEventListener('input', function () { addDirty = true; });
+    addSegMap = initSeg('addMapModeSeg', function (mode) { setMapMode(mode); });
+    APT_TAG.add = initTagField({
+      fieldId: 'addAmenityField', chipsId: 'addAmenityChips',
+      inputId: 'addAmenityInput', suggestId: 'addAmenitySuggest'
+    });
+    var manual = $('add_video_url_manual');
+    var addBtn = $('add_video_url_add');
+    function embedManualUrl() {
+      if (!manual) return;
+      var url = str(manual.value).trim();
+      if (!url) return;
+      /* the same rule the player enforces: a YouTube link or a direct video
+         file. A Drive / Photos / Vimeo page would sit in the gallery as a
+         black tile forever. */
+      if (window.ArzuzVideo && ArzuzVideo.normalizeUrl) url = ArzuzVideo.normalizeUrl(url);
+      if (!/^https?:\/\/[a-z0-9.-]+\.[a-z]{2,}([/?#]|$)/i.test(url)) {
+        if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('That does not look like a link.', 'error');
+        return;
+      }
+      if (window.ArzuzVideo && ArzuzVideo.playbackProblem) {
+        var problem = ArzuzVideo.playbackProblem(url);
+        if (problem) {
+          if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast(problem, 'error');
+          return;
+        }
+      }
+      var list = galList('add');
+      if (!list.some(function (m) { return m.url === url; })) {
+        list.push({ type: 'video', url: url, label: 'Video tour', credit: credit() });
+        renderGal('add');
+        addDirty = true;
+      }
+      manual.value = '';
+      if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('Video tour attached.', 'success');
+    }
+    if (addBtn) addBtn.addEventListener('click', embedManualUrl);
+    if (manual) manual.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); embedManualUrl(); } });
 
-  /* ================= 7b. Draft invite links ================= */
+    addTabs = initAptTabs($('addAptModal'), 'add', {
+      location: function () {
+        if (addMapReady) return;
+        addMapReady = true;
+        initAdminMap();
+        setMapMode(addSegMap ? addSegMap.get() : 'pin');
+      }
+    });
+  })();
+
+  /* ================= 7b. Draft links, permissions & expiry =================
+     One token per draft. The link holder is validated server-side by the
+     RPCs in supabase-drafts-support.sql; supabase-draft-sharing.sql adds
+     the permission (view / edit) and the expiry, and enforces both.
+     ------------------------------------------------------------ */
 
   function draftLink(row) {
     var base = location.origin + location.pathname.replace(/[^\/]*$/, '');
     return base + 'complete-listing.html?ref=' + row.draft_token;
   }
 
-  function draftWaMessage(row) {
-    var p = payloadOf(row);
-    var name = pick(row, 'property_name', ['prop_name']) || 'your apartment';
-    return 'Hello! Arzuz here 🏠 Here is the link to complete the details for ' + name +
-      '. Open it, fill in what you know and send it back — no account needed: ' + draftLink(row);
+  function draftPermission(row) { return str(row && row.draft_permission) === 'view' ? 'view' : 'edit'; }
+
+  function draftExpired(row) {
+    var t = Date.parse(str(row && row.draft_expires_at));
+    return isFinite(t) && t < Date.now();
   }
 
-  function openInviteModal(row, created) {
-    if (!row) return;
-    var link = draftLink(row);
+  function expiryLabel(row) {
+    var iso = str(row && row.draft_expires_at);
+    if (!iso) return 'no expiry';
+    var t = Date.parse(iso);
+    if (!isFinite(t)) return 'no expiry';
+    return (t < Date.now() ? 'expired ' : 'expires ') + fmtDate(iso);
+  }
+
+  function defaultExpiryIso(days) {
+    var d = parseInt(days, 10);
+    if (!isFinite(d) || d <= 0) return null;
+    return new Date(Date.now() + d * 86400000).toISOString();
+  }
+
+  function sharePermSelection() {
+    var picked = 'edit';
+    var opts = document.querySelectorAll('#sharePerm input[name="share_perm"]');
+    Array.prototype.forEach.call(opts || [], function (r) { if (r.checked) picked = r.value; });
+    return picked;
+  }
+
+  function shareExpiryDays() {
+    var sel = $('shareExpiry');
+    return sel ? str(sel.value) : '7';
+  }
+
+  function syncSharePermUi() {
+    var perm = sharePermSelection();
+    var opts = document.querySelectorAll('#sharePerm .share-opt');
+    Array.prototype.forEach.call(opts || [], function (o) {
+      o.classList.toggle('on', o.getAttribute('data-perm-opt') === perm);
+    });
+  }
+
+  function shareWaMessage(row) {
     var p = payloadOf(row);
+    var name = pick(row, 'property_name', ['prop_name']) || 'your apartment';
+    var verb = draftPermission(row) === 'view'
+      ? 'review the details we recorded for '
+      : 'complete the details for ';
+    return 'Hello! Arzuz here 🏠 Here is the link to ' + verb + name +
+      '. Open it, check what we have and send it back — no account needed: ' + draftLink(row);
+  }
+
+  var shareRow = null;
+
+  function openShareModal(row, created) {
+    if (!row) return;
+    shareRow = row;
+    var perm = draftPermission(row);
+    var radios = document.querySelectorAll('#sharePerm input[name="share_perm"]');
+    Array.prototype.forEach.call(radios || [], function (r) { r.checked = (r.value === perm); });
+
+    var sel = $('shareExpiry');
+    if (sel) {
+      var days = 7;
+      var iso = str(row.draft_expires_at);
+      if (!iso) days = 0;
+      else {
+        var t = Date.parse(iso);
+        if (isFinite(t)) {
+          var left = (t - Date.now()) / 86400000;
+          days = left <= 0 ? 1 : left <= 1.5 ? 1 : left <= 10 ? 7 : 30;
+        }
+      }
+      sel.value = String(days);
+    }
+    syncSharePermUi();
+
+    var link = draftLink(row);
     $('inviteLink').value = link;
     $('btnInviteOpen').href = link;
     $('btnInviteWa').onclick = function () {
       var phone = waLink(pick(row, 'owner_phone', ['ph']));
-      var text = encodeURIComponent(draftWaMessage(row));
+      var text = encodeURIComponent(shareWaMessage(row));
       window.open(phone ? phone + '?text=' + text : 'https://wa.me/?text=' + text, '_blank', 'noopener');
     };
-    $('inviteMeta').textContent = created
-      ? 'Draft ' + (p.apt_id || '') + ' created. Regenerate or revoke the link any time from the Listings table.'
-      : 'Apartment ' + (p.apt_id || shortId(row.id)) + ' · ' +
-        (row.draft_completed_at ? 'the landlord already completed it — review and approve' : 'waiting for the landlord to open it');
+
+    var p = payloadOf(row);
+    var who = (perm === 'view' ? 'View only' : 'Can edit');
+    $('inviteMeta').textContent = (created ? 'Draft ' + (p.apt_id || '') + ' created. ' : '') +
+      'Currently: ' + who + ' · ' + expiryLabel(row) +
+      '. Anyone holding this link can open this one apartment — approve the listing to kill the link.';
     show($('inviteModal'));
   }
 
-  $('btnInviteCopy').addEventListener('click', function () {
-    var link = $('inviteLink').value;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(link).then(function () {
-        if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('Invite link copied.', 'success');
-      }, function () { window.prompt('Copy this link:', link); });
-    } else window.prompt('Copy this link:', link);
+  (function bindShareModal() {
+    var box = $('sharePerm');
+    if (box && typeof box.addEventListener === 'function') {
+      box.addEventListener('change', syncSharePermUi);
+      box.addEventListener('click', function () { syncSharePermUi(); });
+    }
+    var sel = $('shareExpiry');
+    if (sel && typeof sel.addEventListener === 'function') sel.addEventListener('change', syncSharePermUi);
+  })();
+
+  function warnShareSchema() {
+    state.shareSchemaMissing = false;
+    if (ArzuzSubmit && ArzuzSubmit.showToast) {
+      ArzuzSubmit.showToast('Saved — but run supabase-draft-sharing.sql to switch on view-only links and expiry.', 'info');
+    }
+  }
+
+  function patchShareRow(id, patch, doneMsg) {
+    ArzuzAuth.headers().then(function (h) {
+      h['Prefer'] = 'return=representation';
+      return fetch(apiRoot() + '/rest/v1/listings?id=eq.' + id, { method: 'PATCH', headers: h, body: JSON.stringify(patch) })
+        .then(function (r) {
+          if (r.ok) return r.json();
+          return r.text().then(function (body) {
+            if (unknownShareColumn(r.status, body)) {
+              state.shareSchemaMissing = true;
+              var slim = Object.assign({}, patch);
+              delete slim.draft_permission;
+              delete slim.draft_expires_at;
+              if (!Object.keys(slim).length) return [];
+              return fetch(apiRoot() + '/rest/v1/listings?id=eq.' + id, { method: 'PATCH', headers: h, body: JSON.stringify(slim) })
+                .then(function (r2) {
+                  if (r2.status === 401 || r2.status === 403) { onAuthError(new Error('Draft update rejected')); throw new Error('Your session has expired.'); }
+                  if (!r2.ok) throw new Error('HTTP ' + r2.status);
+                  return r2.json();
+                });
+            }
+            if (r.status === 401 || r.status === 403) { onAuthError(new Error('Draft update rejected')); throw new Error('Your session has expired.'); }
+            throw new Error('HTTP ' + r.status);
+          });
+        });
+    })
+      .then(function (updated) {
+        var row = findRow('listings', id);
+        if (row) {
+          if (updated && updated[0]) Object.assign(row, updated[0]);
+          Object.assign(row, patch);
+        }
+        if (state.shareSchemaMissing) warnShareSchema();
+        renderRoute();
+        if (ArzuzSubmit && ArzuzSubmit.showToast && doneMsg) ArzuzSubmit.showToast(doneMsg, 'success');
+        if (shareRow && row && shareRow.id === row.id) openShareModal(row, false);
+      })
+      .catch(function (err) { alert('Could not update the draft link: ' + err.message); });
+  }
+
+  $('btnInviteSave').addEventListener('click', function () {
+    if (!shareRow) return;
+    var perm = sharePermSelection();
+    var days = shareExpiryDays();
+    patchShareRow(shareRow.id, {
+      draft_permission: perm,
+      draft_expires_at: defaultExpiryIso(days)
+    }, 'Draft permissions saved.');
   });
 
   function copyDraftLink(table, id) {
@@ -1843,9 +2737,29 @@
     var link = draftLink(row);
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(link).then(function () {
-        if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('Invite link copied.', 'success');
+        if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('Draft link copied.', 'success');
       }, function () { window.prompt('Copy this link:', link); });
     } else window.prompt('Copy this link:', link);
+  }
+
+  $('btnInviteCopy').addEventListener('click', function () {
+    var link = $('inviteLink').value;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(link).then(function () {
+        if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('Draft link copied.', 'success');
+      }, function () { window.prompt('Copy this link:', link); });
+    } else window.prompt('Copy this link:', link);
+  });
+
+  function rotateDraftLink(table, id) {
+    if (!confirm('Generate a NEW link? The old one stops working immediately.')) return;
+    patchDraftRow(table, id, { draft_token: newToken(), draft_completed_at: null, draft_last_saved_at: null },
+      'New draft link generated — the old one is dead.');
+  }
+
+  function revokeDraftLink(table, id) {
+    if (!confirm('Revoke this link? Nobody can open or edit the draft any more.')) return;
+    patchDraftRow(table, id, { draft_token: null }, 'Draft link revoked.');
   }
 
   function patchDraftRow(table, id, patch, doneMsg) {
@@ -1867,28 +2781,44 @@
       .catch(function (err) { alert('Could not update the draft: ' + err.message); });
   }
 
-  function rotateDraftLink(table, id) {
-    if (!confirm('Generate a NEW invite link? The old link stops working immediately.')) return;
-    patchDraftRow(table, id, { draft_token: newToken(), draft_completed_at: null, draft_last_saved_at: null },
-      'New invite link generated — the old one is dead.');
-  }
-
-  function revokeDraftLink(table, id) {
-    if (!confirm('Revoke this invite link? The landlord can no longer open or edit the draft.')) return;
-    patchDraftRow(table, id, { draft_token: null }, 'Invite link revoked.');
-  }
-
   /* ================= 8. Media upload + lightboxes =================
-     Video tours upload to YouTube (unlisted) with live progress;
-     photos and any Cloudinary fallback use the signed upload. */
+     Photos and any Cloudinary fallback use the signed upload (with a
+     real progress bar via XHR); video tours go to YouTube (unlisted)
+     with live progress and fall back to Cloudinary. */
 
-  function uploadMediaToCloudinary(file, resourceType, statusElId, onDone) {
+  function cloudinaryXhr(endpoint, fd, onProgress) {
+    return new Promise(function (resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', endpoint);
+      if (xhr.upload && onProgress) {
+        xhr.upload.onprogress = function (e) {
+          if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+        };
+      }
+      xhr.onload = function () {
+        var body = str(xhr.responseText);
+        if (xhr.status < 200 || xhr.status >= 300) return reject(new Error('Cloudinary rejected the upload: ' + body.slice(0, 180)));
+        try { resolve(JSON.parse(body)); }
+        catch (e) { reject(new Error('Cloudinary returned an unreadable response.')); }
+      };
+      xhr.onerror = function () { reject(new Error('Network error while uploading.')); };
+      xhr.onabort = function () { reject(new Error('Upload cancelled.')); };
+      xhr.send(fd);
+    });
+  }
+
+  function uploadMediaToCloudinary(file, resourceType, statusElId, onDone, onProgress, onError) {
     var statusEl = $(statusElId);
-    if (statusEl) { statusEl.className = 'media-upload-status uploading'; statusEl.textContent = 'Preparing signed upload…'; }
+    var kind = resourceType === 'video' ? 'video tour' : 'photo';
+    var fail = function (msg) {
+      if (statusEl) { statusEl.className = 'media-upload-status error'; statusEl.textContent = msg; }
+      if (onError) onError(msg);
+    };
+    if (statusEl) { statusEl.className = 'media-upload-status uploading'; statusEl.textContent = 'Preparing the signed upload…'; }
     fetch('/api/cloudinary-sign', { method: 'POST' })
-      .then(function (r) { if (!r.ok) throw new Error('Could not get upload signature (HTTP ' + r.status + ')'); return r.json(); })
+      .then(function (r) { if (!r.ok) throw new Error('Could not get an upload signature (HTTP ' + r.status + ')'); return r.json(); })
       .then(function (sig) {
-        if (statusEl) statusEl.textContent = 'Uploading ' + (resourceType === 'video' ? 'video tour' : 'photo') + '…';
+        if (statusEl) statusEl.textContent = 'Uploading ' + kind + '…';
         var fd = new FormData();
         fd.append('file', file);
         fd.append('api_key', sig.api_key);
@@ -1901,111 +2831,51 @@
         if (sig.max_file_size) fd.append('max_file_size', sig.max_file_size);
         if (sig.context) fd.append('context', sig.context);
         var endpoint = 'https://api.cloudinary.com/v1_1/' + sig.cloud_name + '/' + (resourceType === 'video' ? 'video' : 'image') + '/upload';
-        return fetch(endpoint, { method: 'POST', body: fd }).then(function (res) {
-          if (!res.ok) return res.text().then(function (t) { throw new Error('Cloudinary error: ' + t); });
-          return res.json();
-        });
+        return cloudinaryXhr(endpoint, fd, onProgress);
       })
       .then(function (data) {
         if (statusEl) { statusEl.className = 'media-upload-status success'; statusEl.textContent = 'Uploaded!'; }
         onDone(data.secure_url);
       })
-      .catch(function (err) {
-        if (statusEl) { statusEl.className = 'media-upload-status error'; statusEl.textContent = 'Upload failed: ' + err.message; }
-      });
+      .catch(function (err) { fail('Upload failed: ' + err.message); });
   }
 
-  /* Videos go to YouTube (unlisted) with a live progress bar;
-     if YouTube cannot take it (not configured, daily quota,
-     network), fall back to the existing Cloudinary video path. */
-  function uploadMedia(file, resourceType, statusElId, onDone) {
+  /* Videos go to YouTube (unlisted) with a live progress bar; if YouTube
+     cannot take it (not configured, quota, network) fall back to the
+     Cloudinary video path. */
+  function uploadMedia(file, resourceType, statusElId, onDone, onProgress, onError) {
     var statusEl = $(statusElId);
     if (resourceType !== 'video' || !window.ArzuzVideo || file.size > ArzuzVideo.MAX_BYTES) {
-      return uploadMediaToCloudinary(file, resourceType, statusElId, onDone);
+      return uploadMediaToCloudinary(file, resourceType, statusElId, onDone, onProgress, onError);
     }
-    if (statusEl) { statusEl.className = 'media-upload-status uploading'; statusEl.textContent = 'Preparing video upload…'; }
+    if (statusEl) { statusEl.className = 'media-upload-status uploading'; statusEl.textContent = 'Preparing the video upload…'; }
     ArzuzVideo.uploadVideoToYouTube(file, {
       onProgress: function (p) {
+        var pct = (p && p.percent) || 0;
+        if (onProgress) onProgress(pct);
         if (!statusEl) return;
         statusEl.className = 'media-upload-status uploading';
         if (p.phase === 'uploading') statusEl.innerHTML = ArzuzVideo.progressHTML(p);
-        else if (p.phase === 'processing') statusEl.textContent = 'Uploaded — processing video…';
-        else statusEl.textContent = 'Preparing video upload…';
-      },
+        else if (p.phase === 'processing') statusEl.textContent = 'Uploaded — processing the video…';
+        else statusEl.textContent = 'Preparing the video upload…';
+      }
     }).then(function (url) {
       if (statusEl) { statusEl.className = 'media-upload-status success'; statusEl.textContent = 'Uploaded!'; }
       onDone(url);
     }).catch(function (err) {
-      console.warn('[Arzuz] YouTube upload unavailable, falling back to Cloudinary:', err.message);
-      uploadMediaToCloudinary(file, 'video', statusElId, onDone);
+      if (window.console) console.warn('[Arzuz] YouTube upload unavailable, falling back to Cloudinary:', err.message);
+      uploadMediaToCloudinary(file, 'video', statusElId, onDone, onProgress, onError);
     });
   }
 
-  /* gallery + zone thumbnails: YouTube items show their public
-     poster frame; direct files keep the inline <video> preview */
+  /* gallery + staged thumbnails: YouTube items show their public poster
+     frame; direct files keep the inline <video> preview */
   function mediaThumbHTML(url) {
     if (window.ArzuzVideo && ArzuzVideo.parseYouTube(url)) {
       return '<img src="' + esc(ArzuzVideo.thumb(url)) + '" alt="" loading="lazy">';
     }
     return '<video src="' + esc(url) + '" muted preload="metadata"></video>';
   }
-
-  function setMediaPreview(prev, kind, url, hiddenId, previewId) {
-    var removeBtn = '<button type="button" class="media-remove-btn" data-clear="' + hiddenId + '" data-prev="' + previewId + '">Remove</button>';
-    if (kind === 'video') {
-      if (window.ArzuzVideo && ArzuzVideo.parseYouTube(url)) {
-        prev.innerHTML = '<div class="prev-video-slot" style="width:100%;aspect-ratio:16/9;background:#000;border-radius:8px;overflow:hidden;"></div>' + removeBtn;
-        var slotEl = prev.querySelector('.prev-video-slot');
-        if (slotEl) ArzuzVideo.mountPlayer(slotEl, url);
-      } else {
-        prev.innerHTML = '<video src="' + esc(url) + '" controls></video>' + removeBtn;
-      }
-    } else {
-      prev.innerHTML = '<img src="' + esc(url) + '" alt="Upload preview">' + removeBtn;
-    }
-    prev.style.display = 'block';
-  }
-
-  function initUploader(zoneId, inputId, kind, previewId, hiddenId, manualId, progressId) {
-    var zone = $(zoneId);
-    if (!zone) return;
-    /* dropzones carry their own hidden file input; progress lives beside it */
-    var input = $(inputId) || zone.querySelector('input[type=file]');
-
-    var submit = function (file) {
-      if (!file) return;
-      uploadMedia(file, kind, progressId, function (url) {
-        var hidden = $(hiddenId);
-        if (hidden) hidden.value = url;
-        var manual = manualId ? $(manualId) : null;
-        if (manual) manual.value = url;
-        var prev = $(previewId);
-        if (prev) setMediaPreview(prev, kind, url, hiddenId, previewId);
-      });
-    };
-
-    if (zone) {
-      zone.onclick = function () { if (input) input.click(); };
-      if (input) {
-        input.onchange = function () { submit(input.files && input.files[0]); };
-      }
-    }
-    var manual = manualId ? $(manualId) : null;
-    if (manual) {
-      manual.addEventListener('input', function () {
-        var url = manual.value.trim();
-        var hidden = $(hiddenId); if (hidden) hidden.value = url;
-        var prev = $(previewId);
-        if (!prev) return;
-        if (url) {
-          setMediaPreview(prev, kind, url, hiddenId, previewId);
-        } else { prev.innerHTML = ''; prev.style.display = 'none'; }
-      });
-    }
-  }
-
-  /* the Add Apartment photo/video zones are handled by the gallery
-     manager (initGalleryManager) — see section 8b */
 
   window.openPhotoLightbox = function (url) {
     $('lightboxImg').src = url;
@@ -2016,8 +2886,8 @@
   window.openVideoLightbox = function (url) {
     var box = $('videoLightboxContainer');
     if (window.ArzuzVideo && ArzuzVideo.parseYouTube(url)) {
-      /* masked player — the same chrome visitors see; a previous
-         player must be torn down or it keeps polling a detached iframe */
+      /* masked player — the same chrome visitors see; a previous player
+         must be torn down or it keeps polling a detached iframe */
       ArzuzVideo.stopIn(box);
       box.innerHTML = '';
       ArzuzVideo.mountPlayer(box, url, { autoplay: true });
@@ -2034,14 +2904,19 @@
   window.closeVideoLightbox = closeVideoLightbox;
   $('videoLightboxClose').addEventListener('click', closeVideoLightbox);
 
-  /* ================= 8b. Media gallery manager =================
-     One manager per modal context ('add' | 'edit'). The list is the
-     source of truth for payload.media; the hidden photo/video fields
-     stay in sync so every older code path keeps working. */
+  /* ================= 8b. Media queue: stage → compress → upload =================
+     One queue per surface ('add' | 'edit'). GAL[ctx] holds the media
+     that is actually saved (the source of truth for payload.media);
+     GAL_STAGE[ctx] holds tiles still in flight, so the admin sees the
+     photo the instant it is picked, can drop it again, and watches a
+     real percentage as it uploads. The hidden photo/video fields stay
+     in sync so every older code path keeps working. */
 
   var GAL = { add: [], edit: [] };
+  var GAL_STAGE = { add: [], edit: [] };
 
   function galList(ctx) { return GAL[ctx] || (GAL[ctx] = []); }
+  function galStage(ctx) { return GAL_STAGE[ctx] || (GAL_STAGE[ctx] = []); }
 
   /* every asset gets the same copyright credit object */
   function credit() {
@@ -2070,111 +2945,231 @@
     if (vi) vi.value = tour ? tour.url : '';
   }
 
+  function stageTileHtml(it) {
+    var isVideo = it.type === 'video';
+    var thumb = it.preview
+      ? (isVideo ? '<video src="' + esc(it.preview) + '" muted preload="metadata"></video>'
+                 : '<img src="' + esc(it.preview) + '" alt="" loading="lazy">')
+      : '<div style="aspect-ratio:4/3;background:rgba(255,255,255,.05)"></div>';
+    var label = it.status === 'failed' ? 'Failed — remove'
+      : it.status === 'uploading' ? (it.pct > 0 ? it.pct + '%' : 'Uploading…')
+      : it.status === 'done' ? 'Uploaded'
+      : 'Queued';
+    return '<div class="stage-th' + (it.status === 'failed' ? ' is-failed' : '') + (it.status === 'done' ? ' is-done' : '') + '" data-sid="' + esc(it.id) + '">' +
+      thumb +
+      '<span class="stage-kind">' + ico(isVideo ? 'video' : 'image', 12) + '</span>' +
+      '<button type="button" class="stage-x" data-stage="drop" data-ctx="' + it.ctx + '" data-sid="' + esc(it.id) + '" title="Remove">' + ico('x', 11) + '</button>' +
+      (it.status === 'done' ? '' :
+        '<span class="stage-pct">' + esc(label) + '</span>' +
+        '<span class="stage-bar"><i style="width:' + (it.status === 'failed' ? 100 : (it.pct || 0)) + '%"></i></span>') +
+      '</div>';
+  }
+
   function renderGal(ctx) {
     var grid = $(ctx === 'add' ? 'galAddGrid' : 'galEditGrid');
     if (!grid) return;
-    var list = galList(ctx);
-    if (!list.length) {
-      grid.innerHTML = '<p class="gal-empty">No media yet. The first photo you upload becomes the cover students see on the browse page.</p>';
+    var list = galList(ctx), stage = galStage(ctx);
+    if (!list.length && !stage.length) {
+      grid.innerHTML = '<p class="stage-empty">No media yet. The first photo you upload becomes the cover students see on the browse page.</p>';
       syncGalHidden(ctx);
       return;
     }
     var firstImg = list.filter(function (m) { return m.type === 'image'; })[0];
-    grid.innerHTML = list.map(function (m, i) {
+    var html = stage.map(stageTileHtml).join('');
+    html += list.map(function (m, i) {
       var isCover = (m === firstImg);
       var thumb = (m.type === 'video')
         ? mediaThumbHTML(m.url) + '<span class="gal-kind">' + ico('video', 12) + '</span>'
         : '<img src="' + esc(m.url) + '" alt="" loading="lazy"><span class="gal-kind">' + ico('image', 12) + '</span>';
-      return '<div class="gal-th">' + thumb +
-        (isCover ? '<span class="gal-cover">Cover</span>' : '') +
-        '<span class="gal-cr">© Arzuz</span>' +
-        '<div class="gal-th-btns">' +
-          '<button type="button" class="gal-b" data-gal="left" data-ctx="' + ctx + '" data-i="' + i + '" title="Move left">' + ico('chevL', 12) + '</button>' +
-          '<button type="button" class="gal-b" data-gal="right" data-ctx="' + ctx + '" data-i="' + i + '" title="Move right">' + ico('chevR', 12) + '</button>' +
-          (m.type === 'image' && !isCover ? '<button type="button" class="gal-b" data-gal="cover" data-ctx="' + ctx + '" data-i="' + i + '" title="Make cover">' + ico('star', 12) + '</button>' : '') +
-          '<button type="button" class="gal-b danger" data-gal="del" data-ctx="' + ctx + '" data-i="' + i + '" title="Remove">' + ico('x', 12) + '</button>' +
-        '</div>' +
+      var coverBtn = (m.type === 'image')
+        ? '<button type="button" class="stage-cover-btn' + (isCover ? ' is-cover' : '') + '" data-gal="cover" data-ctx="' + ctx + '" data-i="' + i + '" title="Use as the cover photo">' +
+          ico('star', 11) + (isCover ? ' Cover photo' : ' Set as cover') + '</button>'
+        : '';
+      return '<div class="stage-th">' + thumb +
+        '<button type="button" class="stage-x" data-gal="del" data-ctx="' + ctx + '" data-i="' + i + '" title="Remove">' + ico('x', 11) + '</button>' +
+        coverBtn +
         '<input type="text" class="gal-lbl" data-gal="label" data-ctx="' + ctx + '" data-i="' + i + '" value="' + esc(m.label || '') + '" placeholder="Label (optional)" maxlength="48">' +
         '</div>';
     }).join('');
+    grid.innerHTML = html;
     syncGalHidden(ctx);
   }
 
-  function uploadIntoGallery(ctx, files, kind) {
-    var list = galList(ctx);
-    var prog = $(ctx === 'add' ? (kind === 'video' ? 'galAddVideoProgress' : 'galAddProgress')
-                               : (kind === 'video' ? 'galEditVideoProgress' : 'galEditProgress'));
+  function stageProgressTick(item) {
+    var tile = document.querySelector('.stage-th[data-sid="' + item.id + '"]');
+    if (!tile) return;
+    var bar = tile.querySelector('.stage-bar i');
+    if (bar) bar.style.width = (item.pct || 0) + '%';
+    var pctEl = tile.querySelector('.stage-pct');
+    if (pctEl) pctEl.textContent = item.pct > 0 ? item.pct + '%' : 'Uploading…';
+  }
+
+  function stageFiles(ctx, files, kind) {
     var arr = Array.prototype.slice.call(files || []);
     if (!arr.length) return;
-    var done = 0;
-    if (prog) { prog.className = 'media-upload-status uploading'; prog.textContent = 'Uploading ' + arr.length + ' file' + (arr.length > 1 ? 's' : '') + '…'; }
-    arr.forEach(function (file) {
-      uploadMedia(file, kind, null, function (url) {
-        list.push({ type: kind === 'video' ? 'video' : 'image', url: url, label: '', credit: credit() });
-        done++;
-        if (prog) { prog.className = 'media-upload-status success'; prog.textContent = 'Uploaded ' + done + ' of ' + arr.length; }
-        renderGal(ctx);
-      });
+    var prog = $(ctx === 'add'
+      ? (kind === 'video' ? 'galAddVideoProgress' : 'galAddProgress')
+      : (kind === 'video' ? 'galEditVideoProgress' : 'galEditProgress'));
+    var total = arr.length, done = 0, failed = 0;
+
+    function report() {
+      if (!prog) return;
+      if (done + failed >= total) {
+        prog.className = 'media-upload-status ' + (failed ? 'error' : 'success');
+        prog.textContent = failed
+          ? (done + ' uploaded, ' + failed + ' failed')
+          : done + ' ' + (kind === 'video' ? (done === 1 ? 'video' : 'videos') : (done === 1 ? 'photo' : 'photos')) + ' uploaded';
+      } else {
+        prog.className = 'media-upload-status uploading';
+        prog.textContent = 'Uploading ' + (done + failed + 1) + ' of ' + total + '…';
+      }
+    }
+
+    arr.forEach(function (file, idx) {
+      var item = {
+        id: 'st' + Date.now().toString(36) + idx + Math.random().toString(36).slice(2, 6),
+        ctx: ctx,
+        type: kind === 'video' ? 'video' : 'image',
+        preview: '',
+        status: 'queued',
+        pct: 0
+      };
+      if (typeof URL !== 'undefined' && URL.createObjectURL) {
+        try { item.preview = URL.createObjectURL(file); } catch (e) { item.preview = ''; }
+      }
+      galStage(ctx).push(item);
+      renderGal(ctx);
+      report();
+
+      var send = function (f) {
+        item.status = 'uploading';
+        stageProgressTick(item);
+        uploadMedia(f, kind, null, function (url) {
+          item.status = 'done';
+          item.pct = 100;
+          galList(ctx).push({ type: kind === 'video' ? 'video' : 'image', url: url, label: '', credit: credit() });
+          if (item.preview && URL.revokeObjectURL) { try { URL.revokeObjectURL(item.preview); } catch (e) { /* ignore */ } }
+          var at = galStage(ctx).indexOf(item);
+          if (at !== -1) galStage(ctx).splice(at, 1);
+          done++;
+          renderGal(ctx);
+          report();
+        }, function (pct) {
+          item.pct = pct;
+          stageProgressTick(item);
+        }, function () {
+          item.status = 'failed';
+          failed++;
+          renderGal(ctx);
+          report();
+        });
+      };
+
+      /* photos are downscaled first — it happens on the picker's own
+         thread step so the tile is already on screen */
+      if (kind === 'image') compressImage(file, send);
+      else send(file);
     });
   }
 
   function initGalleryManager(ctx, seed) {
     GAL[ctx] = (seed || []).slice();
+    GAL_STAGE[ctx] = [];
     var zone = $(ctx === 'add' ? 'galAddZone' : 'galEditZone');
     var input = $(ctx === 'add' ? 'galAddInput' : 'galEditInput');
     var vzone = $(ctx === 'add' ? 'galAddVideoZone' : 'galEditVideoZone');
     var vinput = $(ctx === 'add' ? 'galAddVideoInput' : 'galEditVideoInput');
+
     if (zone && input) {
       zone.onclick = function () { input.click(); };
-      input.onchange = function () { uploadIntoGallery(ctx, input.files, 'image'); input.value = ''; };
+      input.onchange = function () { stageFiles(ctx, input.files, 'image'); input.value = ''; };
+      bindDropZone(zone, ctx, 'image');
     }
     if (vzone && vinput) {
       vzone.onclick = function () { vinput.click(); };
-      vinput.onchange = function () { uploadIntoGallery(ctx, vinput.files, 'video'); vinput.value = ''; };
+      vinput.onchange = function () { stageFiles(ctx, vinput.files, 'video'); vinput.value = ''; };
+      bindDropZone(vzone, ctx, 'video');
     }
     renderGal(ctx);
   }
 
-  /* gallery thumbnail controls — delegated (grid is re-rendered) */
+  /* drag & drop onto either zone */
+  function bindDropZone(zone, ctx, kind) {
+    if (!zone || typeof zone.addEventListener !== 'function') return;
+    ['dragenter', 'dragover'].forEach(function (t) {
+      zone.addEventListener(t, function (e) {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+        zone.classList.add('is-over');
+      });
+    });
+    ['dragleave', 'dragend'].forEach(function (t) {
+      zone.addEventListener(t, function () { zone.classList.remove('is-over'); });
+    });
+    zone.addEventListener('drop', function (e) {
+      e.preventDefault();
+      zone.classList.remove('is-over');
+      var files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length) stageFiles(ctx, files, kind);
+    });
+  }
+
+  /* queue + committed controls — delegated (the grid is re-rendered) */
   document.addEventListener('click', function (e) {
-    var b = e.target.closest ? e.target.closest('[data-gal]') : null;
+    var drop = e.target && e.target.closest ? e.target.closest('[data-stage="drop"]') : null;
+    if (drop) {
+      var ctxS = drop.dataset.ctx, sid = drop.dataset.sid;
+      var stage = galStage(ctxS);
+      var at = -1;
+      stage.forEach(function (it, i) { if (it.id === sid) at = i; });
+      if (at !== -1) {
+        if (stage[at].preview && typeof URL !== 'undefined' && URL.revokeObjectURL) {
+          try { URL.revokeObjectURL(stage[at].preview); } catch (e2) { /* ignore */ }
+        }
+        stage.splice(at, 1);
+        renderGal(ctxS);
+      }
+      return;
+    }
+    var b = e.target && e.target.closest ? e.target.closest('[data-gal]') : null;
     if (!b) return;
     var act = b.dataset.gal, ctx = b.dataset.ctx, i = parseInt(b.dataset.i, 10);
     var list = galList(ctx);
     if (isNaN(i) || !list[i]) return;
-    if (act === 'left' && i > 0) { var t1 = list[i - 1]; list[i - 1] = list[i]; list[i] = t1; }
-    else if (act === 'right' && i < list.length - 1) { var t2 = list[i + 1]; list[i + 1] = list[i]; list[i] = t2; }
-    else if (act === 'del') list.splice(i, 1);
-    else if (act === 'cover') { var m = list.splice(i, 1)[0]; list.unshift(m); }
-    else return;
+    if (act === 'del') {
+      var removed = list.splice(i, 1)[0];
+      if (removed && removed.preview && typeof URL !== 'undefined' && URL.revokeObjectURL) { try { URL.revokeObjectURL(removed.preview); } catch (e3) { /* ignore */ } }
+    } else if (act === 'cover') {
+      var m = list.splice(i, 1)[0];
+      list.unshift(m);
+    } else return;
     renderGal(ctx);
   });
   document.addEventListener('input', function (e) {
-    var b = e.target.closest ? e.target.closest('[data-gal="label"]') : null;
+    var b = e.target && e.target.closest ? e.target.closest('[data-gal="label"]') : null;
     if (!b) return;
     var list = galList(b.dataset.ctx), i = parseInt(b.dataset.i, 10);
-    if (list[i]) list[i].label = b.value.slice(0, 48);
+    if (list[i]) list[i].label = str(b.value).slice(0, 48);
   });
 
-  /* ================= 9. Map pin (Add Apartment) — via ArzuzMap ================= */
+  /* ================= 9. Map pin — via ArzuzMap ================= */
 
   var adminPinCapture = null;
-  var adminPassageEditor = null;
   var editPinCapture = null;
-  var editPassageEditor = null;
 
-  /* Reads the hidden inputs + passage state the shared widget maintains. */
+  function readPinMeta(id) {
+    var el = $(id);
+    if (!el || !el.value) return null;
+    try { return JSON.parse(el.value); } catch (e) { return null; }
+  }
+
+  /* Reads the hidden inputs the shared widget maintains. */
   function adminPinValues() {
-    var meta = null;
-    if ($('add_pin_meta') && $('add_pin_meta').value) {
-      try { meta = JSON.parse($('add_pin_meta').value); } catch (e) { meta = null; }
-    }
     return {
-      lat: $('add_lat') ? $('add_lat').value.trim() || null : null,
-      lng: $('add_lng') ? $('add_lng').value.trim() || null : null,
-      pin: $('add_pin') ? $('add_pin').value.trim() || null : null,
-      meta: meta,
-      passage: adminPassageEditor ? adminPassageEditor.get() : null
+      lat: $('add_lat') ? str($('add_lat').value).trim() || null : null,
+      lng: $('add_lng') ? str($('add_lng').value).trim() || null : null,
+      pin: $('add_pin') ? str($('add_pin').value).trim() || null : null,
+      meta: readPinMeta('add_pin_meta')
     };
   }
 
@@ -2182,9 +3177,9 @@
     if (typeof ArzuzMap === 'undefined') return;
     var mapEl = $('admin-leaflet-map');
     if (!mapEl) return;
+    if (adminPinCapture) { try { adminPinCapture.destroy(); } catch (e) { /* ignore */ } adminPinCapture = null; }
 
-    if (adminPinCapture) { try { adminPinCapture.destroy(); } catch (e) { } adminPinCapture = null; }
-
+    var start = adminPinValues();
     adminPinCapture = ArzuzMap.pinCapture({
       containerId: 'admin-leaflet-map',
       layerSwitchId: 'adminMapLayerSwitcher',
@@ -2196,43 +3191,105 @@
       trace: true,
       traceBarId: 'adminTraceBar',
       traceSource: 'traced',
+      existingRoute: (start.meta && start.meta.route) || null,
+      lat: start.lat,
+      lng: start.lng,
       onPin: function (lat, lng, meta) {
+        /* merge instead of replace: tracing the road re-commits the pin
+           and must not wipe the source / accuracy the GPS or tap set */
+        var merged = Object.assign({}, readPinMeta('add_pin_meta') || {}, meta || {});
         var la = $('add_lat'), ln = $('add_lng'), pn = $('add_pin'), mt = $('add_pin_meta');
-        if (la) { la.value = lat; la.dataset.src = meta.source || 'tapped'; }
-        if (ln) { ln.value = lng; ln.dataset.src = meta.source || 'tapped'; }
+        if (la) la.value = lat;
+        if (ln) ln.value = lng;
         if (pn) pn.value = lat.toFixed(6) + ',' + lng.toFixed(6);
-        if (mt) mt.value = JSON.stringify(meta);
+        if (mt) mt.value = JSON.stringify(merged);
         var badge = $('adminMapCoordsText');
-        if (badge) { badge.textContent = lat.toFixed(5) + ', ' + lng.toFixed(5); badge.classList.add('set'); }
+        if (badge && !(meta && meta.route)) {
+          badge.textContent = lat.toFixed(5) + ', ' + lng.toFixed(5);
+          badge.classList.add('set');
+        }
+      },
+      /* a traced walk path with no pin yet: keep the route, add no position */
+      onRoute: function (meta) {
+        var merged = Object.assign({}, readPinMeta('add_pin_meta') || {}, meta || {});
+        var mt = $('add_pin_meta');
+        if (mt) mt.value = JSON.stringify(merged);
       }
     });
   }
 
-  /* Passage editor inside the Add Apartment modal. The Edit modal keeps
-     its own instance keyed off the payload being edited. */
-  function initAdminPassageAdd() {
+  /* ---- the Edit-modal map: built when its tab is first revealed ---- */
+
+  var editPassageEditor = null;   /* scout reports only — listings use access notes */
+  var editMapReady = false;
+  var editMapMode = null;
+
+  function destroyEditMap() {
+    if (editPinCapture) { try { editPinCapture.destroy(); } catch (e) { /* ignore */ } editPinCapture = null; }
+    if (editPassageEditor) { try { editPassageEditor.destroy(); } catch (e) { /* ignore */ } editPassageEditor = null; }
+    editMapReady = false;
+  }
+  /* the Edit-modal cancel button still calls the old name */
+  var destroyEditMapAndPassage = destroyEditMap;
+
+  function setEditMapMode(mode) {
+    var bar = $('editTraceBar');
+    var tgl = $('editTraceToggle');
+    var tracing = !!(bar && bar.classList && bar.classList.contains('tracing'));
+    if (tgl) {
+      if (mode === 'path' && !tracing) tgl.click();
+      else if (mode === 'pin' && tracing) tgl.click();
+    }
+    if (bar) bar.style.display = (mode === 'path') ? 'flex' : 'none';
+  }
+
+  function initEditListingMap(row) {
     if (typeof ArzuzMap === 'undefined') return;
-    if (adminPassageEditor) { try { adminPassageEditor.destroy(); } catch (e) { } adminPassageEditor = null; }
-    adminPassageEditor = ArzuzMap.passageEditor({
-      mountId: 'adminPassageMount',
-      answers: null,
-      passage: null,
-      miniMap: true,
-      pin: null
+    if (editPinCapture) { try { editPinCapture.destroy(); } catch (e) { /* ignore */ } editPinCapture = null; }
+    var lp = payloadOf(row);
+    var lat = row.latitude || lp.lat || '';
+    var lng = row.longitude || lp.lng || '';
+    editPinCapture = ArzuzMap.pinCapture({
+      containerId: 'editLeafletMap',
+      layerSwitchId: 'editMapLayerSwitcher',
+      coordsBadgeId: 'editMapCoordsText',
+      locateBtnId: 'editBtnLocateMe',
+      statusBoxId: 'editMapStatus',
+      tipBannerId: null,
+      startGps: false,
+      trace: true,
+      traceBarId: 'editTraceBar',
+      traceToggleId: 'editTraceToggle',
+      traceUndoId: 'editTraceUndo',
+      traceClearId: 'editTraceClear',
+      traceCountId: 'editTraceCount',
+      traceSource: 'traced',
+      existingRoute: (lp.passage && lp.passage.route) || null,
+      lat: lat || null,
+      lng: lng || null,
+      onPin: function (la, ln, meta) {
+        var merged = Object.assign({}, readPinMeta('edit_pin_meta') || {}, meta || {});
+        var latEl = $('edit_lat'), lngEl = $('edit_lng'), metaEl = $('edit_pin_meta');
+        if (latEl) latEl.value = la;
+        if (lngEl) lngEl.value = ln;
+        if (metaEl) metaEl.value = JSON.stringify(merged);
+        var badge = $('editMapCoordsText');
+        if (badge && !(meta && meta.route)) {
+          badge.textContent = la.toFixed(5) + ', ' + ln.toFixed(5);
+          badge.classList.add('set');
+        }
+      },
+      /* a traced walk path with no pin yet: keep the route, add no position */
+      onRoute: function (meta) {
+        var merged = Object.assign({}, readPinMeta('edit_pin_meta') || {}, meta || {});
+        var metaEl = $('edit_pin_meta');
+        if (metaEl) metaEl.value = JSON.stringify(merged);
+      }
     });
+    setEditMapMode(editMapMode ? editMapMode.get() : 'pin');
   }
 
-  function destroyAdminPassage() {
-    if (adminPassageEditor) { try { adminPassageEditor.destroy(); } catch (e) { } adminPassageEditor = null; }
-  }
-
-  /* Tear down the Edit-modal map + passage instances before a rebuild */
-  function destroyEditMapAndPassage() {
-    if (editPinCapture) { try { editPinCapture.destroy(); } catch (e) { } editPinCapture = null; }
-    if (editPassageEditor) { try { editPassageEditor.destroy(); } catch (e) { } editPassageEditor = null; }
-  }
-
-  /* ================= 10. Details modal ================= */
+/* ================= 10. Details modal ================= */
 
   function kv(label, valueHtml, full) {
     return '<div class="details-kv-item"' + (full ? ' style="grid-column:1/-1"' : '') + '><div class="details-kv-lbl">' + esc(label) + '</div><div class="details-kv-val">' + valueHtml + '</div></div>';

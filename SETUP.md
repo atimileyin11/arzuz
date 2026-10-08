@@ -41,6 +41,9 @@ the label and the wording switch to live automatically.
    `supabase-hardening.sql` instead — it does the same job without touching your rows.
    Already hardened *before* the browse page existed? Run `supabase-public-view.sql` once —
    it adds just the `public_listings` view browse.html reads.
+   Using the dashboard's draft-invite links? Run `supabase-drafts-support.sql`, then
+   `supabase-draft-sharing.sql` (adds **view-only / edit** permissions and link expiry, and
+   enforces both on the server). Both are additive and safe to run more than once.
 3. Press **Run**
 
 You should see *Success. No rows returned.*

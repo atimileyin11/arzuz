@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
 <link rel="stylesheet" href="assets/arzuz.css">
-<link rel="stylesheet" href="assets/admin.css?v=5">
+<link rel="stylesheet" href="assets/admin.css?v=7">
 <link rel="stylesheet" href="assets/video.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
@@ -29,6 +29,7 @@
 
 <!-- Sidebar -->
 <div class="side-scrim" id="sideScrim" aria-hidden="true"></div>
+<div class="side-grip" id="sideGrip" aria-hidden="true"></div>
 <aside class="admin-side" id="adminSide">
   <button type="button" class="side-close" id="sideClose" aria-label="Close menu"><span data-icon="x"></span></button>
   <a href="index.html" class="admin-brand">
@@ -597,7 +598,7 @@
             <div class="media-upload-status" id="galAddVideoProgress"></div>
             <div class="admin-media-zone url-zone" style="margin-top:8px;">
               <div class="url-row">
-                <input type="url" id="add_video_url_manual" placeholder="…or paste a YouTube / Vimeo / direct video link">
+                <input type="url" id="add_video_url_manual" maxlength="300" placeholder="…or paste a YouTube link">
                 <button type="button" id="add_video_url_add"><span data-icon="plus"></span> Embed</button>
               </div>
             </div>
@@ -774,15 +775,15 @@
   </div>
 </div>
 
-<script src="assets/admin-ui.js?v=4"></script>
+<script src="assets/admin-ui.js?v=5"></script>
 <script src="assets/config.js"></script>
 <script src="assets/auth.js?v=2"></script>
 <script src="assets/data.js"></script>
 <script src="assets/strategy.js?v=4"></script>
 <script src="assets/notify.js"></script>
-<script src="assets/video.js"></script>
+<script src="assets/video.js?v=2"></script>
 <script src="assets/submit.js?v=3"></script>
-<script src="assets/arzuz-map.js"></script>
+<script src="assets/arzuz-map.js?v=3"></script>
 <script>/* dev-only mock harness — only ever runs on localhost with ?mock=1 (see dev/admin-mock.js) */
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '0.0.0.0') {
     if (new URLSearchParams(location.search).get('mock') === '1') {
@@ -790,7 +791,7 @@
     }
   }
   </script>
-<script src="assets/admin.js?v=13"></script>
+<script src="assets/admin.js?v=14"></script>
 <script>
 /* shell-only wiring that has no place in admin.js */
 (function(){

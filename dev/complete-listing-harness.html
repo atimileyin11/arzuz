@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dev harness — landlord invite form</title>
+<style>
+  body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 0 auto; max-width: 720px;
+    padding: 28px 18px 60px; color: #16121d; line-height: 1.6; }
+  h1 { font-size: 22px; letter-spacing: -.02em; }
+  code { background: #f5f3ff; padding: 2px 6px; border-radius: 6px; font-size: 13px; }
+  pre { background: #16121d; color: #e9e4f5; padding: 12px 14px; border-radius: 10px; font-size: 12.5px;
+    overflow: auto; }
+  .note { background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; border-radius: 12px;
+    padding: 10px 14px; font-size: 13.5px; }
+</style>
+</head>
+<body>
+<h1>Dev harness — landlord invite form</h1>
+<p>This loads <b>the real <code>complete-listing.html</code></b> — same markup, same scripts — after doing two
+dev-only things: it points <code>SUPABASE_URL</code> at the dev server's mock RPC routes, and it swaps
+<code>XMLHttpRequest</code> for a stub that reports real progress ticks so the staged tiles show a
+percentage instead of dying on the 503 from <code>/api/cloudinary-sign</code>. Nothing here ships.</p>
+<p class="note" id="hbStatus">Booting…</p>  <p>Query options: <code>?ref=&lt;uuid&gt;</code> · <code>?seed=blank|one|demo|worst|view</code> ·
+  <code>?perm=view</code></p>
+<pre id="hbLog"></pre>
+
+<script>
+(function () {
+  var log = '';
+  function say(line) {
+    log += line + '\n';
+    var el = document.getElementById('hbLog');
+    if (el) el.textContent = log;
+    else console.log('[harness]', line);
+  }
+
+  /* ---------- 1. config the real page reads (config.js keeps what exists) ---------- */
+  window.ARZUZ_CONFIG = {
+    SUPABASE_URL: location.origin + '/mock/sb',
+    SUPABASE_ANON_KEY: 'sb_publishable_mock_anon_key',
+    SESSION: '2026/2027',
+    ENV: 'test',
+    SUPPORT_WHATSAPP: '2349024814771',
+    WHATSAPP_CONFIRMATIONS: false
+  };
+
+  /* ---------- 2a. the signed-upload handshake (the real route 503s here) ---------- */
+  var realFetch = window.fetch ? window.fetch.bind(window) : null;
+  window.fetch = function (input, init) {
+    var url = typeof input === 'string' ? input : ((input && input.url) || '');
+    if (url.indexOf('/api/cloudinary-sign') === 0) {
+      say('signature request → mocked (the dev server 503s it on purpose)');
+      return Promise.resolve(new Response(JSON.stringify({
+        cloud_name: 'mock-cloud',
+        api_key: 'mock-key',
+        timestamp: Math.floor(Date.now() / 1000),
+        signature: 'mock-signature',
+        folder: 'arzuz/mock',
+        eager: 'c_limit,w_1600'
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    }
+    return realFetch(input, init);
+  };
+
+  /* ---------- 2b. an XHR that reports progress, then succeeds ---------- */
+  function FakeXHR() {
+    var self = this;
+    this.upload = {};
+    this.status = 0;
+    this.responseText = '';
+    this.onload = null; this.onerror = null; this.onabort = null;
+    this.open = function (method, url) { self.__url = url; };
+    this.send = function (body) {
+      var steps = [8, 26, 51, 74, 93, 100];
+      var i = 0;
+      say('upload → ' + String(self.__url).replace(/^https:\/\/api\.cloudinary\.com\/v1_1\//, 'cloudinary:'));
+      (function tick() {
+        if (i < steps.length) {
+          if (self.upload.onprogress) self.upload.onprogress({ lengthComputable: true, loaded: steps[i], total: 100 });
+          i++;
+          setTimeout(tick, 220);
+          return;
+        }
+        self.status = 200;
+        self.responseText = JSON.stringify({
+          secure_url: location.origin + '/assets/social/og-image.png?mock-upload=' + Date.now()
+        });
+        if (self.onload) self.onload();
+      })();
+    };
+  }
+  window.XMLHttpRequest = FakeXHR;
+
+  /* ---------- 3. seed the mock draft row, then boot the real page ---------- */
+  var SEEDS = {
+    blank: null,
+    existing: {
+      prop_name: 'Blessing Lodge', ty: 'Self-contain', ar: 'Behind KWASU Gate, Malete',
+      rent: '180000', rm: '3 rooms available', avail: 'vacant', units: 3,
+      nm: 'Alh. Kareem', last: '', ph: '08033445566', contact_role: 'Caretaker', who: 'A caretaker',
+      desc: 'Tiled floors, prepaid meter.', ut: ['Borehole water', 'NEPA connection'],
+      split_ok: true,
+      lat: '9.195', lng: '4.661', pin: '9.195000,4.661000',
+      pin_meta: { source: 'gps', accuracy_m: 6, samples: 9 },
+      passage: {
+        landmark: 'Opposite the blue mosque, brown double gate.',
+        gate: '', floor: '', steps: [],
+        route: [[9.195, 4.661], [9.1955, 4.6614], [9.196, 4.6619]],
+        route_src: 'traced', route_km: 0.21, route_min: 3
+      },
+      media: [
+        { type: 'image', url: '/assets/social/og-image.png', label: 'Cover photo', credit: { holder: 'Arzuz' } },
+        { type: 'video', url: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ', label: '', credit: { holder: 'Arzuz' } }
+      ],
+      photo: '/assets/social/og-image.png',
+      video: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ',
+      video_url: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ'
+    }
+  };
+
+  /* a title Arzuz generated from type + area: the form must offer it as the
+     placeholder, never as text the landlord has to clear */
+  SEEDS.generated = Object.assign({}, SEEDS.existing, {
+    prop_name: 'Self-contain in Behind KWASU Gate, Malete',
+    name_generated: true
+  });
+
+  /* ---- the worst realistic row a landlord can produce -------------------
+     Every value here is something a real person types or pastes: a 60-char
+     lodge name, Yoruba diacritics + an emoji in the area, an honorific in
+     quotes, a formatted international phone number, a 1.25m rent, zero
+     rooms, an 1,800-char blurb pasted out of WhatsApp, twelve amenities
+     (including a case-duplicate of a preset and one 53 chars long), a
+     multi-line note, and 40 media items — two of which are the links people
+     actually send: a youtu.be share link and a Google Drive file. */
+  var LONG_DESC = ('Spacious compound with a paved driveway, standby generator, prepaid meter, ' +
+    'borehole water, tiled floors and a caretaker on site. ').repeat(12) + 'Call the caretaker before 8pm.';
+  var WORST_MEDIA = [];
+  for (var wi = 1; wi <= 38; wi++) {
+    WORST_MEDIA.push({ type: 'image', url: '/assets/social/og-image.png?photo=' + wi, label: '', credit: { holder: 'Arzuz' } });
+  }
+  WORST_MEDIA.push({ type: 'video', url: 'https://youtu.be/aqz-KE-bpKQ?si=Xk3r9Wq1ZvLmNpQr', label: '', credit: { holder: 'Arzuz' } });
+  WORST_MEDIA.push({ type: 'video', url: 'https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/view?usp=sharing', label: '', credit: { holder: 'Arzuz' } });
+
+  SEEDS.worst = {
+    prop_name: 'Alhaji Adebayo Memorial Students Lodge \u2014 Phase 2 Annex Block C',
+    name_generated: false,
+    ty: 'Two Bedroom',
+    ar: '\u1ECC\u0300p\u1EB9\u0301 \u1ECC\u0300g\u00E1 Area \uD83C\uDFE0, behind KWASU Gate, Malete',
+    rent: '1250000',
+    ask: '1250000',
+    rm: 'Units available',
+    avail: 'vacant',
+    units: 0,
+    nm: 'Alh. Abdulrahman \u2018\u1ECC\u0300g\u00E1 \u00C0gb\u00E0\u2019 Kareem-Olaniyan',
+    last: '',
+    ph: '+234 803 345 5667',
+    contact_role: 'Caretaker',
+    who: 'Caretaker',
+    desc: LONG_DESC,
+    split_ok: true,
+    ut: ['Borehole water', 'borehole water', 'NEPA connection', 'Generator backup', 'Prepaid meter',
+      '24/7 \uD83D\uDCA7 water', 'Security gate with a night guard', 'Perimeter fence', 'Kitchen access',
+      'Borehole water with overhead tank and pressure pump', 'Tiled floors', 'Painted walls'],
+    utilities: [],
+    lat: '9.195', lng: '4.661', pin: '9.195000,4.661000',
+    pin_meta: { source: 'gps', accuracy_m: 6, samples: 9 },
+    passage: {
+      landmark: 'Opposite the blue mosque \u2014 ask for \u2018Ile Alhaji\u2019. Brown double gate, small green door.\n' +
+        'Second turning after the filling station. Map pinned at the gate (see pin).\n' +
+        'If you reach the transformer you have gone too far \u2014 call me.',
+      gate: '', floor: '', steps: [],
+      route: [[9.195, 4.661], [9.1955, 4.6614], [9.196, 4.6619]],
+      route_src: 'traced', route_km: 0.21, route_min: 3
+    },
+    media: WORST_MEDIA,
+    photo: '/assets/social/og-image.png?photo=1',
+    video: 'https://youtu.be/aqz-KE-bpKQ?si=Xk3r9Wq1ZvLmNpQr',
+    video_url: 'https://youtu.be/aqz-KE-bpKQ?si=Xk3r9Wq1ZvLmNpQr'
+  };
+
+  /* the smallest real invite: one room, one photo, a one-word name. Counts
+     at exactly 1 are where "1 rooms available" shows up. */
+  SEEDS.one = {
+    prop_name: 'Jo Lodge',
+    name_generated: false,
+    ty: 'Single Room',
+    ar: 'Malete',
+    rent: '90000',
+    ask: '',
+    rm: '1 room available',
+    avail: 'vacant',
+    units: 1,
+    nm: 'Jo',
+    last: '',
+    ph: '08030000000',
+    contact_role: 'Landlord',
+    who: 'Landlord',
+    desc: '',
+    split_ok: false,
+    ut: ['Borehole water'],
+    utilities: [],
+    lat: '', lng: '', pin: '',
+    pin_meta: null,
+    passage: null,
+    media: [{ type: 'image', url: '/assets/social/og-image.png', label: 'Cover photo', credit: { holder: 'Arzuz' } }],
+    photo: '/assets/social/og-image.png',
+    video: '', video_url: ''
+  };
+
+  var params = new URLSearchParams(location.search);
+  var ref = params.get('ref') || '11111111-1111-4111-8111-111111111111';
+  var seedKey = params.get('seed') || 'demo';
+  var permission = (params.get('perm') === 'view' || seedKey === 'view') ? 'view' : 'edit';
+  var payload = (seedKey === 'blank') ? {}
+    : (seedKey === 'demo' || seedKey === 'view' ? SEEDS.existing : (SEEDS[seedKey] || SEEDS.existing));
+
+  var seed = {
+    row: {
+      draft_permission: permission,
+      draft_expires_at: new Date(Date.now() + 7 * 864e5).toISOString(),
+      payload: payload
+    }
+  };
+
+  /* ---------- dev-only chrome: Demo data / Worst case ----------
+     Swaps the fixture at the same boundary production data arrives (the RPC
+     payload), and keeps the choice in the URL so a reload survives it. Not
+     part of the design under test: plain grey track, no motion. */
+  function mountToggle(active) {
+    var host = document.body;
+    if (!host) { setTimeout(function () { mountToggle(active); }, 120); return; }
+    if (document.getElementById('hbToggle')) return;
+    var wrap = document.createElement('div');
+    wrap.id = 'hbToggle';
+    wrap.setAttribute('data-dev-only', 'true');
+    wrap.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:12px;z-index:2147482000;' +
+      'display:flex;flex-wrap:wrap;justify-content:center;gap:2px;padding:3px;border-radius:999px;' +
+      'max-width:calc(100vw - 20px);background:#e5e7eb;border:1px solid #d1d5db;' +
+      'font:11.5px/1 system-ui,-apple-system,Segoe UI,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.14)';
+    active = (active === 'view') ? 'demo' : active;
+    [['demo', 'Demo'], ['worst', 'Worst'], ['blank', 'Empty'], ['one', 'One']].forEach(function (pair) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = pair[1];
+      var on = (pair[0] === active);
+      b.style.cssText = 'border:0;cursor:pointer;padding:5px 9px;border-radius:999px;font:inherit;' +
+        (on ? 'background:#fff;color:#111827;font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.12)'
+            : 'background:transparent;color:#4b5563');
+      b.addEventListener('click', function () {
+        var u = new URL(location.href);
+        u.searchParams.set('seed', pair[0]);
+        u.searchParams.delete('t');
+        location.href = u.toString();
+      });
+      wrap.appendChild(b);
+    });
+    host.appendChild(wrap);
+  }
+
+  fetch('/mock/sb/seed', { method: 'POST', body: JSON.stringify(seed) })
+    .then(function (r) { return r.json(); })
+    .then(function () {
+      say('seed: ' + seedKey + ' · permission ' + permission + ' · ref ' + ref);
+      return fetch('/complete-listing.html').then(function (r) {
+        if (!r.ok) throw new Error('GET /complete-listing.html → HTTP ' + r.status);
+        return r.text();
+      });
+    })
+    .then(function (html) {
+      /* the page is served from /dev/, so its relative asset paths need a root */
+      var patched = html.split('"assets/').join('"/assets/');
+      say('booting the real page (' + patched.length + ' chars)');
+      var url = new URL(location.href);
+      url.searchParams.set('ref', ref);
+      history.replaceState(null, '', url.toString());
+      document.open();
+      document.write(patched);
+      document.close();
+      /* the page's own script tags run now; js errors surface in the console */
+      window.addEventListener('error', function (e) {
+        console.log('[harness] page error:', e.message);
+      });
+      mountToggle(seedKey);
+    })
+    .catch(function (e) {
+      var el = document.getElementById('hbStatus');
+      if (el) el.textContent = 'Harness failed: ' + e.message + ' — is the dev server running on ' + location.origin + '?';
+      else alert('Harness failed: ' + e.message);
+    });
+})();
+</script>
+</body>
+</html>

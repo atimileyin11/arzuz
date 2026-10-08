@@ -162,8 +162,16 @@
     }
   }
 
+  /* Opening again must cancel a close that is still in flight, so the
+     delayed fallback below cannot strip .open off a fresh overlay. */
+  function cancelPendingClose(el) {
+    if (el) el.__closeToken = (el.__closeToken || 0) + 1;
+  }
+
   function popIn(el) {
-    if (!el || !motionOK() || !el.animate) return;
+    if (!el) return;
+    cancelPendingClose(el.closest ? el.closest('.modal-overlay') : null);
+    if (!motionOK() || !el.animate) return;
     el.animate(
       [
         { opacity: 0, transform: 'scale(.96) translateY(8px)' },
@@ -173,13 +181,24 @@
     );
   }
 
+  /* Closing must not depend on the animation callback alone: in a tab
+     that is not painting frames (backgrounded, headless) `onfinish` is
+     deferred, and a close button that leaves the overlay on screen is a
+     functional dead end. The token keeps it idempotent, the timer is the
+     frame-independent safety net. */
   function closeModal(overlay) {
     if (!overlay) return;
-    var finish = function () { overlay.classList.remove('open'); };
+    cancelPendingClose(overlay);
+    var token = overlay.__closeToken;
+    var finish = function () {
+      if (overlay.__closeToken !== token) return;
+      overlay.classList.remove('open');
+    };
     if (!motionOK() || !overlay.animate) { finish(); return; }
     var anim = overlay.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: 'ease-out' });
     anim.onfinish = finish;
     anim.oncancel = finish;
+    setTimeout(finish, 300);
   }
 
   /* ============================================================
@@ -192,6 +211,7 @@
 
   function trapFocus(overlay) {
     if (!overlay) return;
+    cancelPendingClose(overlay);
     lastFocus = document.activeElement;
 
     trapHandler = function (e) {

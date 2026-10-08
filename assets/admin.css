@@ -1367,15 +1367,54 @@ input, select, textarea, button { font-family: var(--body); }
     transform: translateX(var(--side-x, -104%));
     touch-action: pan-y;
   }
-  body.side-dragging .admin-side,
+  body.side-dragging .admin-side {
+    transform: translateX(var(--side-x, -104%));
+    transition: none;
+  }
   body.side-dragging .side-scrim { transition: none; }
-
-  /* scrim brightness follows the drag progress (JS sets opacity) */
-  body.side-dragging .side-scrim.show { opacity: .62; }
 
   @media (prefers-reduced-motion: reduce) { .admin-side { transition: none; } }
   .side-close { display: inline-flex; }
   .side-scrim { touch-action: pan-y; }
+
+  /* the drag affordance at the drawer edge: a small pill that rests at
+     x=0 while the drawer is shut ("something pulls out here"), tracks
+     the drawer's leading edge via --side-edge (painted by the JS drag
+     every frame), and fades out once the drawer owns the screen. */
+  .side-grip {
+    position: fixed;
+    left: 0;
+    top: 50%;
+    width: 20px;
+    height: 60px;
+    z-index: 85;
+    border-radius: 0 12px 12px 0;
+    background: linear-gradient(90deg, rgba(139,92,246,.5), rgba(139,92,246,.06));
+    border: 1px solid rgba(139,92,246,.32);
+    border-left: none;
+    box-shadow: 0 6px 22px rgba(0,0,0,.4);
+    transform: translate3d(var(--side-edge, 0px), -50%, 0);
+    transition: opacity var(--dur-2) ease, transform var(--dur-3) ease;
+    pointer-events: none;
+    opacity: .5;
+  }
+  .side-grip::after {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 50%;
+    width: 2px;
+    height: 20px;
+    margin-top: -10px;
+    border-radius: 2px;
+    background: rgba(255,255,255,.65);
+  }
+  body.side-open .side-grip { opacity: 0; }
+  /* must outrank the open-state fade: grabbing the open drawer and
+     pulling it shut should light the grip back up for the throw */
+  body.side-dragging .side-grip { opacity: .85; transition: none; }
+
+  @media (prefers-reduced-motion: reduce) { .side-grip { transition: opacity var(--dur-2) ease; } }
   .admin-brand { padding: 18px 52px 10px 18px; }
   .admin-nav {
     flex-direction: column;
@@ -1417,7 +1456,14 @@ input, select, textarea, button { font-family: var(--body); }
   .edit-form-grid { grid-template-columns: 1fr; }
   .dash-controls { gap: 10px; }
   .btn-add-apt, .btn-inline { padding: 10px 14px; }
-  .modal-overlay { padding: 12px; align-items: flex-end; }
+  /* the backdrop dims with the sheet: --sheet-o (painted by the drag)
+     rides the overlay's own alpha, so pulling a sheet down lets the page
+     behind show through before it is dismissed. */
+  .modal-overlay {
+    padding: 12px;
+    align-items: flex-end;
+    background: rgba(9,7,14, calc(.94 * var(--sheet-o, 1)));
+  }
   .modal-box {
     max-width: 100%;
     border-radius: var(--r-lg) var(--r-lg) 0 0;
@@ -1426,7 +1472,34 @@ input, select, textarea, button { font-family: var(--body); }
     overflow-y: auto;
     overscroll-behavior: contain;
     padding: 22px 18px;
+    /* bottom sheet: --sheet-y is painted every frame during a drag;
+       the transition carries the release (snap back / slide away). */
+    transform: translate3d(0, var(--sheet-y, 0px), 0);
+    transition: transform var(--dur-2) cubic-bezier(.22, 1, .36, 1);
   }
+  /* grab zone: the header owns vertical drags (touch-action: none) so the
+     sheet body keeps scrolling normally. The pill is the discoverability cue. */
+  .modal-head {
+    position: relative;
+    touch-action: none;
+    padding-top: 14px;
+  }
+  .modal-head::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 40px;
+    height: 4px;
+    margin-left: -20px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.24);
+  }
+  body.sheet-dragging .modal-box {
+    transition: none;
+    will-change: transform;
+  }
+  @media (prefers-reduced-motion: reduce) { .modal-box { transition: none; } }
 }
 
 @media (min-width: 861px) {
@@ -1497,8 +1570,26 @@ input, select, textarea, button { font-family: var(--body); }
   box-shadow: 0 0 0 3px rgba(52,211,153,.18);
 }
 @media (max-width: 620px) {
-  .apt-tabs { position: static; flex-wrap: wrap; }
-  .apt-tab { flex: 1 1 100%; justify-content: flex-start; }
+  /* Stacked full-width tabs: drop the pill chrome (a 999px-radius box
+     around three rows renders as an ellipse) and give each tab its own
+     quiet card look instead. */
+  .apt-tabs {
+    position: static;
+    flex-wrap: wrap;
+    background: none;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    gap: 8px;
+  }
+  .apt-tab {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+    background: rgba(255,255,255,.03);
+    border-color: var(--aline);
+    border-radius: var(--r-md, 10px);
+    padding: 12px 14px;
+  }
 }
 
 .apt-panel[hidden] { display: none; }

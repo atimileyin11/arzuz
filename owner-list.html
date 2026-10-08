@@ -37,7 +37,7 @@
 <script src="assets/submit.js?v=3"></script>
 <script src="assets/share.js"></script>
 <script src="assets/whatsapp.js"></script>
-<script src="assets/arzuz-map.js"></script>
+<script src="assets/arzuz-map.js?v=3"></script>
 <script src="assets/app.js"></script>
 <script src="assets/motion.js"></script>
 <script>
@@ -53,7 +53,7 @@ Arzuz.form({
     f:[["prop_name","Property name or nickname (e.g. Blessing Lodge)","text",{opt:true}],
        ["ty","Property type","sel",PROPERTY_TYPES],
        ["ar","Street or area name","text"],
-       ["rm","Rooms available","number"]]},
+       ["rm","Vacant rooms right now (0 if the place is full)","number"]]},
    {k:'pin', h:"Where exactly is it?",
     hint:"Drop a pin at your gate. We calculate the walking distance to campus ourselves \u2014 you do not have to estimate it, and students trust a measured number far more.",
     f:[["pin","Location","pin"]]},
@@ -62,11 +62,10 @@ Arzuz.form({
     opt:true,
     f:[["passage","Passage to the apartment","passage",{opt:true}]]},
    {k:'pr', h:"What are you charging?", ctx:true,
-    f:[["rent","Rent per session (\u20A6)","rent-live"],
-       ["neg","Negotiable?","sel",["Yes","No","Depends on the tenant"]]]},
-   {k:'who', h:"Who runs the compound day to day?",
-    hint:"If you have a caretaker, add them. They get paid per repair through Arzuz and build a public record.",
-    o:["I do, myself","A caretaker","An agent","Nobody yet"]},
+    f:[["rent","Rent per session (\u20A6)","rent-live"]]},
+   {k:'who', h:"Who takes care of the property day to day?",
+    hint:"Arzuz sends repairs and student messages to whoever runs the compound. Tell us who that is — the same four roles the dashboard files everyone under.",
+    o:["Landlord","Caretaker","Agent","Admin"]},
    {k:'ut', h:"What does the property have?",
     hint:"Tick everything that works. We check these when we verify.", c:UTILITIES},
    {k:'photo', h:"Add photos of the property",

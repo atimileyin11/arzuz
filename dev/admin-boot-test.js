@@ -451,6 +451,39 @@ async function testRole(role) {
       await tick(40);
       return true;
     });
+
+    /* --- cancel / keep / discard triad ---
+       The overlay close is animated, and this shim's animate() NEVER runs
+       onfinish — exactly the situation that left a dismissed modal on
+       screen. A close must therefore land on its own, not via the callback. */
+    const addModalEl = $('addAptModal');
+    const exitModalEl = $('draftExitModal');
+    const isOpen = el => !!(el && el._cl && el._cl.contains('open'));
+    const rowsBefore = sb.win.__MOCK__.db().listings.length;
+
+    $('btnOpenAddApt').click();
+    sb.registry.addAptForm.dispatch('input'); /* any edit arms the prompt */
+    $('btnCancelAddApt').click();
+    check('cancel: unsaved edits raise the exit prompt', () =>
+      (isOpen(exitModalEl) && isOpen(addModalEl)) || 'add open=' + isOpen(addModalEl) + ' exit open=' + isOpen(exitModalEl));
+
+    $('btnExitKeep').click();
+    await tick(400);
+    check('cancel: “keep editing” returns to the form', () =>
+      (isOpen(addModalEl) && !isOpen(exitModalEl)) || 'add open=' + isOpen(addModalEl) + ' exit open=' + isOpen(exitModalEl));
+
+    $('btnExitDiscard').click();
+    await tick(400);
+    check('discard: closes both overlays without an animation callback', () =>
+      (!isOpen(addModalEl) && !isOpen(exitModalEl)) || 'add open=' + isOpen(addModalEl) + ' exit open=' + isOpen(exitModalEl));
+    check('discard: writes nothing to the listings table', () =>
+      sb.win.__MOCK__.db().listings.length === rowsBefore || 'rows ' + rowsBefore + ' → ' + sb.win.__MOCK__.db().listings.length);
+
+    $('btnOpenAddApt').click();
+    $('btnCancelAddApt').click();
+    await tick(400);
+    check('discard: resets the dirty flag (a clean cancel prompts nothing)', () =>
+      (!isOpen(exitModalEl) && !isOpen(addModalEl)) || 'add open=' + isOpen(addModalEl) + ' exit open=' + isOpen(exitModalEl));
   }
 
   /* --- CSV export (admin) --- */

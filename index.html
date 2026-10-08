@@ -564,17 +564,27 @@
         padding-bottom: 150px;
       }
 
-      /* below the split, the object retreats to a corner mark — the way
-         it reads today — instead of crowding the headline */
+      /* below the split, the object retreats to a corner watermark instead of
+         crowding the headline — but it has to stay whole: the seal's lettering
+         is centred, so a deep bleed slices the word in half. */
       .h-scene {
         position: absolute;
-        right: -46px;
-        bottom: -34px;
-        width: 186px;
-        height: 186px;
+        right: -18px;
+        bottom: -22px;
+        width: 168px;
+        height: 168px;
         min-height: 0;
-        opacity: .42;
+        opacity: .34;
         pointer-events: none;
+      }
+
+      /* The scroll-driven drift entrance above fills forwards with opacity: 1,
+         which silently cancels the watermark opacity the moment the hero has
+         entered — leaving a full-strength seal cut off in the corner. The
+         selector carries [data-drift] so it outranks that rule wherever the
+         two sheets happen to sit in source order. */
+      .h-scene[data-drift] {
+        animation: none;
       }
 
       .h-blueprint,

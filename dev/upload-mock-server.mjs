@@ -10,9 +10,21 @@
      PUT  /api/fake-upload            → { id: '<demo video id>' }
      GET  /api/video-embed/<id>       → 302 to the nocookie embed
      POST /api/cloudinary-sign        → 503 (fallback is exercised)
+     POST /api/notify                 → 200 (Telegram alert swallowed)
+
+   It also stands in for Supabase so the landlord invite form
+   (complete-listing.html) can be walked end to end without a token
+   or a live database — see dev/complete-listing-harness.html:
+
+     POST /mock/sb/seed                     → set the draft row the page will read
+     POST /mock/sb/rest/v1/rpc/listing_draft_get    → that row (null when revoked)
+     POST /mock/sb/rest/v1/rpc/listing_draft_update → merge the patch, echo the id
+     GET  /mock/sb/last-patch               → { patch, writes } for assertions
+     POST /mock/cloudinary/<kind>/upload    → { secure_url } (harness rewrites to it)
 
    Run:  node dev/upload-mock-server.mjs [port]     (default 8799)
    Then: http://localhost:8799/dev/video-test.html
+         http://localhost:8799/dev/complete-listing-harness.html?ref=<uuid>
    ============================================================ */
 
 import http from 'http';
@@ -36,6 +48,46 @@ function readBody(req) {
     req.on('data', (c) => { size += c.length; });
     req.on('end', () => resolve(size));
   });
+}
+
+function readText(req) {
+  return new Promise((resolve) => {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => resolve(body));
+  });
+}
+
+function json(res, code, obj) {
+  res.writeHead(code, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(obj));
+}
+
+/* ---- mock Supabase for the landlord invite form ---- */
+const DRAFT_ID = '11111111-1111-4111-8111-111111111111';
+const MOCK_SB = {
+  row: null,          // seeded draft row (null = revoked / unknown token)
+  patch: null,        // last patch the page sent
+  writes: [],         // every patch, in order
+  completedAt: null,
+};
+
+function defaultRow() {
+  return {
+    id: DRAFT_ID,
+    status: 'draft',
+    draft_permission: 'edit',
+    draft_expires_at: new Date(Date.now() + 7 * 864e5).toISOString(),
+    draft_completed_at: null,
+    draft_last_saved_at: null,
+    opening_ask_ngn: null,
+    payload: {
+      prop_name: '', ty: 'Self-contain', ar: '', rent: '', rm: 'Units available',
+      avail: 'vacant', units: null, nm: '', ph: '', contact_role: '', who: '',
+      desc: '', ut: [], utilities: [], media: [], photo: '', video: '', video_url: '',
+      split_ok: false, pin_meta: null, passage: null,
+    },
+  };
 }
 
 const server = http.createServer(async (req, res) => {
@@ -75,6 +127,63 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify({ error: 'Cloudinary not mocked here (video fallback exercised)' }));
     return;
   }
+  if (url.pathname === '/api/notify' && req.method === 'POST') {
+    const raw = await readText(req);
+    console.log('[mock] notify:', raw.slice(0, 200));
+    json(res, 200, { ok: true });
+    return;
+  }
+
+  /* ---- mock Supabase (landlord invite form) ---- */
+  if (url.pathname === '/mock/sb/seed' && req.method === 'POST') {
+    const seed = JSON.parse((await readText(req)) || '{}');
+    MOCK_SB.row = Object.assign(defaultRow(), seed.row || {});
+    if (seed.row && seed.row.payload) {
+      MOCK_SB.row.payload = Object.assign(defaultRow().payload, seed.row.payload);
+    }
+    MOCK_SB.patch = null;
+    MOCK_SB.writes = [];
+    MOCK_SB.completedAt = MOCK_SB.row.draft_completed_at || null;
+    json(res, 200, { ok: true, row: MOCK_SB.row });
+    return;
+  }
+  if (url.pathname === '/mock/sb/rest/v1/rpc/listing_draft_get' && req.method === 'POST') {
+    const body = JSON.parse((await readText(req)) || '{}');
+    console.log('[mock] draft_get token:', body.p_token);
+    json(res, 200, MOCK_SB.row || null);
+    return;
+  }
+  if (url.pathname === '/mock/sb/rest/v1/rpc/listing_draft_update' && req.method === 'POST') {
+    const body = JSON.parse((await readText(req)) || '{}');
+    const patch = body.p_patch || {};
+    MOCK_SB.patch = patch;
+    MOCK_SB.writes.push(patch);
+    if (!MOCK_SB.row) { console.log('[mock] draft_update refused (no seeded row)'); json(res, 200, null); return; }
+    if (patch.save_mode !== 'progress') MOCK_SB.completedAt = MOCK_SB.completedAt || new Date().toISOString();
+    MOCK_SB.row.payload = Object.assign({}, MOCK_SB.row.payload, patch);
+    if (MOCK_SB.row.opening_ask_ngn == null && /^[0-9]{1,9}$/.test(String(patch.ask || ''))) {
+      MOCK_SB.row.opening_ask_ngn = Number(patch.ask);
+    }
+    MOCK_SB.row.draft_completed_at = MOCK_SB.completedAt;
+    MOCK_SB.row.draft_last_saved_at = new Date().toISOString();
+    console.log('[mock] draft_update:', Object.keys(patch).join(','), '| save_mode=' + patch.save_mode);
+    json(res, 200, { id: MOCK_SB.row.id, draft_completed_at: MOCK_SB.row.draft_completed_at });
+    return;
+  }
+  if (url.pathname === '/mock/sb/last-patch') {
+    json(res, 200, { patch: MOCK_SB.patch, writes: MOCK_SB.writes, row: MOCK_SB.row });
+    return;
+  }
+  if (url.pathname.startsWith('/mock/cloudinary/') && req.method === 'POST') {
+    const kind = url.pathname.indexOf('/video/') !== -1 ? 'video' : 'image';
+    const bytes = await readBody(req);
+    console.log('[mock] cloudinary ' + kind + ' upload:', bytes, 'bytes');
+    json(res, 200, {
+      secure_url: 'http://localhost:' + PORT + '/assets/social/og-image.png?mock-' + kind + '-' + Date.now(),
+      public_id: 'mock/' + kind + '/' + Date.now(),
+    });
+    return;
+  }
 
   /* ---- static files ---- */
   let path = normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, '');
@@ -93,4 +202,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log('Arzuz dev server → http://localhost:' + PORT + '/dev/video-test.html');
+  console.log('Landlord invite harness → http://localhost:' + PORT + '/dev/complete-listing-harness.html?ref=' + DRAFT_ID);
 });

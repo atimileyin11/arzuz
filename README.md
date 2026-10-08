@@ -65,6 +65,9 @@ arzuz-site/
 ├── supabase-schema.sql     Fresh install: tables, RLS, grants, views
 ├── supabase-drafts-support.sql  Additive upgrade: draft invite columns + RPCs,
 │                           support_tickets, RLS and indexes
+├── supabase-draft-sharing.sql  Additive upgrade: draft_permission + draft_expires_at,
+│                           and the RPCs rewritten so a view-only or expired link is
+│                           refused server-side
 ├── supabase-media-booking.sql  Upgrade: booking_requests + the 14-day roommate metric view
 ├── supabase-hardening.sql  Upgrades an existing database — run this one if you already have data
 ├── supabase-location.sql   Additive upgrade: pin-quality + passage-flag generated columns + indexes
@@ -82,7 +85,9 @@ arzuz-site/
 │   ├── complete-listing.js Logic for the no-login draft completion page
 │   ├── strategy.js         In-dashboard strategy reader + the Growth (marketing) view
 │   ├── data.js             Demand bands + ArzuzData + PROPERTY_TYPES (the one type list)
-│   ├── admin.js            Dashboard logic: router, tables, add/edit, media, map, amenities
+│   ├── admin.js            Dashboard logic: router, tables, the three-tab apartment
+│   │                       composer (staged media queue, unified pin/path map,
+│   │                       amenity combobox, draft-link permissions), amenities
 │   ├── arzuz-map.js        Precision mapping engine shared by every map surface:
 │   │                       live-GPS pin capture (accuracy ring, best-fix memory),
 │   │                       route tracing + walk recording, passage capture,
@@ -112,28 +117,77 @@ arzuz-site/
 
 ---
 
+## The apartment composer
+
+**Listings → + Add apartment** (and **Edit** on any listing) open the same three-tab instrument
+instead of one long scroll:
+
+1. **Property & Pricing** — ID, optional name (a readable title is built from the type + area when
+   it is left blank), type, area, rent, opening ask, availability (vacant *n* units / fully
+   occupied), contact person + phone + role (Landlord · Caretaker · Agent · Admin), tier, status,
+   description, and an amenity **tag input**: type to search the shared list, press Enter to add a
+   new one to this listing.
+2. **Location & Access** — one map with a **[Pin location | Draw path]** toggle. Satellite or
+   street tiles, live GPS with an accuracy readout, and a traced walk-in route that is stored with
+   the pin. Directions are a single **Access & Navigation Notes** box instead of four separate
+   fields.
+3. **Media & Draft** — pick or drag photos/videos and they appear **immediately** in a staging
+   grid with an ✕ on each tile and a ★ cover badge. Photos are downscaled and re-encoded in the
+   browser before upload; each tile shows a real upload percentage (XHR progress) and failures stay
+   on screen to be removed or retried. Videos stream to unlisted YouTube, or accept a pasted link.
+
+Closing a part-filled form offers **Save to draft · Discard · Keep editing** — never a silent loss.
+
 ## Draft apartments with invite links
 
-Sometimes you find an apartment before you know everything about it. The dashboard's
-**Listings → + Add Apartment → “Save as Draft + Invite Link”** creates the listing as
-`status='draft'` with a secret `draft_token`, then shows a link:
+Sometimes you find an apartment before you know everything about it. The composer
+(**Listings → + Add apartment**, or **Cancel → Save to draft**) creates the listing as
+`status='draft'` with a secret `draft_token`, then opens the **Draft link & permissions**
+panel with a link:
 
 ```
 arzuz.com/complete-listing?ref=<draft_token>
 ```
 
 Send it to the landlord or agent on WhatsApp (the modal has a button for that). They open it,
-fill in whatever is missing — details, amenities, photos, the gate pin, the passage — and tap
+fill in whatever is missing — details, amenities, photos, the gate pin, the walk-in path — and tap
 **Send to Arzuz**. No account, no login; the token is the key. You get a Telegram alert, and the
 draft row shows *“completed — awaiting approval”*. Review it, set the tier, approve it (status
 leaves `draft`), and the link dies automatically. Until then the landlord can re-open the link
 and adjust.
 
+The landlord's page is the same composer as the dashboard's: **three tabs** (Property & Pricing,
+Location & Access, Media & Draft), the same optional/auto apartment name, rent + opening ask, the
+availability toggle with a unit count, contact person + role, a searchable amenity tag input, one
+map with a `Pin location ↔ Draw path` switch, one *Access & Navigation Notes* box, and a staged
+media grid that compresses photos in the browser, shows a real percentage per file and lets them
+set the cover or remove a tile before anything is sent. `Save draft` keeps their progress without
+telling the team it is finished (the write RPC reads `save_mode:'progress'` and leaves
+`draft_completed_at` alone); `Discard changes` offers *save draft / discard / continue editing*.
+Opening Ask only reaches the column while it is empty, so a landlord can never overwrite the number
+the team recorded.
+
+Every link carries two controls, both enforced server-side:
+
+| Control | What it does |
+|---|---|
+| **Public view only** | The holder reads the details; the RPC refuses every write. For a landlord who just needs to confirm what you wrote before you show it to students. |
+| **External edit allowed** | The holder fills in missing details and adds photos from their phone. You still approve everything. |
+| **Link expires** | 24 hours / 7 days / 30 days / never. An expired token reads and writes nothing. |
+
 How it is safe: anon never touches the `listings` table. Two security-definer RPCs
-(`listing_draft_get` / `listing_draft_update`, created by `supabase-drafts-support.sql`) read and
-write exactly one row for the token holder, and the update copies an explicit whitelist of fields
-only — status, tier and the opening ask can never be changed through a link. Regenerate or revoke
-the link any time from the Listings table (🔗 / rotate / revoke actions).
+(`listing_draft_get` / `listing_draft_update`, created by `supabase-drafts-support.sql` and
+replaced by `supabase-draft-sharing.sql`) read and write exactly one row for the token holder, and
+the update copies an explicit whitelist of fields only — status, tier, the opening ask, the
+permission and the expiry can never be changed through a link. The whitelisted patch is then run
+through `listing_payload_clamp()`, which applies the forms' own field ceilings server-side, so a
+caller posting straight at the endpoint cannot store an 8,000-character lodge name for the
+dashboard table and the OG card to render. Regenerate, re-permission or revoke
+it any time from the Listings table or the Edit modal's **Media & Draft** tab.
+
+Until `supabase-draft-sharing.sql` has been run the composer still works: the insert is retried
+without the two new columns and a toast reminds you to run the file. The permission and expiry
+controls only start being enforced once it has run.
 
 ## Testing without touching real data
 
@@ -154,14 +208,32 @@ __MOCK__.stats()
 
 A headless regression suite runs the same harness through a VM-sandboxed DOM and walks all three
 roles — boot, role gating, every route, overview-metric traceability, table row counts, all
-modals (details/edit/delete), the delete type-to-confirm, add-apartment, CSV export, team and
-amenities management, and the REST-failure scenario:
+modals (details/edit/delete), the delete type-to-confirm, add-apartment, the composer's
+cancel/keep/discard exit path, CSV export, team and amenities management, and the REST-failure
+scenario:
 
 ```bash
-node dev/admin-boot-test.js   # expect: TOTAL 90 · PASS 90 · FAIL 0
+node dev/admin-boot-test.js   # expect: TOTAL 95 · PASS 95 · FAIL 0
 ```
 
-See [dev/admin-test-report.md](dev/admin-test-report.md) for the full coverage matrix.
+See [dev/admin-test-report.md](dev/admin-test-report.md) for the full coverage matrix — §12 (the exit
+path) and §13 (the landlord invite form, end to end) in particular.
+
+The landlord invite page boots against Supabase RPCs instead of the dashboard's rest calls, so it
+has its own harness: `dev/complete-listing-harness.html` loads **the real** `complete-listing.html`
+— same markup, same scripts — with `SUPABASE_URL` pointed at the dev server's mock RPC routes and a
+stubbed uploader, so the tabs, the staged media percentages, the exit triad and a read-only link can
+all be walked without a token or a live database:
+
+```bash
+node dev/upload-mock-server.mjs 8799
+# in-page toggle: Demo · Worst · Empty · One (dev chrome, bottom-centre)
+# ?seed=blank | one | demo | existing | generated | worst · ?perm=view · ?ref=<uuid>
+# http://localhost:8799/dev/complete-listing-harness.html?ref=11111111-1111-4111-8111-111111111111&seed=worst
+```
+`?seed=worst` is the break-ui fixture — a 62-character lodge name, Yoruba diacritics and an emoji, 0
+vacant units, a 1,578-character blurb, 12 amenities and 40 media items. Keep it: it is the regression
+test for the next change to this form (see §13 of the report, *Worst-case data*).
 
 Two more harnesses cover the newer surfaces:
 

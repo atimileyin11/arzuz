@@ -264,7 +264,7 @@
        page with no form: the visitor may reach register.html later in the
        same visit. See assets/attribution.js. -->
   <script src="assets/attribution.js"></script>
-  <script src="assets/arzuz-map.js"></script>
+  <script src="assets/arzuz-map.js?v=3"></script>
   <script src="assets/app.js"></script>
   <script src="assets/motion.js"></script>
   <script>
@@ -353,7 +353,7 @@
           '<h3>' + esc(name) + '</h3>' +
           '<div class="area"><span>📍 ' + esc(area) + '</span>' + (type ? '<span>' + esc(type) + '</span>' : '') + (rooms ? '<span>' + esc(rooms) + '</span>' : '') + '</div>' +
           '<div class="price">₦' + rent.toLocaleString() + '</div>' +
-          '<div class="per">per session · negotiable: ' + esc(first(p, ['neg']) || 'ask us') + '</div>' +
+          '<div class="per">per session</div>' +
           (walk ? '<div class="walk">' + walk + '</div>' : '') +
           (ut.length ? '<div class="amen">' + ut.slice(0, 4).map(function(u){ return '<span>' + esc(u) + '</span>'; }).join('') +
             (ut.length > 4 ? '<span>+' + (ut.length - 4) + '</span>' : '') + '</div>' : '') +

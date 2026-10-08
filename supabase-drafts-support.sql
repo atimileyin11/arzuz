@@ -143,6 +143,83 @@ as $$
     and l.status = 'draft';
 $$;
 
+-- ------------------------------------------------------------
+-- 2b. listing_payload_clamp — the length guard on the payload
+--     Both forms cap every field (name 70, area 80, contact 60, phone 24,
+--     description 2,000…) and the update RPC whitelists the keys, but the
+--     payload is jsonb: a caller hitting the endpoint directly could store
+--     an 8,000-character lodge name for the dashboard table and the OG card
+--     to render. Same ceilings here, so the form and the database agree.
+--     Returns a new object; the input is never modified.
+-- ------------------------------------------------------------
+create or replace function public.listing_payload_clamp(j jsonb)
+returns jsonb
+language plpgsql
+immutable
+as $$
+declare
+  v_out  jsonb := coalesce(j, '{}'::jsonb);
+  v_caps text[][] := array[
+    ['prop_name', '70'],  ['ar', '80'],           ['ty', '40'],
+    ['rm', '60'],         ['nm', '60'],           ['last', '60'],
+    ['ph', '24'],         ['contact_role', '20'], ['who', '20'],
+    ['vf', '40'],         ['photo', '300'],       ['video', '300'],
+    ['video_url', '300'], ['access_notes', '600'], ['desc', '2000']
+  ];
+  v_i    int;
+  v_key  text;
+  v_txt  text;
+  v_num  int;
+begin
+  -- text fields: trim to the same width the form accepts
+  for v_i in 1 .. array_length(v_caps, 1) loop
+    v_key := v_caps[v_i][1];
+    if v_out ? v_key and jsonb_typeof(v_out -> v_key) = 'string' then
+      v_txt := v_out ->> v_key;
+      if length(v_txt) > v_caps[v_i][2]::int then
+        v_out := jsonb_set(v_out, array[v_key],
+                   to_jsonb(left(v_txt, v_caps[v_i][2]::int)), true);
+      end if;
+    end if;
+  end loop;
+
+  -- money: digits only, at most the width the form accepts
+  foreach v_key in array array['rent','ask'] loop
+    if v_out ? v_key and jsonb_typeof(v_out -> v_key) = 'string' then
+      v_out := jsonb_set(v_out, array[v_key],
+                 to_jsonb(left(regexp_replace(v_out ->> v_key, '[^0-9]', '', 'g'), 8)), true);
+    end if;
+  end loop;
+
+  -- vacant rooms: 0–999. A zero means there is nothing to let, so the row is
+  -- stored the way the rest of the site reads availability.
+  if v_out ? 'units' and (v_out ->> 'units') ~ '^-?[0-9]{1,9}$' then
+    v_num := (v_out ->> 'units')::int;
+    if v_num <= 0 then
+      v_out := jsonb_set(v_out, '{units}', 'null'::jsonb, true);
+    elsif v_num > 999 then
+      v_out := jsonb_set(v_out, '{units}', to_jsonb(999), true);
+    end if;
+    if v_num = 0 then
+      v_out := jsonb_set(v_out, '{avail}', to_jsonb('occupied'::text), true);
+      v_out := jsonb_set(v_out, '{rm}', to_jsonb('Fully occupied'::text), true);
+    end if;
+  end if;
+
+  -- a media list nobody can scroll through: keep the first sixty
+  if v_out ? 'media' and jsonb_typeof(v_out -> 'media') = 'array'
+     and jsonb_array_length(v_out -> 'media') > 60 then
+    v_out := jsonb_set(v_out, '{media}', coalesce((
+      select jsonb_agg(e order by ord)
+      from jsonb_array_elements(v_out -> 'media') with ordinality as t(e, ord)
+      where ord <= 60
+    ), '[]'::jsonb), true);
+  end if;
+
+  return v_out;
+end;
+$$;
+
 create or replace function public.listing_draft_update(p_token uuid, p_patch jsonb)
 returns jsonb
 language plpgsql
@@ -154,8 +231,8 @@ declare
   v_key     text;
   v_clean   jsonb := '{}'::jsonb;
   v_allowed text[] := array[
-    'apt_id','custom_id','prop_name','ty','ar','rent','rm',
-    'nm','last','ph','neg','who','vf','desc',
+    'apt_id','custom_id','prop_name','name_generated','ty','ar','rent','ask','rm',
+    'avail','units', 'nm','last','ph','contact_role','who','vf','desc','access_notes',
     'ut','utilities','media','photo','video','video_url',
     'split_ok','lat','lng','pin','pin_meta','passage'
   ];
@@ -176,12 +253,31 @@ begin
     end if;
   end loop;
 
+  -- The same ceilings both forms apply, so an API caller cannot store an
+  -- 8,000-character lodge name for the dashboard and the OG card to render.
+  v_clean := public.listing_payload_clamp(v_clean);
+
   -- Merge over the stored payload; anything outside the whitelist
   -- that was already stored (e.g. an admin note key) is untouched.
+  --
+  -- supabase-draft-sharing.sql replaces this function with the
+  -- permission + expiry version. Both keep the same field list, so
+  -- running only one of them never silently drops a field the forms
+  -- send: ask is the landlord's own opening ask (written to the column
+  -- only while it is empty) and save_mode ('progress') keeps a
+  -- half-filled form out of the dashboard's completed count.
   update listings l
      set payload             = l.payload || v_clean,
+         opening_ask_ngn     = case
+                                 when l.opening_ask_ngn is not null then l.opening_ask_ngn
+                                 when (p_patch ->> 'ask') ~ '^[0-9]{1,9}$' then (p_patch ->> 'ask')::integer
+                                 else l.opening_ask_ngn
+                               end,
          draft_last_saved_at = now(),
-         draft_completed_at  = coalesce(l.draft_completed_at, now())
+         draft_completed_at  = case
+                                 when p_patch ->> 'save_mode' = 'progress' then l.draft_completed_at
+                                 else coalesce(l.draft_completed_at, now())
+                               end
    where l.id = v_id
    returning * into v_row;
 
@@ -197,6 +293,7 @@ $$;
 -- server-side jobs (if any) are not locked out.
 revoke execute on function public.listing_draft_get(uuid)            from public;
 revoke execute on function public.listing_draft_update(uuid, jsonb)  from public;
+revoke execute on function public.listing_payload_clamp(jsonb)      from public;
 grant execute on function public.listing_draft_get(uuid)             to anon, authenticated, service_role;
 grant execute on function public.listing_draft_update(uuid, jsonb)   to anon, authenticated, service_role;
 
