@@ -561,30 +561,48 @@
 
     @media(max-width: 939px) {
       .h-hero {
-        padding-bottom: 150px;
+        /* The object keeps its own band below the copy instead of floating
+           over it: nothing decorative can ever sit on top of a link, a
+           button or a line of text, so the hero only needs the gutter that
+           band actually takes. */
+        padding-bottom: 56px;
       }
 
-      /* below the split, the object retreats to a corner watermark instead of
-         crowding the headline — but it has to stay whole: the seal's lettering
-         is centred, so a deep bleed slices the word in half. */
+      /* below the split, the object becomes one plate in that band — a
+         right-aligned seal, drawn whole (its lettering is centred, so a
+         bleed would slice the word in half) and never overlapping the copy
+         above it. */
       .h-scene {
-        position: absolute;
-        right: -18px;
-        bottom: -22px;
-        width: 168px;
-        height: 168px;
+        position: relative;
+        right: auto;
+        bottom: auto;
+        width: 140px;
+        height: 140px;
         min-height: 0;
-        opacity: .34;
+        margin: 6px 0 0 auto;
         pointer-events: none;
       }
 
-      /* The scroll-driven drift entrance above fills forwards with opacity: 1,
-         which silently cancels the watermark opacity the moment the hero has
-         entered — leaving a full-strength seal cut off in the corner. The
-         selector carries [data-drift] so it outranks that rule wherever the
-         two sheets happen to sit in source order. */
+      /* The shared layer's scroll-driven drift is an entrance tied to a
+         timeline, and the plate is in flow here, so mobile gets one ambient
+         motion instead: a slow float that runs off the main thread. Its last
+         frame is the resting transform, so the reduced-motion collapse lands
+         flat rather than mid-drift. animation-timeline is reset explicitly
+         because the shorthand does not always clear it. */
       .h-scene[data-drift] {
-        animation: none;
+        animation: stampFloat 7s ease-in-out infinite;
+        animation-timeline: auto;
+      }
+
+      @keyframes stampFloat {
+        0%,
+        100% {
+          transform: none;
+        }
+
+        50% {
+          transform: translate3d(0, -7px, 0);
+        }
       }
 
       .h-blueprint,
@@ -1175,6 +1193,104 @@
       border-color: #fff;
       transform: translateY(-3px);
     }
+
+    /* ---- small screens: the same page with room to breathe ----
+       At 390px the desktop rhythm (104px between sections, a 122px label
+       column beside every bar) leaves the numbers it is showing a squeeze
+       and turns four screens of content into eight. These are the same
+       values at the scale the screen can hold — nothing is hidden, nothing
+       moves out of its place, and the section order is untouched. */
+    @media(max-width: 760px) {
+      .h-hero {
+        padding-top: 56px;
+      }
+
+      .h-sec {
+        padding: 72px 0;
+      }
+
+      .h-band {
+        padding: 72px 0 80px;
+      }
+
+      .h-close {
+        padding: 72px 0;
+      }
+
+      .h-band .sub {
+        margin-bottom: 32px;
+      }
+
+      /* the label column stops competing with the track it labels, but stays
+         wide enough that "₦100k – ₦150k" is one line — a wrapped label makes
+         the rows uneven and reads as a broken table */
+      .h-bars .k {
+        width: 106px;
+        font-size: 12px;
+        letter-spacing: -.01em;
+        white-space: nowrap;
+      }
+
+      .h-bars .v {
+        width: 30px;
+        font-size: 12.5px;
+      }
+
+      .h-bars .row {
+        gap: 10px;
+        margin-bottom: 11px;
+      }
+
+      .h-bars .t {
+        height: 26px;
+      }
+
+      .h-ctl {
+        padding: 24px 20px;
+      }
+
+      .h-ctl .pv {
+        font-size: 42px;
+      }
+
+      .h-out b {
+        font-size: 34px;
+      }
+
+      .h-quote {
+        padding: 24px 22px;
+      }
+
+      .h-quote p {
+        font-size: 18.5px;
+      }
+
+      .h-step {
+        padding: 22px 20px;
+        gap: 16px;
+      }
+
+      .h-steps {
+        margin-top: 34px;
+      }
+
+      .h-tier {
+        padding: 24px 20px;
+      }
+
+      .h-tiers,
+      .faq-grid {
+        margin-top: 32px;
+      }
+
+      .h-promise {
+        padding: 24px 22px;
+      }
+
+      .h-cap {
+        margin-top: 26px;
+      }
+    }
   </style>
   <noscript><style>.rv{opacity:1;transform:none}</style></noscript>
   <!-- Keep priceRange, the static FAQ card figures below, and the FAQPage answers
@@ -1498,11 +1614,20 @@
     sp.addEventListener('input', paint);
     paint();
 
-    /* ---------- scroll reveals + bar fill ---------- */
+    /* ---------- scroll reveals + bar fill ----------
+       Every value written into the DOM below is validated at the boundary:
+       a highlight width that is missing, blank or non-numeric resolves to 0
+       instead of writing `scaleX(NaN)`, which the browser silently drops and
+       which would leave an empty track with no error to chase. */
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const barWidth = v => {
+      const n = parseFloat(v);
+      return isFinite(n) ? Math.min(1, Math.max(0, n / 100)) : 0;
+    };
     function fillBars() {
       bars.querySelectorAll('i').forEach((el, i) => {
-        setTimeout(() => { el.style.transform = 'scaleX(' + (el.dataset.w / 100) + ')'; }, reduce ? 0 : i * 80);
+        const w = barWidth(el.dataset.w);
+        setTimeout(() => { el.style.transform = 'scaleX(' + w + ')'; }, reduce ? 0 : i * 80);
       });
     }
 
@@ -1510,6 +1635,14 @@
       document.querySelectorAll('.rv').forEach(e => e.classList.add('in'));
       fillBars();
     } else {
+      /* threshold 0, never a fraction of the element. A ratio can be
+         unsatisfiable for an element taller than the viewport, and a fast
+         flick — the normal way a phone scrolls — can step a short one right
+         over between two samples. Either way the content would stay hidden
+         for good. Any pixel crossing the line reveals it, and a target stays
+         observed until it has actually revealed, so a skipped one lands the
+         moment it is next in view. Matches the shared layer in
+         assets/motion.js, which drives [data-rise] on every other page. */
       const io = new IntersectionObserver((entries) => {
         entries.forEach(e => {
           if (!e.isIntersecting) return;
@@ -1519,7 +1652,7 @@
           if (e.target === bars) fillBars();
           io.unobserve(e.target);
         });
-      }, { threshold: .12, rootMargin: '0px 0px -5% 0px' });
+      }, { threshold: 0, rootMargin: '0px 0px -8% 0px' });
       document.querySelectorAll('.rv').forEach(e => io.observe(e));
     }
 

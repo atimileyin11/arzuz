@@ -61,6 +61,13 @@ var ArzuzMotion = (function () {
 
   function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
+  /* Every value this file writes into the DOM passes through num() first.
+     The style write is the boundary: CSS drops an invalid declaration
+     silently, so a `translate3d(NaNpx, …)` leaves the element wherever the
+     last valid frame put it while the loop keeps firing — a stuck plate with
+     no error anywhere. Non-finite input becomes 0 at the source instead. */
+  function num(v) { v = parseFloat(v); return isFinite(v) ? v : 0; }
+
   function motionPrefs() {
     reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     fine = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
@@ -88,8 +95,8 @@ var ArzuzMotion = (function () {
         layers: all('[data-depth]', sc).map(function (el) {
           return {
             el: el,
-            d: clamp(parseFloat(el.getAttribute('data-depth')) || 0, 0, 1),
-            z: parseFloat(el.getAttribute('data-z')) || 0
+            d: clamp(num(el.getAttribute('data-depth')), 0, 1),
+            z: num(el.getAttribute('data-z'))
           };
         }),
         tx: 0, ty: 0, cx: 0, cy: 0, live: false, dirty: false
@@ -117,17 +124,20 @@ var ArzuzMotion = (function () {
   function renderScene(st) {
     var nx = st.cx + (st.tx - st.cx) * LERP;
     var ny = st.cy + (st.ty - st.cy) * LERP;
+    /* the boundary check: a non-finite frame is never written */
+    if (!isFinite(nx) || !isFinite(ny)) { nx = 0; ny = 0; }
     var settling = Math.abs(nx - st.tx) > 0.0015 || Math.abs(ny - st.ty) > 0.0015;
     if (!settling) { nx = st.tx; ny = st.ty; }
     if (nx === st.cx && ny === st.cy && !st.dirty) return false;
     st.cx = nx; st.cy = ny; st.dirty = false;
 
-    if (!st.live) return false;
+    if (!st.live || !st.stage || !st.stage.style) return false;
     st.stage.style.transform =
       'rotateX(' + (-st.cy * SCENE_TILT_X).toFixed(2) + 'deg)' +
       ' rotateY(' + (st.cx * SCENE_TILT_Y).toFixed(2) + 'deg)';
     for (var i = 0; i < st.layers.length; i++) {
       var l = st.layers[i];
+      if (!l.el || !l.el.style) continue;
       /* written on the layer itself — never a CSS variable on a parent,
          which would recalculate style for every descendant */
       l.el.style.transform =
@@ -171,8 +181,10 @@ var ArzuzMotion = (function () {
     current.style.setProperty('--mx', ((cx * 0.5 + 0.5) * 100).toFixed(1) + '%');
     current.style.setProperty('--my', ((cy * 0.5 + 0.5) * 100).toFixed(1) + '%');
     for (var i = 0; i < currentLayers.length; i++) {
-      var d = clamp(parseFloat(currentLayers[i].getAttribute('data-layer')) || 0, 0, 1);
-      currentLayers[i].style.transform =
+      var cl = currentLayers[i];
+      if (!cl || !cl.style) continue;
+      var d = clamp(num(cl.getAttribute('data-layer')), 0, 1);
+      cl.style.transform =
         'translate3d(' + (cx * 8 * d).toFixed(1) + 'px,' + (cy * 8 * d).toFixed(1) + 'px,' +
         (TILT_LAYER * d).toFixed(1) + 'px)';
     }

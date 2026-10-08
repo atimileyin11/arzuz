@@ -242,6 +242,21 @@ node scripts/test-attribution.mjs   # ?ref= capture, TTL and draft-token rules +
 node scripts/verify-cards.mjs       # LIVE: what WhatsApp / X / Telegram actually receive
 ```
 
+And two that render the real pages in headless Chrome and assert on what the browser did — both
+start `scripts/dev-server.mjs` themselves and exit non-zero on any failure:
+
+```bash
+node scripts/test-listing-render.mjs  # listing.html against 6 datasets (incl. worst-case) × 2 widths
+node scripts/test-home-motion.mjs     # index.html at 1440/390, with and without reduced motion
+```
+
+`test-home-motion.mjs` is the regression test for the homepage's motion and placement: every `.rv`
+reveal has to land, the hero plate has to animate, sit whole inside the hero and overlap no copy or
+button, the demand bars have to fill, nothing may scroll sideways, and a hostile value written into
+the page (a junk highlight width, a junk `data-depth`) must be refused at the write — never turned
+into `NaN` or an invalid transform. `--page=<path>` runs it against any page, which is how a
+regression here gets proved: point it at a copy carrying the old CSS and watch it fail.
+
 `verify-cards.mjs` fetches a listing through the deployed `/listing` function with each scraper's
 own agent string and asserts the card that scraper needs — a 200, a real `og:title`, an `og:image`
 that actually resolves, a canonical `og:url`, `twitter:card`, parseable JSON-LD. With no active
