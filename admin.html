@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
 <link rel="stylesheet" href="assets/arzuz.css">
-<link rel="stylesheet" href="assets/admin.css?v=4">
+<link rel="stylesheet" href="assets/admin.css?v=5">
 <link rel="stylesheet" href="assets/video.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
@@ -397,180 +397,219 @@
   </div>
 </main>
 
-<!-- Add Apartment Modal -->
+<!-- Add / Compose Apartment Modal -->
 <div class="modal-overlay" id="addAptModal" role="dialog" aria-modal="true" aria-labelledby="addAptHead">
-  <div class="modal-box wide">
+  <div class="modal-box wide apt">
     <div class="modal-head">
-      <h3 id="addAptHead"><span data-icon="plus"></span> Add New Apartment / Listing</h3>
+      <h3 id="addAptHead"><span data-icon="plus"></span> <span id="addAptHeadText">Add apartment</span></h3>
       <button type="button" class="modal-close" data-close="addAptModal" aria-label="Close"><span data-icon="x"></span></button>
     </div>
-    <div class="sub">Mirrors the public landlord form field-for-field. Add a verified apartment with a custom ID, details, photo and video directly to the system.</div>
-    <form id="addAptForm">
-      <div class="edit-form-grid">
-        <div class="edit-fld">
-          <label>Apartment ID / Code <span class="req">*</span></label>
-          <input type="text" id="add_apt_id" placeholder="e.g. APT-001 or MLT-BL-01" required>
-        </div>
-        <div class="edit-fld">
-          <label>Apartment / Lodge Name <span class="req">*</span></label>
-          <input type="text" id="add_prop_name" placeholder="e.g. Blessing Lodge" required>
-        </div>
+    <div class="sub">Three short steps. Only the ID, type, area and rent are required — everything else can be filled in later, or handed to the landlord with a draft link.</div>
 
-        <div class="edit-fld">
-          <label>Property / Room Type <span class="req">*</span> <small>Same list as the public landlord form</small></label>
-          <select id="add_ty" required></select>
-        </div>
-        <div class="edit-fld">
-          <label>Area / Location <span class="req">*</span></label>
-          <input type="text" id="add_ar" placeholder="e.g. Behind KWASU Gate, Malete" required>
-        </div>
+    <div class="apt-tabs" role="tablist" aria-label="Apartment sections">
+      <button type="button" class="apt-tab active" role="tab" aria-selected="true" data-apt-tab="specs"><span data-icon="home"></span> Property &amp; Pricing</button>
+      <button type="button" class="apt-tab" role="tab" aria-selected="false" data-apt-tab="location"><span data-icon="pin"></span> Location &amp; Access</button>
+      <button type="button" class="apt-tab" role="tab" aria-selected="false" data-apt-tab="media"><span data-icon="image"></span> Media &amp; Draft</button>
+    </div>
 
-        <div class="edit-fld">
-          <label>Rent Price (₦ / Session) <span class="req">*</span></label>
-          <input type="number" id="add_rent" placeholder="e.g. 180000" required>
-        </div>
-        <div class="edit-fld">
-          <label>Opening Ask (₦) <small>What they asked before seeing demand data</small></label>
-          <input type="number" id="add_ask" placeholder="e.g. 200000">
-        </div>
+    <form id="addAptForm" novalidate>
+      <!-- ================= TAB 1 — property details & pricing ================= -->
+      <div class="apt-panel" data-apt-panel="specs">
+        <div class="edit-form-grid">
+          <div class="edit-fld">
+            <label>Apartment ID / Code <span class="req">*</span></label>
+            <input type="text" id="add_apt_id" placeholder="e.g. APT-001">
+          </div>
+          <div class="edit-fld">
+            <label>Apartment / Lodge Name <small>optional — a title is built from the area if you leave it blank</small></label>
+            <input type="text" id="add_prop_name" placeholder="e.g. Blessing Lodge">
+          </div>
 
-        <div class="edit-fld">
-          <label>Available Units / Rooms</label>
-          <input type="text" id="add_rm" placeholder="e.g. 3 rooms available">
-        </div>
-        <div class="edit-fld">
-          <label>Negotiable?</label>
-          <select id="add_neg">
-            <option value="Yes">Yes</option>
-            <option value="No">No</option>
-            <option value="Depends on the tenant">Depends on the tenant</option>
-          </select>
-        </div>
+          <div class="edit-fld">
+            <label>Property / Room Type <span class="req">*</span></label>
+            <select id="add_ty"></select>
+          </div>
+          <div class="edit-fld">
+            <label>Area / Location <span class="req">*</span></label>
+            <input type="text" id="add_ar" placeholder="e.g. Behind KWASU Gate, Malete">
+          </div>
 
-        <div class="edit-fld">
-          <label>Who Runs the Compound?</label>
-          <select id="add_who">
-            <option value="">—</option>
-            <option value="I do, myself">I do, myself</option>
-            <option value="A caretaker">A caretaker</option>
-            <option value="An agent">An agent</option>
-            <option value="Nobody yet">Nobody yet</option>
-          </select>
-        </div>
-        <div class="edit-fld">
-          <label>Can We Verify It?</label>
-          <select id="add_vf">
-            <option value="Yes, come and check it">Yes, come and check it</option>
-            <option value="Not right now">Not right now</option>
-          </select>
-        </div>
+          <div class="edit-fld">
+            <label>Rent Price (₦ / Session) <span class="req">*</span></label>
+            <input type="number" id="add_rent" placeholder="e.g. 180000">
+          </div>
+          <div class="edit-fld">
+            <label>Opening Ask (₦) <small>what they asked before seeing demand data</small></label>
+            <input type="number" id="add_ask" placeholder="e.g. 200000">
+          </div>
 
-        <div class="edit-fld">
-          <label>Owner First Name</label>
-          <input type="text" id="add_nm" placeholder="e.g. Alh. Kareem">
-        </div>
-        <div class="edit-fld">
-          <label>Owner Last Name</label>
-          <input type="text" id="add_nm_last" placeholder="Optional">
-        </div>
+          <div class="edit-fld full">
+            <label>Availability</label>
+            <div class="seg" id="addAvailSeg" role="group" aria-label="Availability">
+              <button type="button" class="seg-btn on" data-seg="vacant" aria-pressed="true"><span data-icon="check"></span> Vacant units available</button>
+              <button type="button" class="seg-btn" data-seg="occupied" aria-pressed="false"><span data-icon="x"></span> Fully occupied</button>
+            </div>
+            <div id="addUnitsWrap">
+              <input type="number" id="add_units" min="1" step="1" placeholder="How many units are vacant? e.g. 3">
+            </div>
+            <input type="hidden" id="add_avail" value="vacant">
+          </div>
 
-        <div class="edit-fld">
-          <label>Contact Phone / WhatsApp</label>
-          <input type="tel" id="add_ph" placeholder="e.g. 08012345678">
-        </div>
-        <div class="edit-fld">
-          <label>Status</label>
-          <select id="add_status">
-            <option value="active" selected>ACTIVE (visible when verified)</option>
-            <option value="pending">PENDING</option>
-            <option value="inactive">INACTIVE</option>
-          </select>
-        </div>
+          <div class="edit-fld">
+            <label>Contact Person</label>
+            <input type="text" id="add_nm" placeholder="e.g. Alh. Kareem">
+          </div>
+          <div class="edit-fld">
+            <label>Contact Phone / WhatsApp</label>
+            <input type="tel" id="add_ph" placeholder="e.g. 08012345678">
+          </div>
+          <div class="edit-fld">
+            <label>Contact Role</label>
+            <select id="add_role">
+              <option value="">—</option>
+              <option value="Landlord">Landlord</option>
+              <option value="Caretaker">Caretaker</option>
+              <option value="Agent">Agent</option>
+              <option value="Admin">Admin</option>
+            </select>
+          </div>
+          <div class="edit-fld">
+            <label>Can We Verify It?</label>
+            <select id="add_vf">
+              <option value="Yes, come and check it">Yes, come and check it</option>
+              <option value="Not right now">Not right now</option>
+            </select>
+          </div>
 
-        <div class="edit-fld full">
-          <label>Verification Tier</label>
-          <select id="add_tier">
-            <option value="2" selected>Tier 2 — Verified &amp; Inspected</option>
-            <option value="1">Tier 1 — Community Verified</option>
-            <option value="0">Tier 0 — Unverified</option>
-          </select>
-        </div>
+          <div class="edit-fld">
+            <label>Status</label>
+            <select id="add_status">
+              <option value="active" selected>ACTIVE (visible when verified)</option>
+              <option value="pending">PENDING</option>
+              <option value="inactive">INACTIVE</option>
+            </select>
+          </div>
+          <div class="edit-fld">
+            <label>Verification Tier</label>
+            <select id="add_tier">
+              <option value="2" selected>Tier 2 — Verified &amp; Inspected</option>
+              <option value="1">Tier 1 — Community Verified</option>
+              <option value="0">Tier 0 — Unverified</option>
+            </select>
+          </div>
 
-        <div class="edit-fld full">
-          <label>Apartment Description &amp; Features</label>
-          <textarea id="add_desc" rows="2" placeholder="e.g. Running water, prepaid meter, paved compound, 5 mins walk to school…"></textarea>
-        </div>
-
-        <div class="edit-fld full">
-          <label>Hostel Amenities &amp; Utilities (tick all that apply)</label>
-          <div class="admin-chips-wrap" id="addAptUtilitiesWrap"></div>
-        </div>
-
-        <div class="edit-fld full">
-          <label class="ck-line">
-            <input type="checkbox" id="add_split_ok">
-            <span>Landlord consents to this room being shared by two tenants who split the cost
-            <small>(enables roommate matching on the public listing page — shared room types are always eligible)</small></span>
-          </label>
-        </div>
-
-        <!-- Map Location Pin — powered by ArzuzMap (live GPS + trace) -->
-        <div class="edit-fld full">
-          <label><span data-icon="pin"></span> Map Location Pin <small>Live GPS · Satellite + Street — tap to pin the exact gate</small></label>
-          <div class="map-note" id="adminMapNote"><span data-icon="image"></span> <b>Satellite view is active.</b> Zoom in and tap the exact gate of the compound to drop a pin.</div>
-          <div class="admin-map-wrap">
-            <div id="admin-leaflet-map"></div>
-            <div class="map-float-btns map-layer-switcher admin-layer-switch" id="adminMapLayerSwitcher">
-              <button type="button" class="map-layer-btn active" data-layer="sat" id="adminBtnLayerSat"><span data-icon="image"></span> Satellite</button>
-              <button type="button" class="map-layer-btn" data-layer="street" id="adminBtnLayerStreet"><span data-icon="search"></span> Street</button>
+          <div class="edit-fld full">
+            <label>Amenities &amp; Utilities <small>type to search — press Enter for a new one</small></label>
+            <div class="tag-field" id="addAmenityField">
+              <span id="addAmenityChips" style="display:contents;"></span>
+              <input type="text" id="addAmenityInput" placeholder="e.g. solar, borehole, prepaid meter…"
+                     autocomplete="off" role="combobox" aria-expanded="false" aria-controls="addAmenitySuggest">
+              <div class="tag-suggest" id="addAmenitySuggest" role="listbox" aria-label="Amenity suggestions"></div>
             </div>
           </div>
-          <div class="map-bottom-bar">
-            <span class="map-coords" id="adminMapCoordsText"><span data-icon="pin"></span> Tap map or drag marker to the gate</span>
-            <button type="button" id="adminBtnLocateMe" class="gps-btn"><span data-icon="pin"></span> Use GPS</button>
-          </div>
-          <div class="map-status-box admin-map-status" id="adminMapStatus">Live GPS starts when you tap Use GPS — accuracy shows here as you stand at the gate.</div>
-          <div class="admin-trace-bar" id="adminTraceBar">
-            <button type="button" class="psg-tool" id="traceToggle"><span data-icon="plus"></span> Trace the road</button>
-            <button type="button" class="psg-tool" id="traceUndo"><span data-icon="refresh"></span> Undo</button>
-            <button type="button" class="psg-tool" id="traceClear"><span data-icon="x"></span> Clear</button>
-            <span class="psg-count" id="traceCount"></span>
-            <small>Trace the road from the main road to the gate — tap points along the real path on the satellite view.</small>
-          </div>
-          <input type="hidden" id="add_lat">
-          <input type="hidden" id="add_lng">
-          <input type="hidden" id="add_pin">
-          <input type="hidden" id="add_pin_meta">
-        </div>
 
-        <!-- Passage to the apartment -->
-        <div class="edit-fld full">
-          <label><span data-icon="pin"></span> Passage to the apartment <small>landmark · gate · steps · traced path — shown on the public listing</small></label>
-          <div id="adminPassageMount"></div>
-        </div>
+          <div class="edit-fld full">
+            <label>Description &amp; Features <small>optional</small></label>
+            <textarea id="add_desc" rows="3" placeholder="Running water, prepaid meter, paved compound, 5 mins walk to school…"></textarea>
+          </div>
 
-        <!-- Media gallery -->
-        <div class="edit-fld full">
-          <label>Apartment Media Gallery <small>several photos + a video tour · the first photo is the cover · every asset is stamped © Arzuz</small></label>
-          <div class="admin-media-zone" id="galAddZone"><span data-icon="image"></span> Click to upload photos (select several at once)
-            <input type="file" id="galAddInput" accept="image/*" multiple style="display:none;">
-            <div id="galAddProgress" class="media-upload-status"></div>
+          <div class="edit-fld full">
+            <label class="ck-line">
+              <input type="checkbox" id="add_split_ok">
+              <span>Landlord consents to this room being shared by two tenants who split the cost
+              <small>(enables roommate matching on the public listing — shared room types are always eligible)</small></span>
+            </label>
           </div>
-          <div class="admin-media-zone" id="galAddVideoZone" style="margin-top:8px;"><span data-icon="video"></span> Click to upload a video tour
-            <input type="file" id="galAddVideoInput" accept="video/*" style="display:none;">
-            <div id="galAddVideoProgress" class="media-upload-status"></div>
+        </div>
+      </div>
+
+      <!-- ================= TAB 2 — location & access ================= -->
+      <div class="apt-panel" data-apt-panel="location" hidden>
+        <div class="edit-form-grid">
+          <div class="edit-fld full">
+            <label><span data-icon="pin"></span> Map <small>one map — drop the gate pin, or switch to drawing the walk-in path</small></label>
+            <div class="map-mode-bar">
+              <div class="seg" id="addMapModeSeg" role="group" aria-label="Map mode">
+                <button type="button" class="seg-btn on" data-seg="pin" aria-pressed="true"><span data-icon="pin"></span> Pin location</button>
+                <button type="button" class="seg-btn" data-seg="path" aria-pressed="false"><span data-icon="trending"></span> Draw path</button>
+              </div>
+              <span class="map-coords" id="adminMapCoordsText"><span data-icon="pin"></span> Tap the map at the gate</span>
+            </div>
+            <div class="admin-map-wrap">
+              <div id="admin-leaflet-map"></div>
+              <div class="map-float-btns map-layer-switcher admin-layer-switch" id="adminMapLayerSwitcher">
+                <button type="button" class="map-layer-btn active" data-layer="sat" id="adminBtnLayerSat"><span data-icon="image"></span> Satellite</button>
+                <button type="button" class="map-layer-btn" data-layer="street" id="adminBtnLayerStreet"><span data-icon="search"></span> Street</button>
+              </div>
+            </div>
+            <div class="map-bottom-bar">
+              <div class="admin-trace-bar" id="adminTraceBar" style="display:none;">
+                <button type="button" id="traceToggle" style="display:none;">Trace</button>
+                <button type="button" class="psg-tool" id="traceUndo"><span data-icon="chevL"></span> Undo</button>
+                <button type="button" class="psg-tool" id="traceClear"><span data-icon="x"></span> Clear path</button>
+                <span class="psg-count" id="traceCount"></span>
+              </div>
+              <button type="button" id="adminBtnLocateMe" class="gps-btn"><span data-icon="pin"></span> Use GPS</button>
+            </div>
+            <div class="map-note" id="adminMapNote"><span data-icon="image"></span> <b>Satellite view is active.</b> Zoom in and tap the exact gate of the compound to drop a pin.</div>
+            <div class="map-status-box admin-map-status" id="adminMapStatus">Live GPS starts when you tap Use GPS — accuracy shows here as you stand at the gate.</div>
+            <input type="hidden" id="add_lat">
+            <input type="hidden" id="add_lng">
+            <input type="hidden" id="add_pin">
+            <input type="hidden" id="add_pin_meta">
           </div>
-          <input type="url" id="add_video_url_manual" placeholder="Or paste direct video/tour URL (optional)" style="margin-top:6px; font-size:12.5px;">
-          <div class="gal-mgr" id="galAddGrid"></div>
-          <input type="hidden" id="add_photo_url">
-          <input type="hidden" id="add_video_url">
+
+          <div class="edit-fld full">
+            <label><span data-icon="pin"></span> Access &amp; Navigation Notes <small>optional — landmark, gate colour, stairs, what to look for</small></label>
+            <textarea id="add_access_notes" rows="3" placeholder="e.g. Opposite the blue mosque, brown double gate with a small green door, first floor — stairs at the back."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= TAB 3 — media & draft sharing ================= -->
+      <div class="apt-panel" data-apt-panel="media" hidden>
+        <div class="edit-form-grid">
+          <div class="edit-fld full">
+            <label><span data-icon="image"></span> Photos <small>drag &amp; drop or click · compressed in the browser before upload</small></label>
+            <div class="admin-media-zone" id="galAddZone" role="button" tabindex="0">
+              <span data-icon="image"></span> Add photos — drop them here, or click to choose several
+              <input type="file" id="galAddInput" accept="image/*" multiple style="display:none;">
+            </div>
+            <div class="media-upload-status" id="galAddProgress"></div>
+          </div>
+
+          <div class="edit-fld full">
+            <label><span data-icon="video"></span> Video tour <small>drag &amp; drop a file, or paste a link</small></label>
+            <div class="admin-media-zone" id="galAddVideoZone" role="button" tabindex="0">
+              <span data-icon="video"></span> Drop a video tour here, or click to choose
+              <input type="file" id="galAddVideoInput" accept="video/*" style="display:none;">
+            </div>
+            <div class="media-upload-status" id="galAddVideoProgress"></div>
+            <div class="admin-media-zone url-zone" style="margin-top:8px;">
+              <div class="url-row">
+                <input type="url" id="add_video_url_manual" placeholder="…or paste a YouTube / Vimeo / direct video link">
+                <button type="button" id="add_video_url_add"><span data-icon="plus"></span> Embed</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="edit-fld full">
+            <label>Staged media <small>nothing is sent until it lands here · ✕ removes · ★ sets the cover</small></label>
+            <div class="gal-mgr" id="galAddGrid"></div>
+            <input type="hidden" id="add_photo_url">
+            <input type="hidden" id="add_video_url">
+          </div>
+
+          <div class="edit-fld full">
+            <div class="apt-hint"><span data-icon="link"></span> <b>Need the landlord to fill this in?</b> Hit Cancel — you can save it as a private draft and send a permission-controlled link that lets them review, or complete, the details without a dashboard login.</div>
+          </div>
         </div>
       </div>
 
       <div class="modal-actions">
         <button type="button" class="btn-inline" id="btnCancelAddApt">Cancel</button>
-        <button type="button" class="btn-inline green" id="btnSaveDraftApt" title="Create this apartment as a draft and get a private link the landlord can complete"><span data-icon="link"></span> Save as Draft + Invite Link</button>
-        <button type="submit" class="next" id="btnSaveAddApt" style="padding:10px 24px; font-size:14px;">Save Apartment</button>
+        <button type="button" class="btn-inline" id="btnSaveDraftApt" title="Create this apartment as a private draft and get a shareable link"><span data-icon="link"></span> Save as draft</button>
+        <button type="submit" class="next" id="btnSaveAddApt" style="padding:10px 24px; font-size:14px;">Save apartment</button>
       </div>
       <div class="modal-error" aria-live="polite" id="addModalError"></div>
     </form>
@@ -633,21 +672,80 @@
   </div>
 </div>
 
-<!-- Draft Invite Link Modal -->
-<div class="modal-overlay" id="inviteModal" role="dialog" aria-modal="true">
-  <div class="modal-box" style="max-width:540px;">
+<!-- Draft Link & Permissions Modal -->
+<div class="modal-overlay" id="inviteModal" role="dialog" aria-modal="true" aria-labelledby="inviteHead">
+  <div class="modal-box" style="max-width:560px;">
     <div class="modal-head">
-      <h3><span data-icon="link"></span> Invite link ready</h3>
+      <h3 id="inviteHead"><span data-icon="link"></span> Draft link &amp; permissions</h3>
       <button type="button" class="modal-close" data-close="inviteModal" aria-label="Close"><span data-icon="x"></span></button>
     </div>
-    <div class="sub">Send this private link to the landlord or agent. They open it, fill in the apartment details and send them back — no account needed. Nothing goes public until you approve it.</div>
-    <input type="text" id="inviteLink" readonly style="width:100%;font-size:12.5px;">
+    <div class="sub">One private link per draft. Choose what the person holding it may do, and when it stops working. Nothing goes public until you approve the listing.</div>
+
+    <div class="share-perm" id="sharePerm">
+      <label class="share-opt" data-perm-opt="view">
+        <input type="radio" name="share_perm" value="view">
+        <span>
+          <span class="so-t"><span data-icon="eye"></span> Public view only</span>
+          <span class="so-d">They can read the details, nothing else. Best for a landlord or caretaker who just needs to confirm what you wrote — send it on WhatsApp to verify.</span>
+        </span>
+      </label>
+      <label class="share-opt" data-perm-opt="edit">
+        <input type="radio" name="share_perm" value="edit" checked>
+        <span>
+          <span class="so-t"><span data-icon="pencil"></span> External edit allowed</span>
+          <span class="so-d">They can fill in missing details and add photos from their phone — no dashboard login. You still approve everything before it goes live.</span>
+        </span>
+      </label>
+    </div>
+
+    <div class="edit-form-grid">
+      <div class="edit-fld full">
+        <label>Link expires</label>
+        <select id="shareExpiry">
+          <option value="1">After 24 hours</option>
+          <option value="7" selected>After 7 days (recommended)</option>
+          <option value="30">After 30 days</option>
+          <option value="0">Never — until revoked</option>
+        </select>
+      </div>
+      <div class="edit-fld full">
+        <label>Private link</label>
+        <input type="text" id="inviteLink" readonly style="width:100%;font-size:12.5px;">
+      </div>
+    </div>
+
     <div class="modal-actions" style="justify-content:flex-start;flex-wrap:wrap;">
-      <button type="button" class="btn-inline green" id="btnInviteCopy"><span data-icon="copy"></span> Copy link</button>
+      <button type="button" class="btn-inline green" id="btnInviteSave"><span data-icon="check"></span> Save permissions</button>
+      <button type="button" class="btn-inline" id="btnInviteCopy"><span data-icon="copy"></span> Copy link</button>
       <button type="button" class="btn-inline" id="btnInviteWa"><span data-icon="whatsapp"></span> Send on WhatsApp</button>
-      <a class="btn-inline" id="btnInviteOpen" href="#" target="_blank" rel="noopener"><span data-icon="external"></span> Open the form</a>
+      <a class="btn-inline" id="btnInviteOpen" href="#" target="_blank" rel="noopener"><span data-icon="external"></span> Preview</a>
     </div>
     <div id="inviteMeta" style="font-size:12.5px;color:#9A8CA8;margin-top:10px;line-height:1.5;"></div>
+  </div>
+</div>
+
+<!-- Unsaved Changes Modal (Instagram-style cancel) -->
+<div class="modal-overlay center" id="draftExitModal" role="dialog" aria-modal="true" aria-labelledby="draftExitHead">
+  <div class="modal-box" style="max-width:520px;">
+    <div class="modal-head">
+      <h3 id="draftExitHead"><span data-icon="pencil"></span> Unsaved changes</h3>
+      <button type="button" class="modal-close" data-close="draftExitModal" aria-label="Close"><span data-icon="x"></span></button>
+    </div>
+    <div class="sub">You have an apartment part-way through. Keep it as a private draft, or throw the changes away.</div>
+    <div class="cancel-choice">
+      <button type="button" id="btnExitSaveDraft">
+        <span class="cc-ic"><span data-icon="link"></span></span>
+        <span><span class="cc-t">Save to draft</span><span class="cc-d">Stores the apartment with DRAFT status and gives you a shareable link to send.</span></span>
+      </button>
+      <button type="button" class="discard" id="btnExitDiscard">
+        <span class="cc-ic"><span data-icon="trash"></span></span>
+        <span><span class="cc-t">Discard changes</span><span class="cc-d">Everything entered in this form is dropped. This cannot be undone.</span></span>
+      </button>
+      <button type="button" id="btnExitKeep">
+        <span class="cc-ic"><span data-icon="pencil"></span></span>
+        <span><span class="cc-t">Keep editing</span><span class="cc-d">Go back to the form exactly as it is.</span></span>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -682,7 +780,7 @@
     }
   }
   </script>
-<script src="assets/admin.js?v=9"></script>
+<script src="assets/admin.js?v=10"></script>
 <script>
 /* shell-only wiring that has no place in admin.js */
 (function(){

@@ -244,6 +244,13 @@ var ArzuzMotion = (function () {
         });
       }, { rootMargin: '120px' });
 
+      /* threshold 0, not a fraction of the element. A ratio can never be
+         satisfied at all for an element taller than the root (a long legal
+         table, a full-height card), and a fast flick can step a short one
+         over between two samples. Any pixel crossing the line is enough, and
+         because a target stays observed until it has actually revealed, one
+         that was skipped lands the moment it is next in view — never
+         permanently invisible. */
       riseIo = new IntersectionObserver(function (rows) {
         rows.forEach(function (r) {
           if (!r.isIntersecting) return;
@@ -251,7 +258,7 @@ var ArzuzMotion = (function () {
           riseIo.unobserve(r.target);
           clearStagger(r.target);
         });
-      }, { threshold: 0.14, rootMargin: '0px 0px -6%' });
+      }, { threshold: 0, rootMargin: '0px 0px -8% 0px' });
     }
 
     if (fine && !reduce) bindTilt();
