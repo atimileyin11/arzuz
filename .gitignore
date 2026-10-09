@@ -14,7 +14,6 @@ yarn-debug.log*
 # OS / Editor files
 .DS_Store
 Thumbs.db
-.vscode/
 .idea/
 
 # Temp build / cache
@@ -24,3 +23,7 @@ build/
 
 # Local test artifacts (screen recordings, scratch outputs)
 dev/screenshots/
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
+.gitignore
