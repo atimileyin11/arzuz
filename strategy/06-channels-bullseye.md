@@ -46,3 +46,39 @@ three centre channels have measured numbers.
    record, cap, and the metric that decides "scale or stop" after week one.
 3. Order flyers with a QR code that points to `/register?ref=flyer-w1` so scans are
    attributable in `demand_records`.
+
+## Ready-to-use tagged links (copy & paste)
+
+The `?ref=` tracker is live on every landing surface (`/`, `/register`, `/list`,
+`/browse`). Paste the matching link into each channel below — every registration that
+arrives through it is counted under that tag in the Growth view. Tags are lowercase
+letters, numbers, `-`/`_`/`.` (max 40 chars).
+
+| Channel | Where it goes | Link to paste | Tag |
+| --- | --- | --- | --- |
+| WhatsApp status / broadcast | Student demand form | `https://arzuz.com/register?ref=whatsapp` | `whatsapp` |
+| WhatsApp *group* (per-group, so you know which group worked) | Student demand form | `https://arzuz.com/register?ref=wa-kwasu-main` | `wa-<groupname>` |
+| Instagram bio | Student demand form | `https://arzuz.com/register?ref=instagram` | `instagram` |
+| TikTok bio | Student demand form | `https://arzuz.com/register?ref=tiktok` | `tiktok` |
+| X / Twitter | Student demand form | `https://arzuz.com/register?ref=x` | `x` |
+| Telegram campus group | Student demand form | `https://arzuz.com/register?ref=telegram` | `telegram` |
+| Flyer QR (registration week 1) | Student demand form | `https://arzuz.com/register?ref=flyer-w1` | `flyer-w1` |
+| Ambassador (one link per person) | Student demand form | `https://arzuz.com/register?ref=amb-tunde` | `amb-<name>` |
+| Referral (a student sends a friend) | Student demand form | `https://arzuz.com/register?ref=friend` | `friend` |
+| — Landlord side — | | | |
+| WhatsApp (landlord outreach) | List a property | `https://arzuz.com/list?ref=ll-whatsapp` | `ll-whatsapp` |
+| Agent / Instagram (landlord) | List a property | `https://arzuz.com/list?ref=ll-instagram` | `ll-instagram` |
+| Door-to-door / poster (landlord) | List a property | `https://arzuz.com/list?ref=ll-field` | `ll-field` |
+
+**Rules that keep the numbers honest**
+
+- One tag per surface. If the same WhatsApp group gets two different tags you cannot
+  tell which link drove the signup — pick one and keep it.
+- Tags are permanent once printed. A flyer that ships with `flyer-w1` keeps that tag;
+  next quarter's reprint becomes `flyer-w2`. Never reuse a tag for a different creative.
+- The tag survives the visit: `assets/attribution.js` stores it for 30 days, so a
+  student who clicks today and registers next week is still counted under the channel
+  that brought them.
+- A share *inside* the product (booking confirmation → "send to a coursemate") is
+  auto-tagged `student-share` / `landlord-share` by `assets/share.js`; you do not need
+  to hand-tag those.
