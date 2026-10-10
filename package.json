@@ -1,0 +1,20 @@
+{
+  "name": "arzuz-site",
+  "private": true,
+  "description": "Dev tooling for the Arzuz site. The site itself is plain HTML/CSS/JS plus Netlify Functions — nothing here is bundled into it.",
+  "scripts": {
+    "sql:proof": "node dev/sql-proof.mjs",
+    "sql:guards": "node dev/sql-guard-test.mjs",
+    "sql:mutate": "node dev/sql-guard-mutate.mjs",
+    "test:roommate": "node scripts/test-roommate-score.mjs",
+    "test:care": "node scripts/test-care.mjs",
+    "test:my-care": "node dev/my-care-test.js",
+    "test:admin": "node dev/admin-boot-test.js",
+    "test:postgrest": "node dev/postgrest-test.js",
+    "postgrest:capture": "node dev/postgrest-capture.mjs",
+    "test": "node dev/run-tests.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  }
+}

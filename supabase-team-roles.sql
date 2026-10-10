@@ -39,6 +39,62 @@
 
 
 -- ------------------------------------------------------------
+-- 0. PREFLIGHT — fail loudly, and early
+-- This file is the last one in the chain and it re-asserts RLS on
+-- every shared table. If a file before it was skipped, the run
+-- otherwise dies partway through on 42P01 —
+--   ERROR: relation "support_tickets" does not exist
+-- — which names a symptom and not the file that creates it, so the
+-- fix is not obvious from the error. Check the prerequisites up
+-- front and the message names the cause instead.
+--
+-- The SQL editor runs this file as a single transaction, so raising
+-- here leaves nothing half-applied behind it.
+--
+-- The column check mirrors the section-3 views: an install that has
+-- every table but skipped supabase-hardening.sql would otherwise
+-- fail further down on "column listings.tier does not exist".
+-- ------------------------------------------------------------
+
+do $$
+begin
+  if to_regclass('public.demand_records') is null
+     or to_regclass('public.listings') is null
+     or to_regclass('public.scout_submissions') is null
+     or to_regclass('public.amenities') is null then
+    raise exception 'A table this file secures is missing. Run supabase-schema.sql first — it creates demand_records, listings, scout_submissions and amenities, and this file enables row level security on them.';
+  end if;
+
+  if to_regclass('public.booking_requests') is null then
+    raise exception 'public.booking_requests is missing. Run supabase-media-booking.sql before this file.';
+  end if;
+
+  if to_regclass('public.support_tickets') is null then
+    raise exception 'public.support_tickets is missing. Run supabase-drafts-support.sql before this file — it creates support_tickets, which section 2 policies and the dashboard ticket queue read.';
+  end if;
+
+  if exists (
+    select 1
+      from (values ('tier'), ('env'), ('opening_ask_ngn'), ('listed_price_ngn'),
+                   ('property_name'), ('property_type'), ('area'), ('rooms')) as need(col)
+     where not exists (
+       select 1
+         from pg_attribute a
+         join pg_class     c on c.oid = a.attrelid
+         join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'public'
+          and c.relname = 'listings'
+          and a.attname::text = need.col
+          and a.attnum > 0
+          and not a.attisdropped
+     )
+  ) then
+    raise exception 'listings is missing columns the growth_listing_feed view below reads (tier, env, opening_ask_ngn, listed_price_ngn, property_name, property_type, area, rooms). Run supabase-hardening.sql before this file for the generated pricing/label columns; opening_ask_ngn itself comes from supabase-schema.sql.';
+  end if;
+end $$;
+
+
+-- ------------------------------------------------------------
 -- 1. THE ROLE CLAIM
 -- Supabase signs app_metadata into the access token, so the claim
 -- is available to any policy — no extra lookup, no cached copy to

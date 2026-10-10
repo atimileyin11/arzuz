@@ -1,0 +1,115 @@
+# ============================================================
+# Arzuz — the test gate
+#
+# WHY THIS EXISTS
+#   Five suites guard this site — the roommate engine, Care credits,
+#   the admin dashboard, and two that execute the real SQL. Between
+#   them they hold the two things that fail silently in production —
+#   the RLS role model and the money arithmetic — and until now
+#   nothing ran them but a person remembering to. A suite nobody runs
+#   is a comment.
+#
+#   (No check counts here on purpose: they were written down once and
+#   were wrong within the hour, because these suites are still growing.
+#   Each suite prints its own total.)
+#
+# WHAT IT RUNS
+#   `npm test` and nothing else. That command is dev/run-tests.mjs,
+#   which runs EVERY suite and reports every one of them; it existed
+#   because a chain of `&&` stops at the first failure, and the day
+#   it was written that meant three suites — including the SQL guard
+#   suite — were silently not run at all.
+#
+#   Plus one step that `npm test` cannot do: scripts/test-all.mjs runs
+#   the four suites that need a real browser or the deploy config —
+#   every page in the repo at 1440 and 390 (reveals, assets, links),
+#   the homepage's motion and placement, the listing render, and the
+#   deploy guard that fails when a supabase-*.sql is added without its
+#   404. ubuntu-latest ships Chrome, and --skip-npm keeps the five Node
+#   suites from running twice.
+#
+#   The suites are not a build step. The site ships as plain files
+#   with no bundler (see netlify.toml, which publishes the folder as
+#   it stands), so this job can fail without touching a deploy — it
+#   is a gate on the PULL REQUEST, which is where it is useful.
+#
+# WHY NOTHING HERE NEEDS A SECRET
+#   The two SQL suites are not a mock. They execute the real
+#   supabase-*.sql against PGlite — PostgreSQL 18 compiled to
+#   WebAssembly — in memory, on the runner. So the whole database
+#   design is verified including RLS, with no Supabase project, no
+#   connection string and no service key anywhere in this file or in
+#   the repository's secrets. Nothing here can reach production data.
+#
+# ADDING A SUITE
+#   Add it to package.json as `test:<name>` or `sql:<name>` AND to
+#   ORDER in dev/run-tests.mjs. The runner fails loudly if the two
+#   lists disagree, in either direction, so a new suite cannot be
+#   added and then quietly never run. (A script named here in
+#   NOT_A_SUITE instead — sql:mutate — is deliberately a tool, not
+#   part of the gate.)
+#
+# WHAT IS STILL UNPROVEN HERE
+#   Two runs of this workflow are not the same kind of thing. The npm
+#   step is verified: it passes locally, from a clean install, in about
+#   a minute. The browser step is not — the nine suites pass locally in
+#   about six minutes, but they render real pages, so they need Chrome
+#   on the image, and that has only been reasoned about, never run. The
+#   first push is what settles it. If that step is the only red X, look
+#   there before looking at the code.
+# ============================================================
+
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch: # so it can be re-run from the Actions tab
+
+# The job only reads the repository.
+permissions:
+  contents: read
+
+# A second push supersedes the first: cancel the stale run rather than
+# spend a runner on a commit nobody is looking at any more.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suites:
+    name: every suite
+    runs-on: ubuntu-latest
+    # npm test is about a minute; the browser step is about six. Fifteen
+    # is headroom, not a measurement.
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      # The version lives in .nvmrc so that CI and a developer's
+      # machine cannot drift apart. PGlite compiles to WebAssembly,
+      # so the Node version matters less than it usually would — but
+      # "less" is not "not".
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # `npm ci` and not `npm install`: it installs the lockfile
+      # exactly as committed, and fails if package.json and the
+      # lockfile disagree — which is the check we want in CI.
+      - name: Install the dev tooling
+        run: npm ci
+
+      - name: Run every suite
+        run: npm test
+
+      # The browser suites: a page that stops revealing, a stylesheet or
+      # font that 404s, an internal link whose route was renamed, or a new
+      # .sql file that would be served as plain text. Each suite starts its
+      # own dev server on 8123 and exits non-zero on any failure.
+      - name: Run the browser and deploy-guard suites
+        run: node scripts/test-all.mjs --quiet --skip-npm
