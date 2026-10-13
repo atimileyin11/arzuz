@@ -23,8 +23,8 @@
    Node 18+ (uses global fetch). No dependencies.
    ============================================================ */
 
-const http = require('http');
-const { URL, URLSearchParams } = require('url');
+import http from 'node:http';
+import { URL, URLSearchParams } from 'node:url';
 
 const CLIENT_ID = process.argv[2] || process.env.GOOGLE_CLIENT_ID;
 const CLIENT_SECRET = process.argv[3] || process.env.GOOGLE_CLIENT_SECRET;
@@ -86,12 +86,54 @@ const server = http.createServer(async (req, res) => {
       console.error('Re-run with prompt=consent (this script already sets it) and make sure the app is in testing mode.');
       process.exit(1);
     }
+
+    /* verify the refresh token actually works against YouTube before printing */
+    let channelName = null;
+    try {
+      const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: CLIENT_ID,
+          client_secret: CLIENT_SECRET,
+          refresh_token: body.refresh_token,
+          grant_type: 'refresh_token',
+        }),
+      });
+      const refreshBody = await refreshRes.json();
+      if (!refreshBody.access_token) throw new Error('refresh exchange failed: ' + JSON.stringify(refreshBody).slice(0, 200));
+      /* scope is youtube.upload only, so verify with the same call the upload
+         function makes — init a resumable session (no bytes are sent) */
+      const initRes = await fetch('https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + refreshBody.access_token,
+          'X-Upload-Content-Type': 'video/mp4',
+          'X-Upload-Content-Length': '12345',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          snippet: { title: '[AUTH CHECK] arzuz', description: 'one-time resumable session check', categoryId: '22' },
+          status: { privacyStatus: 'unlisted' },
+        }),
+      });
+      if (initRes.status === 200 && initRes.headers.get('location')) {
+        channelName = 'OK — YouTube accepted a resumable upload session (unlisted)';
+      } else {
+        throw new Error('resumable session init failed: HTTP ' + initRes.status + ' ' + JSON.stringify(await initRes.json()).slice(0, 160));
+      }
+    } catch (verifyErr) {
+      console.error('Could NOT verify the token against YouTube:', verifyErr.message);
+      channelName = 'VERIFICATION-FAILED: ' + verifyErr.message.slice(0, 140);
+    }
+
     console.log('\n3. Set these three variables in Netlify (Site settings → Environment variables):\n');
     console.log('   GOOGLE_CLIENT_ID      = ' + CLIENT_ID);
     console.log('   GOOGLE_CLIENT_SECRET  = ' + CLIENT_SECRET);
     console.log('   YOUTUBE_REFRESH_TOKEN = ' + body.refresh_token);
     console.log('\n   (Never put these in any page source — server env vars only.)');
-    console.log('\nDone. Video tours now upload as unlisted videos to that channel.\n');
+    console.log('\nVerified against YouTube: channel = ' + channelName);
+    console.log('Done. Video tours now upload as unlisted videos to that channel.\n');
   } catch (e) {
     console.error('Token exchange failed:', e.message);
     process.exit(1);
