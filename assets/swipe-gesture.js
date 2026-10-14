@@ -32,10 +32,17 @@
    Node, exactly like assets/api-errors.js. ES5, no deps.
    ============================================================ */
 
+/* The root is PASSED IN, not closed over. A factory that merely sits inside
+   this IIFE's argument list does not inherit its parameters — it closes over
+   the outer scope, where `root` does not exist — which is how a page that
+   never passes opts.target got a ReferenceError instead of the document. The
+   Node harness could not have caught it: it always injects a target, so the
+   right-hand side of the `||` below was never evaluated there. The admin boot
+   suite caught it, which is exactly what that suite is for. */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.ArzuzSwipeGesture = factory();
-})(typeof self !== 'undefined' ? self : this, function () {
+  if (typeof module === 'object' && module.exports) module.exports = factory(root);
+  else root.ArzuzSwipeGesture = factory(root);
+})(typeof self !== 'undefined' ? self : this, function (root) {
   'use strict';
 
   var SLOP = 8;      /* px before the gesture claims an axis */
@@ -48,7 +55,13 @@
     /* the one thing that differs from the original copy: where the
        listeners go. A test hands in a fake target; a page gets the
        document it always had. */
-    var target = opts.target || (root && root.document);
+    var target = opts.target || (root && root.document) || null;
+    if (!target || typeof target.addEventListener !== 'function') {
+      /* loud, and named: a surface that silently does not drag is worse to
+         diagnose than one that says why it cannot */
+      throw new Error('ArzuzSwipeGesture: no event target — pass opts.target ' +
+        'outside a browser');
+    }
 
     var live = false, moved = false, P0 = 0, C0 = 0, LAST = 0, PID = null, SAMPLES = [];
 
