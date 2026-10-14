@@ -34,11 +34,28 @@
      Which is the safe direction for a guardrail.
 
    RUN IT
-     node scripts/youtube-quota.mjs --file=logs.txt
-     netlify functions:log youtube-upload-start | node scripts/youtube-quota.mjs
+     node scripts/youtube-quota.mjs --netlify
+     node scripts/youtube-quota.mjs --file=logs.jsonl
+     netlify logs --json | node scripts/youtube-quota.mjs
      node scripts/youtube-quota.mjs --check-instrumentation
 
+   WHY --netlify SHELLS OUT, AND WHY NOTHING HERE TOUCHES A TOKEN
+     Netlify has no REST endpoint for function invocation logs — the
+     documented /api/v1 carries no such route — so the supported way
+     to read them from here is its own CLI. `netlify login` stores the
+     credential once, in the CLI's config, and this script neither
+     reads nor wants it: no token, no NETLIFY_AUTH_TOKEN, nothing to
+     paste into a file that could end up committed.
+
+     The cost of that choice is that the fetch needs the CLI installed
+     and signed in. When it is not, this says so and prints the two
+     commands that do the same thing by hand.
+
    Options:
+     --netlify           read the logs from the Netlify CLI
+     --since=<n><unit>   how far back, with --netlify (default 7d)
+     --function=<name>   which function, with --netlify
+                         (default youtube-upload-start)
      --file=<path>       a saved log (repeatable, and a directory works)
      --days=<n>          how many days to show (default 14)
      --units=<n>         quota units one insert costs (default 1600)
@@ -48,6 +65,7 @@
    ============================================================ */
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -73,6 +91,15 @@ const QUOTA = asNumber(argVal('quota'), DAILY_UNITS);
 const DAYS = Math.round(asNumber(argVal('days'), 14));
 const asJson = args.includes('--json');
 const checkOnly = args.includes('--check-instrumentation');
+const fromNetlify = args.includes('--netlify');
+const SINCE = argVal('since') || '7d';
+const FUNC = argVal('function') || 'youtube-upload-start';
+
+/* The command below is handed to a shell, so the two values that are
+   not fixed by this file are held to a shape a shell cannot abuse.
+   A function name or a window is the whole of what reaches it. */
+const SINCE_OK = /^[0-9]{1,4}[smhd]$/.test(SINCE);
+const FUNC_OK = /^[A-Za-z0-9._-]{1,64}$/.test(FUNC);
 
 /* ------------------------------------------------------------
    Parsing. Split from the reading and the printing so a test can
@@ -259,6 +286,86 @@ const ADVICE = [
 ].join('\n');
 
 /* ------------------------------------------------------------
+   Reading the logs from Netlify instead of from a paste
+
+   `netlify logs --json` writes JSON Lines, with the marker inside a
+   message field. The exact record shape is not something this script
+   can promise to know, so an unrecognised record keeps its RAW line
+   and the normal marker scan finds it anyway: the parse fails open
+   rather than silently dropping a line it did not understand. That
+   matters here because a dropped line is a missing upload, and a
+   missing upload is the reading that says there is quota left.
+   ------------------------------------------------------------ */
+
+function netlifyCommand() {
+  return 'netlify logs --json --since=' + SINCE + ' --function=' + FUNC;
+}
+
+function logTextFromCli(stdout) {
+  const out = [];
+  for (const line of String(stdout || '').split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    let rec;
+    try { rec = JSON.parse(line); } catch (e) { out.push(line); continue; }
+    const msg = rec && (rec.message || rec.msg || rec.line);
+    if (typeof msg === 'string') { out.push(msg); continue; }
+    /* No field this script knows by name. Keeping the raw line is NOT
+       enough on its own: that line is JSON, so the payload inside it is
+       still escaped and the marker scan cannot parse the object after
+       the marker — the upload would be reported as malformed instead of
+       counted. So look for the marker in ANY string value first. The
+       marker is this script's own contract, which makes a record that
+       carries it an event whatever Netlify decided to call the field. */
+    if (rec && typeof rec === 'object') {
+      const hit = Object.keys(rec)
+        .map(k => rec[k])
+        .find(v => typeof v === 'string' && v.indexOf(MARKER) !== -1);
+      if (hit) { out.push(hit); continue; }
+    }
+    out.push(line);
+  }
+  return out.join('\n');
+}
+
+function fetchNetlifyLogs() {
+  const r = spawnSync(netlifyCommand(), { shell: true, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const stderr = String(r.stderr || '').trim();
+  if (r.error) {
+    return { ok: false, why: r.error.code === 'ENOENT' ? 'no-cli' : 'spawn-failed', detail: r.error.message };
+  }
+  if (r.status !== 0) {
+    /* A missing CLI does NOT arrive as r.error: the command runs through a
+       shell, and the shell reports the absence itself — cmd.exe says
+       "is not recognized", sh says "not found", and both exit 1. Classified
+       from the text, because the install instruction is the whole point of
+       the message on a machine that has never run this before. */
+    const looksMissing = /is not recognized|command not found|:\s*not found|no such file or directory/i.test(stderr);
+    const looksAuth = /not logged in|logged out|authenticat|access token|401/i.test(stderr);
+    return {
+      ok: false,
+      why: looksMissing ? 'no-cli' : (looksAuth ? 'not-logged-in' : 'cli-failed'),
+      detail: stderr || ('netlify exited ' + r.status),
+    };
+  }
+  return { ok: true, stdout: r.stdout };
+}
+
+function netlifyHelp(fail) {
+  console.error('\nCould not read the logs from Netlify: ' + fail.detail + '\n');
+  if (fail.why === 'no-cli') {
+    console.error('  The Netlify CLI is not on PATH. Install it, then sign in once:');
+    console.error('    npm i -g netlify-cli && netlify login\n');
+  } else if (fail.why === 'not-logged-in') {
+    console.error('  The CLI is installed but not signed in. Run: netlify login\n');
+  }
+  console.error('  Or save the logs and read the file — the same numbers, no CLI needed:');
+  console.error('    ' + netlifyCommand() + ' > logs.jsonl');
+  console.error('    node scripts/youtube-quota.mjs --file=logs.jsonl\n');
+  console.error('  Note: nothing here wants an API token, so there is never a reason to');
+  console.error('  put one in this repo or in a chat.\n');
+}
+
+/* ------------------------------------------------------------
    Main
    ------------------------------------------------------------ */
 
@@ -277,17 +384,32 @@ async function main() {
     return state.found ? 0 : 1;
   }
 
-  const sources = argAll('file').flatMap(filesFrom);
   let text = '';
-  for (const f of sources) {
-    try { text += readFileSync(f, 'utf8') + '\n'; } catch (e) { console.error('could not read ' + f + ': ' + e.message); }
+  if (fromNetlify) {
+    if (!SINCE_OK) {
+      console.error('\n--since must look like 7d, 24h, 90m or 30s — got "' + SINCE + '".\n');
+      return 2;
+    }
+    if (!FUNC_OK) {
+      console.error('\n--function must be a function name — got "' + FUNC + '".\n');
+      return 2;
+    }
+    const got = fetchNetlifyLogs();
+    if (!got.ok) { netlifyHelp(got); return 2; }
+    text = logTextFromCli(got.stdout);
+  } else {
+    const sources = argAll('file').flatMap(filesFrom);
+    for (const f of sources) {
+      try { text += readFileSync(f, 'utf8') + '\n'; } catch (e) { console.error('could not read ' + f + ': ' + e.message); }
+    }
+    if (!sources.length) text = await readStdin();
   }
-  if (!sources.length) text = await readStdin();
 
   if (!text.trim()) {
     console.error('\nNothing to read. Give it a log:');
-    console.error('  node scripts/youtube-quota.mjs --file=logs.txt');
-    console.error('  netlify functions:log youtube-upload-start | node scripts/youtube-quota.mjs');
+    console.error('  node scripts/youtube-quota.mjs --netlify');
+    console.error('  netlify logs --json | node scripts/youtube-quota.mjs');
+    console.error('  node scripts/youtube-quota.mjs --file=logs.jsonl');
     console.error('\nAnd check the marker is being written at all:');
     console.error('  node scripts/youtube-quota.mjs --check-instrumentation\n');
     return 2;
@@ -344,7 +466,7 @@ async function main() {
   return parsed.malformed ? 1 : 0;
 }
 
-export { parseLog, summarize, verdictOf, bar };
+export { parseLog, summarize, verdictOf, bar, logTextFromCli };
 
 /* Importable for tests without running: scripts/test-youtube-url.mjs
    imports this module for its pure functions, and only a direct

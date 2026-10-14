@@ -19,7 +19,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import ArzuzVideo from '../assets/video.js';
-import { parseLog, summarize, verdictOf } from './youtube-quota.mjs';
+import { parseLog, summarize, verdictOf, logTextFromCli } from './youtube-quota.mjs';
 
 const require = createRequire(import.meta.url);
 const Health = require('../netlify/functions/youtube-health.js');
@@ -324,6 +324,43 @@ console.log('youtube-quota: the day buckets and the guardrail');
    Supabase is asked), so this runs offline in CI. The authorised
    200 path with real credentials is checked out of band, not here.
    ============================================================ */
+
+/* ============================================================
+   scripts/youtube-quota.mjs — the Netlify CLI's JSON Lines
+
+   `netlify logs --json` writes one JSON object per line with the
+   marker inside a message field, and the record shape is Netlify's
+   to change. The property that matters is that an unrecognised
+   record is kept RAW rather than dropped: a dropped line is a
+   missing upload, and a missing upload is the reading that says
+   there is quota left. That is the wrong way for a guardrail to be
+   wrong, so it is asserted here.
+   ============================================================ */
+
+console.log('youtube-quota: the CLI\'s JSON Lines');
+{
+  const mk = obj => '[youtube-quota] ' + JSON.stringify(obj);
+  const cli = [
+    JSON.stringify({ message: mk({ at: '2026-10-14T09:00:00.000Z', units: 1600 }) }),
+    JSON.stringify({ msg: mk({ at: '2026-10-14T10:00:00.000Z', units: 1600 }) }),
+    JSON.stringify({ level: 'info', boring: true }),
+    'a bare line Netlify did not wrap',
+    '',
+  ].join('\n');
+  const text = logTextFromCli(cli);
+
+  check('both message and msg records are read', parseLog(text).events.length === 2);
+  check('a marker in a field this script has never heard of is still counted',
+    parseLog(logTextFromCli(JSON.stringify({ data: mk({ at: '2026-10-14T11:00:00.000Z' }) }))).events.length === 1);
+  check('and the event survives with its timestamp intact',
+    parseLog(logTextFromCli(JSON.stringify({ payload: mk({ at: '2026-10-14T11:00:00.000Z', units: 1600 }) }))).events[0].date === '2026-10-14');
+  check('a record whose message carries no marker is not an event',
+    parseLog(logTextFromCli(JSON.stringify({ message: 'just a log line' }))).events.length === 0);
+  check('blank lines and empty output do not crash or invent events',
+    logTextFromCli('') === '' && parseLog(logTextFromCli('\n\n')).events.length === 0);
+  check('the whole pipeline counts what the CLI sent',
+    summarize(parseLog(text).events, { now: new Date('2026-10-14T12:00:00.000Z'), days: 2 }).today.uploads === 2);
+}
 
 console.log('youtube-health: the handler');
 {
