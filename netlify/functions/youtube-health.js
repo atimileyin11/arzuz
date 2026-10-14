@@ -85,9 +85,51 @@ const REFRESH_URL = 'https://oauth2.googleapis.com/token';
 const UPLOAD_API =
   'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status';
 
-/* The shared failure vocabulary, so a refusal from this function
-   carries the same class as every other one on the site. */
-const ApiErrors = require('../../assets/api-errors.js');
+/* ------------------------------------------------------------
+   THE FAILURE VOCABULARY, WITHOUT REQUIRING THE SHARED MODULE
+
+   Every other function stamps its failures with
+   assets/api-errors.js so a page reads one class per failure. This
+   function does NOT require it, deliberately: when this was written
+   that module was not in the deployed tree at all — it is not in
+   git (`git ls-files assets/api-errors.js` matches nothing), it
+   exists only on the working copies of the functions being written
+   against it. A health check that cannot load its own dependency
+   answers 500 with a module-not-found, which is indistinguishable
+   from the outage it exists to diagnose: the one function whose job
+   is to say "this deployment is missing something" must not be the
+   one that is missing something.
+
+   So the six class names and the { error, kind } shape are mirrored
+   below. The mirror is not a fork of the policy — the names are the
+   shared vocabulary and the test suite pins them, so when
+   api-errors.js does ship, the two agree rather than drift.
+
+   SERVER-SIDE RULE (assets/api-errors.js#wireBody, mirrored): an
+   error body carries `error` plus a class; an explicit class is used
+   only when it is a name from the vocabulary; otherwise the class is
+   derived from the status, so a typo can never put a class on the
+   wire that no page can read. A success body has no `error` and is
+   returned untouched.
+   ------------------------------------------------------------ */
+const KINDS = ['not-ready', 'expired', 'rejected', 'busy', 'offline', 'error'];
+
+function kindForStatus(status) {
+  if (status === 429) return 'busy';
+  /* a route, table, function or grant this deployment does not have —
+     our side, and retrying cannot fix it */
+  if (status === 401 || status === 403 || status === 404) return 'not-ready';
+  if (status >= 400 && status < 500) return 'rejected';
+  return 'error';
+}
+
+function wireBody(status, body, kind) {
+  if (!body || typeof body !== 'object' || !body.error) return body;
+  const named = KINDS.indexOf(body.kind) !== -1
+    ? body.kind
+    : (KINDS.indexOf(kind) !== -1 ? kind : null);
+  return Object.assign({}, body, { kind: named || kindForStatus(status) });
+}
 
 function json(status, obj, kind) {
   return {
@@ -97,7 +139,7 @@ function json(status, obj, kind) {
       'Cache-Control': 'no-store',
       'X-Robots-Tag': 'noindex, nofollow',
     },
-    body: JSON.stringify(ApiErrors.wireBody(status, obj, kind)),
+    body: JSON.stringify(wireBody(status, obj, kind)),
   };
 }
 
@@ -182,7 +224,7 @@ async function checkToken(env, deps) {
          wire, and a page handed a status number would have to re-derive
          what only the server can say (see assets/api-errors.js). */
       error: (body.error_description || body.error ||
-        ('Google refused the token exchange (' + ApiErrors.kindOf({ status: res.status }) + ')')).slice(0, 200),
+        ('Google refused the token exchange (' + kindForStatus(res.status) + ')')).slice(0, 200),
     };
   }
 

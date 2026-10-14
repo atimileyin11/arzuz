@@ -16,11 +16,15 @@
    which are somebody else's uncommitted edits right now. */
 
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import ArzuzVideo from '../assets/video.js';
 import { parseLog, summarize, verdictOf } from './youtube-quota.mjs';
 
 const require = createRequire(import.meta.url);
 const Health = require('../netlify/functions/youtube-health.js');
+const HEALTH_SRC = readFileSync(
+  fileURLToPath(new URL('../netlify/functions/youtube-health.js', import.meta.url)), 'utf8');
 
 let failures = 0;
 function check(name, ok) {
@@ -341,6 +345,22 @@ console.log('youtube-health: the handler');
   /* a short "token" is refused on length, so no Supabase call is made */
   const bogus = await Health.handler(event({ headers: { authorization: 'Bearer short' } }));
   check('a junk bearer token is refused without asking Supabase', bogus.statusCode === 401);
+
+  /* The reason this function exists is to report what a deployment is
+     MISSING, so it must not itself depend on anything a deployment
+     might not have. A require of a sibling module that is not in git
+     turns it into a 500 that reads exactly like the outage it is
+     meant to diagnose. */
+  check('the health function requires nothing outside node itself',
+    !/require\s*\(/.test(HEALTH_SRC));
+  check('it declares the shared six-name vocabulary, in the shared spelling',
+    /const KINDS = \['not-ready', 'expired', 'rejected', 'busy', 'offline', 'error'\];/.test(HEALTH_SRC));
+  const VOCABULARY = ['not-ready', 'expired', 'rejected', 'busy', 'offline', 'error'];
+  check('every class its refusals carry is one the pages can read',
+    [anon, post].every(r => VOCABULARY.indexOf(JSON.parse(r.body).kind) !== -1));
+  check('a 401 is the missing-grant class, not a generic error',
+    JSON.parse(anon.body).kind === 'not-ready' &&
+    JSON.parse(post.body).kind === 'rejected');
 }
 
 console.log(failures === 0 ? '\nAll video helper checks passed.' : '\n' + failures + ' check(s) FAILED');
