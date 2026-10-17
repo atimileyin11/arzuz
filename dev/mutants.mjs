@@ -24,6 +24,42 @@
 
 export const MUTANTS = [
   {
+    id: 'cleanliness-does-not-count',
+    file: 'assets/roommate-score.js',
+    suite: 'test:roommate',
+    find: "{ key: 'cleanliness', weight: 3, fields: ['clean'],         want: 'want_clean',  phrase: 'cleaning habits' },",
+    replace: "{ key: 'cleanliness', weight: 0, fields: ['clean'],         want: 'want_clean',  phrase: 'cleaning habits' },",
+    why: 'Cleaning habits are one of the two heaviest categories. At weight 0 two '
+      + 'students who disagree about it match exactly as well as two who agree.',
+  },
+  {
+    id: 'reclaim-never-happens',
+    file: 'assets/verification-queue.js',
+    suite: 'test:verify-queue',
+    find: 'reclaim_after_hours: 24',
+    replace: 'reclaim_after_hours: 2400',
+    why: 'A job an officer took and then went silent on returns to the queue after a '
+      + 'day. Longer than any shift means it never comes back and nobody is told.',
+  },
+  {
+    id: 'deploy-gate-always-passes',
+    file: 'scripts/require-service-key.mjs',
+    suite: 'test:deploy-key',
+    find: 'exit: (require_ && blocking.length) ? 1 : 0,',
+    replace: 'exit: 0,',
+    why: 'The build must fail when a required key is missing; a gate that always '
+      + 'exits 0 deploys a site whose door answers 503 to every submission.',
+  },
+  {
+    id: 'indexnow-sends-nothing',
+    file: 'assets/indexnow.js',
+    suite: 'test:indexnow',
+    find: 'urlList: urls.slice()',
+    replace: 'urlList: []',
+    why: 'The batch must carry the URLs that changed. An empty urlList is accepted '
+      + 'by IndexNow and indexes nothing, which looks exactly like success.',
+  },
+  {
     id: 'signature-includes-max-file-size',
     file: 'netlify/functions/cloudinary-sign.js',
     suite: 'test:upload-sign',

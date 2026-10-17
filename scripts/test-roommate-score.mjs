@@ -165,6 +165,26 @@ await t('a soft preference raises a category\u2019s weight', () => {
   );
 });
 
+/* THE CATEGORY HAS TO COUNT, NOT JUST EXIST.
+
+   A mutation audit set cleanliness's weight to 0 — one of the two
+   heaviest categories, silently ignored — and this suite stayed green.
+   The soft-preference check above only asserts an inequality that holds
+   at weight 0 too, so nothing here ever isolated a single category.
+
+   Two pairs, identical except for cleaning habits: the one that agrees
+   must score strictly higher. At weight 0 they score the same, which is
+   what this catches. */
+await t('cleaning habits move the score — the category is not decorative', () => {
+  const me = full({ clean: P.clean.options[0] });
+  const agrees = ArzuzMatch.score(me, full({ clean: P.clean.options[0] }));
+  const differs = ArzuzMatch.score(me, full({ clean: P.clean.options[2] }));
+  assert.ok(
+    agrees.pct > differs.pct,
+    'agreeing about cleaning must beat disagreeing (got ' + agrees.pct + ' vs ' + differs.pct + ')'
+  );
+});
+
 await t('missing answers are excluded, not counted against the pair', () => {
   const sparse = { gender: P.gender.options[0], smoke: P.smoke.options[0] };
   const r = ArzuzMatch.score(sparse, full());
