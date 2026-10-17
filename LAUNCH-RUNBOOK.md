@@ -44,11 +44,13 @@ Two of those are code-shaped problems and are fixed by running SQL. The last row
 **Run** — Netlify → Site configuration → Environment variables. These must exist before step 10,
 because step 10 is the step that makes the door the *only* way in:
 
-| Variable | Needed by | If it is missing |
-| --- | --- | --- |
-| `SUPABASE_SERVICE_ROLE_KEY` | the door, the status page, the team panel | the door answers 503 and holds the answers in the student's browser |
-| `OPENWA_URL`, `OPENWA_API_KEY` | confirmations, and every status code | the code is issued and never delivered |
-| `RESEND_API_KEY`, `ARZUZ_MAIL_FROM` | the email channel of `/status` | the email channel cannot send; WhatsApp still works |
+| Variable | The gate treats it as | Needed by | If it is missing |
+| --- | --- | --- | --- |
+| `SUPABASE_SERVICE_ROLE_KEY` | **REQUIRED** — the build refuses to publish | the door, the status page, the team panel | the door answers 503 and holds the answers in the student's browser |
+| `OPENWA_URL`, `OPENWA_API_KEY` | **REQUIRED** — the build refuses to publish | confirmations, and every status code | the code is issued and never delivered |
+| `RESEND_API_KEY` | ADVISED — reported, never blocking | the email channel of `/status` | the email channel cannot send; WhatsApp still works |
+| `ARZUZ_MAIL_FROM` | optional, with a working default | the verified sender address | falls back to the default sender in `notify.js` |
+| `OPENWA_SESSION` | ADVISED | which OpenWA session sends | falls back to a hardcoded name, and every message is refused if it is not the session your server actually has |
 
 **Verify** — the build already asserts the first three: `netlify.toml` runs
 `node scripts/require-service-key.mjs --require` as its build command, so **a deploy that is live is
