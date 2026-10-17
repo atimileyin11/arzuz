@@ -848,6 +848,53 @@ await (async () => {
     });
   });
 
+  /* THE SAME RULE AT THE OTHER END OF THE WIRE. The check above proves an
+     http:// link is never SENT; this proves one already on a stored row —
+     an import, or a row written before the rule existed — never becomes a
+     link the student clicks from a page served over https. The renderer
+     filters on the same pattern, and until this check existed nothing
+     asked it to. */
+  await t('a stored photo link that is not https is not rendered as a link', () => {
+    const page = makePage({
+      search: '?t=' + TOKEN,
+      view: { status: 200, body: planData() },
+      claims: {
+        status: 200,
+        body: claimsData({
+          claims: [
+            aClaim({
+              id: 'c-shots',
+              reference: 'AZ-C-SHOTS',
+              status: 'awaiting_customer',
+              provider_name: 'Musa Ibrahim',
+              actual_kobo: 180000,
+              call_out_no: 1,
+              photos: ['http://cdn.example.com/tap.jpg', 'https://res.cloudinary.com/arzuz/tap.jpg']
+            }),
+            aClaim({ id: 'c-no', reference: 'AZ-C-REFUSED', status: 'rejected', eligibility: 'not_covered', eligibility_reason: 'The hinge is on the compound gate, which is the landlord\u2019s.' }),
+            aClaim({ id: 'c-odd', reference: 'AZ-C-ODD', status: 'escalated' })
+          ]
+        })
+      }
+    });
+    return flush().then(() => {
+      /* The RAW element, not page.read(): read() strips tags, and the
+         thing being asserted is an href — which is exactly what
+         stripping removes. */
+      const raw = page.el('careClaims')._innerHTML;
+      if (raw.indexOf('href="https://res.cloudinary.com/arzuz/tap.jpg"') === -1) {
+        return 'the https photo is not a link on the record: ' + raw.slice(-400);
+      }
+      if (raw.indexOf('cdn.example.com') !== -1) {
+        return 'an http:// photo reached the page as something the student can open: ' + raw.slice(-400);
+      }
+      if ((raw.match(/<a /g) || []).length !== 1) {
+        return 'one usable photo should be one link, not ' + (raw.match(/<a /g) || []).length;
+      }
+      return true;
+    });
+  });
+
   await t('a filed repair is given its reference back, and the list is re-read', () => {
     let shown = [];
     const page = makePage({

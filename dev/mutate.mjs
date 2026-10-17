@@ -100,13 +100,19 @@ if (flag('coverage')) {
      an audit of the suite, and saying "6 caught" without this reads as if it
      were. Parsed from the runner's own ORDER, so the gap cannot drift. */
   const src = readFileSync(join(ROOT, 'dev/run-tests.mjs'), 'utf8');
-  const order = [...src.matchAll(/^\s*'((?:test|sql):[a-z0-9-]+)'/gm)].map((m) => m[1]);
+  /* The ORDER block, then every literal in it. A line-based match used
+     to miss the second suite on a line — `'test:api-errors',
+     'test:waitlist',` — and a denominator that quietly leaves one out
+     is the same lie as a numerator that inflates itself. */
+  const open = src.indexOf('const ORDER = [');
+  const order = open === -1 ? []
+    : [...src.slice(open, src.indexOf('];', open)).matchAll(/'((?:test|sql):[a-z0-9-]+)'/g)].map((m) => m[1]);
   const unique = [...new Set(order)];
   const covered = new Set(registry.map((m) => m.suite));
   const uncovered = unique.filter((n) => !covered.has(n));
   console.log('');
   console.log('  ' + (unique.length - uncovered.length) + ' of ' + unique.length + ' suites have a mutant');
-  console.log('  ' + covered.size + ' mutant(s) across ' + new Set(registry.map((m) => m.suite)).size + ' suite(s)');
+  console.log('  ' + registry.length + ' mutant(s) across ' + covered.size + ' suite(s)');
   if (uncovered.length) {
     console.log('\n  NO MUTANT YET — each of these has claims nobody has tried to break:');
     for (const n of uncovered) console.log('    · ' + n);

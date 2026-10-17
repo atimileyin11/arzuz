@@ -230,6 +230,33 @@ if (unknown.length) {
 }
 const selected = only ? ORDER.filter((n) => only.includes(n)) : ORDER;
 
+/* ------------------------------------------------------------
+   every suite in ORDER has to have a mutant
+
+   A suite is a claim; a mutant is the evidence that the claim CAN
+   fail. "14 of 30 suites have a mutant" was a number somebody had to
+   remember to read. Now a new suite cannot ship without one: the
+   registry in dev/mutants.mjs is compared against THIS list, which
+   includes the sixteen that had none.
+
+   Checked only on a FULL run. The partial runs exist to drive ONE
+   suite (dev/mutate.mjs runs each mutant through --only=), and a gate
+   that went red there would report the state of the registry instead
+   of the mutation under test - a mutation harness that always sees a
+   red run proves nothing.
+   ------------------------------------------------------------ */
+
+let mutantsBySuite = new Map();
+let registryError = '';
+try {
+  const { MUTANTS } = await import('./mutants.mjs');
+  for (const m of (MUTANTS || [])) mutantsBySuite.set(m.suite, (mutantsBySuite.get(m.suite) || 0) + 1);
+} catch (err) {
+  registryError = String((err && err.message) || err).split('\n')[0];
+}
+
+const uncovered = only ? [] : ORDER.filter((n) => !mutantsBySuite.has(n));
+
 console.log(line);
 console.log('Arzuz test suite \u2014 ' + (only
   ? 'PARTIAL RUN: ' + selected.length + ' of ' + ORDER.length + ' suites (--only)'
@@ -240,6 +267,20 @@ if (forgotten.length) {
   console.log('\n\u2717 package.json has suite scripts this runner does not know about:');
   for (const name of forgotten) console.log('    ' + name + '  (npm run ' + name + ')');
   console.log('  Add it to ORDER in dev/run-tests.mjs \u2014 otherwise it will never run.');
+}
+
+if (registryError) {
+  console.log('\n\u2717 dev/mutants.mjs could not be read: ' + registryError);
+  console.log('  The registry is half of the gate below, so nothing is claimed about it.');
+}
+
+if (uncovered.length) {
+  console.log('\n\u2717 no mutant for ' + uncovered.length + ' of ' + ORDER.length + ' suites:');
+  for (const name of uncovered) console.log('    ' + name + '  (npm run ' + name + ')');
+  console.log('  A suite nobody has tried to break is a suite nobody knows can fail.');
+  console.log('  Add one to dev/mutants.mjs: find the sentence its output uses, then break');
+  console.log('  the line that sentence describes. `npm run mutate -- --coverage` is the');
+  console.log('  same comparison, run on its own.');
 }
 
 const results = [];
@@ -297,6 +338,17 @@ if (raced.length) {
   console.log('  a passing one may have proved it against a revision that no longer exists.');
 }
 
+if (uncovered.length || forgotten.length || registryError) {
+  console.log('\nMUTANT COVERAGE');
+  console.log('  ' + (ORDER.length - uncovered.length) + ' of ' + ORDER.length + ' suites in ORDER have a mutant');
+  console.log('  ' + [...mutantsBySuite.values()].reduce((a, b) => a + b, 0) + ' mutant(s) across ' + mutantsBySuite.size + ' suite(s)');
+  if (registryError) console.log('  \u2717 the registry itself could not be read \u2014 see above');
+  for (const name of uncovered) console.log('  \u2717 ' + name + ' has no mutant');
+  console.log('  A suite with no mutant is not evidence that the behaviour it names is');
+  console.log('  protected \u2014 only that nobody has tried to break it yet.');
+  console.log(line);
+}
+
 if (forgotten.length) {
   console.log('RESULT: ' + passed + ' of ' + results.length + ' passed \u00b7 ' +
     forgotten.length + ' suite(s) exist in package.json but were NOT run');
@@ -318,4 +370,4 @@ if (failed.length) {
 }
 console.log(line);
 
-process.exit(failed.length || forgotten.length ? 1 : 0);
+process.exit(failed.length || forgotten.length || uncovered.length || registryError ? 1 : 0);

@@ -159,4 +159,176 @@ export const MUTANTS = [
     why: 'No link at all is terminal — a retry cannot invent a token. Sending the '
       + 'landlord back to press Save again wastes the one attempt they make.',
   },
+
+  /* ------------------------------------------------------------
+     The second wave: one mutant for every suite that had none.
+
+     Chosen the same way — the line the suite's own failure message
+     talks about — and the sixteen below are the suites whose claims
+     nobody had tried to break. `npm run mutate -- --coverage` is what
+     says the job is done, and the gate now refuses a suite with no
+     mutant at all.
+     ------------------------------------------------------------ */
+  {
+    id: 'fixtures-refuse-a-good-number',
+    file: 'netlify/functions/status.js',
+    suite: 'test:fixtures',
+    find: '  return d.length >= 10 && d.length <= 15;',
+    replace: '  return d.length >= 14 && d.length <= 15;',
+    why: 'The fixtures suite judges every number a fixture uses by the product\'s own '
+      + 'rule. A rule that refuses a ten-digit Nigerian number reports a working '
+      + 'fixture as broken, and the suite is the thing that has to say so.',
+  },
+  {
+    id: 'mock-accepts-an-impossible-outcome',
+    file: 'scripts/test-status.mjs',
+    suite: 'test:schema',
+    find: "const TRAIL_OUTCOMES = ['sent', 'refused', 'unreachable'];",
+    replace: "const TRAIL_OUTCOMES = ['sent', 'refused', 'unreachable-later'];",
+    why: 'Every copy of a vocabulary has to match the CHECK that owns it, and this '
+      + 'suite exists to compare them. A copy that accepts a word Postgres '
+      + 'refuses lets a stand-in assert on a row the column cannot hold.',
+  },
+  {
+    id: 'not-ready-reads-as-an-outage',
+    file: 'assets/roommate.js',
+    suite: 'test:roommate-page',
+    find: "    if (kind ? kind === 'not-ready' : status === 503) {",
+    replace: '    if (false) {',
+    why: 'A 503 — or a 404 — that carries not-ready is the deployment, not a bad '
+      + 'minute: read as an outage the page offers a retry that cannot work.',
+  },
+  {
+    id: 'refunded-plan-can-still-spend',
+    file: 'netlify/functions/care-credit.js',
+    suite: 'test:care',
+    find: "  if (plan.status === 'refunded') {\n    return { status: 409, body: { error: 'That session was refunded",
+    replace: "  if (false) {\n    return { status: 409, body: { error: 'That session was refunded",
+    why: 'A refunded session has no credit to send a worker on. Without this the '
+      + 'money goes back and the call-out is spent anyway.',
+  },
+  {
+    id: 'unreadable-evidence-is-no-evidence',
+    file: 'assets/verification-badge.js',
+    suite: 'test:verify-badge',
+    find: '    if (rows === null || rows === undefined) {',
+    replace: '    if (rows === undefined) {',
+    why: 'An evidence read that FAILED must not be reported as there being no '
+      + 'record. Falling through makes the badge say the visit predates the log, '
+      + 'which is a different fact about the room.',
+  },
+  {
+    id: 'page-names-the-price-it-was-shown',
+    file: 'assets/care-pass.js',
+    suite: 'test:care-pass',
+    find: '      referral_code: f.referral_code\n    }).then(function (res) {',
+    replace: '      referral_code: f.referral_code,\n      amount: 2000000\n    }).then(function (res) {',
+    why: 'The page sends the customer and the idempotency key, and never an amount: '
+      + 'the server holds the price, and a page that names one is a page that can '
+      + 'be told to name another.',
+  },
+  {
+    id: 'http-photo-becomes-a-link',
+    file: 'assets/my-care.js',
+    suite: 'test:my-care',
+    find: '    var shots = (row.photos || []).filter(function (u) { return /^https:',
+    replace: '    var shots = (row.photos || []).filter(function (u) { return /^https?:',
+    why: 'A repair photo is a link a student clicks from a page served over https. '
+      + 'An http:// one is mixed content, and the page must not turn it into a link.',
+  },
+  {
+    id: 'support-may-reach-the-scout-reports',
+    file: 'assets/admin.js',
+    suite: 'test:admin',
+    find: "    support: ['scout_submissions', 'roommate', 'growth', 'strategy', 'settings', 'finance'],",
+    replace: "    support: ['roommate', 'growth', 'strategy', 'settings', 'finance'],",
+    why: 'A support login may not reach the scout reports. The router is the gate '
+      + 'that decides, and this hands it the section anyway.',
+  },
+  {
+    id: 'missing-table-is-a-bad-minute',
+    file: 'netlify/functions/care-credit.js',
+    suite: 'test:postgrest',
+    find: '  return err && err.status === 404 && /schema cache|does not exist/i.test(m);',
+    replace: '  return false;',
+    why: 'A relation this deployment does not have must read as not-ready rather '
+      + 'than as a bad minute: the repair is a migration, not a retry.',
+  },
+  {
+    id: 'every-relation-looks-denied',
+    file: 'dev/care-live-check.mjs',
+    suite: 'test:care-live',
+    find: "  if (status === 404 && code === 'PGRST205') return 'missing';\n  if ((status === 401 || status === 403)) return 'exists-denied';",
+    replace: "  if (status === 404 && code === 'PGRST205') return 'missing';\n  if (true) return 'exists-denied';",
+    why: 'The verdict IS the product of this check: a reader that answers '
+      + 'exists-denied to everything calls a publicly readable database a pass.',
+  },
+  {
+    id: 'canonical-drops-its-slash',
+    file: 'index.html',
+    suite: 'test:seo',
+    find: '  <link rel="canonical" href="https://arzuz.com/">',
+    replace: '  <link rel="canonical" href="https://arzuz.com">',
+    why: 'A canonical without its trailing slash is a different URL to a crawler, '
+      + 'and the homepage is the one page whose canonical is the origin itself.',
+  },
+  {
+    id: 'not-found-answers-200',
+    file: 'netlify/functions/rooms.js',
+    suite: 'test:rooms',
+    find: 'function notFound(page) {\n  return {\n    statusCode: 404,',
+    replace: 'function notFound(page) {\n  return {\n    statusCode: 200,',
+    why: 'A room that is not in the view, and a database that cannot be read, '
+      + 'both answer 404 with the real 404 page. A 200 is a soft 404: the page '
+      + 'says "not found" and tells every crawler the room exists.',
+  },
+  {
+    id: 'og-image-is-the-old-cover',
+    file: 'netlify/functions/listing-og.js',
+    suite: 'test:listing-og',
+    find: '  const img = absoluteUrl(firstPhotoUrl(p) || row.photo_url) || GENERIC_IMAGE;',
+    replace: '  const img = absoluteUrl(row.photo_url) || GENERIC_IMAGE;',
+    why: 'og:image is the listing\'s own first photo, read from the payload the '
+      + 'owner edited, not the cover the row was created with. A card showing '
+      + 'the old photograph is how a preview lies about the room.',
+  },
+  {
+    id: 'cards-link-by-query-string',
+    file: 'assets/listing-url.js',
+    suite: 'test:browse',
+    find: "    return s ? '/rooms/' + s : '';",
+    replace: "    return s ? '/listing?id=' + idOf(row) : '';",
+    why: 'Every card links the one address for a room. A query-string link is the '
+      + 'shape that gives the same room two URLs, and the board is what a crawl '
+      + 'copies them from.',
+  },
+  {
+    id: 'rls-off-on-the-care-tables',
+    file: 'supabase-care.sql',
+    suite: 'sql:proof',
+    find: 'alter table care_plans         enable row level security;',
+    replace: 'alter table care_plans         disable row level security;',
+    why: 'A care plan carries a student\'s name, phone and home address. RLS is the '
+      + 'line that keeps the public key out of it, and this is the file that sets it.',
+  },
+  {
+    id: 'invented-address-is-deliverable',
+    file: 'netlify/functions/notify.js',
+    suite: 'test:waitlist',
+    find: "  if (a.slice(a.lastIndexOf('@') + 1) === PLACEHOLDER_MAIL_DOMAIN) {",
+    replace: '  if (false) {',
+    why: 'This site INVENTS addresses at its own domain to identify a phone, and '
+      + 'nothing is ever delivered there. A form that accepts one stores a record '
+      + 'the second channel can never open.',
+  },
+  {
+    id: 'the-claims-guard-never-fires',
+    file: 'supabase-claims.sql',
+    suite: 'sql:guards',
+    find: "  if to_regclass('public.ledger_entries') is null then",
+    replace: '  if false then',
+    why: 'The guard is what stops this file running against a database with no '
+      + 'books: without it a claim is filed where the cost of the repair has '
+      + 'nowhere to post.',
+  },
 ];

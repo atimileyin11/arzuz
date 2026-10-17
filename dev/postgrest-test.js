@@ -483,7 +483,37 @@ async function main() {
   await t('a missing table is still mapped to "not switched on" — asserted in BOTH worlds', () => {
     const src = fs.readFileSync(path.join(ROOT, 'netlify/functions/care-credit.js'), 'utf8');
     if (!/function isMissingTable/.test(src)) return 'the missing-table mapping is gone from the function';
-    if (!/PGRST205|schema cache/i.test(src)) return 'the function does not recognise the code the platform actually returns';
+
+    /* ASK THE PREDICATE, do not read its text. A source check proves the
+       branch EXISTS — it stayed green while the expression itself was
+       replaced with `false`, which is the difference between a claim and
+       a shape. The function exports it for exactly this: the verdict is
+       the thing, so the verdict is what a test has to call. */
+    const care = require(path.join(ROOT, 'netlify/functions/care-credit.js'));
+    if (typeof care.isMissingTable !== 'function') {
+      return 'isMissingTable is no longer exported, so nothing can ask it what it decides';
+    }
+    const yes = care.isMissingTable({
+      status: 404,
+      message: "Could not find the table 'public.care_plans' in the schema cache"
+    });
+    if (yes !== true) {
+      return 'the failure PostgREST actually returns (404 + the schema cache) is not read as a '
+        + 'missing relation, so a database still waiting for its migration is reported as a bad minute';
+    }
+    const wrong = [
+      ['a denied key (401)', { status: 401, message: 'permission denied for table care_plans' }],
+      ['a public leak (200)', { status: 200, message: '' }],
+      ['an upstream failure (502)', { status: 502, message: 'upstream' }],
+      ['a 404 with no schema-cache name — the request never reached PostgREST', { status: 404, message: 'Not Found' }],
+      ['no error at all', null]
+    ].filter((pair) => care.isMissingTable(pair[1]));
+    if (wrong.length) {
+      return 'read as a missing relation: ' + wrong.map((w) => w).join(', ')
+        + '. Only the platform\u2019s own missing-relation code means the tables are not there;'
+        + ' everything else is a different repair.';
+    }
+
     /* The branch exists to tell a student their LINK is fine while the
        site is not ready. Without that sentence it is just a 503. */
     return /not switched on/i.test(src)
