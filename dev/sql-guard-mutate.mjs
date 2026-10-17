@@ -244,7 +244,19 @@ function stage(mutation) {
     writeFileSync(join(dir, mutation.addFile.name), mutation.addFile.text);
   } else if (mutation) {
     const target = join(dir, mutation.file);
-    const before = readFileSync(target, 'utf8');
+    /* LINE ENDINGS ARE NORMALISED BEFORE A MUTATION IS APPLIED.
+
+       Three of the entries below find their guard with a regex that ends
+       `/end \$\$;\n/`. On a checkout with CRLF endings — every Windows
+       clone, because core.autocrlf rewrites the tree on checkout — that
+       `\n` is preceded by a `\r`, the match fails, and the mutation
+       silently applies nothing. The tool caught it (that is what "the
+       mutation did not apply" is for), but the failure said the harness
+       was broken when the real fault was the line ending. The SQL does
+       not care which one it is, and CI (LF) and a developer's machine
+       (CRLF) must run the same mutations, so the copy is normalised
+       here and written back as LF. */
+    const before = readFileSync(target, 'utf8').replace(/\r\n/g, '\n');
     const after = mutation.apply(before);
     if (after === before) {
       rmSync(dir, { recursive: true, force: true });
