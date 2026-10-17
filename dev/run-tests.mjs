@@ -39,6 +39,7 @@ import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { snapshotTree, movedDuring } from './tree-watch.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -81,6 +82,15 @@ const ORDER = [
   'test:care-pass',
   'test:my-care',
   'test:admin',
+  /* the upload signature — pure Node, no browser, no Cloudinary: it
+     recomputes the hash the upload endpoint verifies. It sits beside
+     the admin suite because that is the page it protects, and because
+     a signature that drifted is invisible from every other angle: the
+     endpoint keeps answering 200 while every upload 401s. */
+  'test:upload-sign',
+  /* the runner's own detector, which must be able to fire: a watcher
+     that never reports anything looks exactly like a quiet tree */
+  'test:tree-watch',
   'test:postgrest',
   'test:care-live',
   'test:draft-errors',
@@ -107,7 +117,7 @@ const line = '='.repeat(66);
    whoever is changing the guards, not in the gate on every commit.
    Naming it here is the point: it is a deliberate exemption, not a
    suite somebody forgot to add to ORDER. */
-const NOT_A_SUITE = ['sql:mutate'];
+const NOT_A_SUITE = ['sql:mutate', 'mutate'];
 
 /* `care:live` is not a suite either, for the opposite reason: it asks
    the deployed site and the live database, so it needs the internet
@@ -136,6 +146,7 @@ const useShell = process.platform === 'win32';
 function run(name) {
   return new Promise((resolve) => {
     const t0 = Date.now();
+    const snapBefore = snapshot();
     let buf = '';
     let child;
     try {
@@ -156,6 +167,7 @@ function run(name) {
       signal,
       ms: Date.now() - t0,
       summary: headline(buf),
+      moved: movedDuring(snapBefore, snapshot()),
     }));
   });
 }
@@ -181,11 +193,43 @@ function headline(text) {
 }
 
 /* ------------------------------------------------------------
+   the tree a suite reads, and whether it moved while it read it
+
+   The watching itself lives in dev/tree-watch.mjs so it can be tested
+   by moving files, instead of being a claim about a module nobody
+   exercises. Its own suite is in ORDER and runs like any other.
+
+   The exit status is NOT changed when something moves. A concurrent
+   edit EXPLAINS a failure; it does not excuse one, and a suite that
+   PASSED while the tree moved is not made red — it is made doubtful,
+   and the summary says so beside the verdict it belongs to.
+   ------------------------------------------------------------ */
+
+const snapshot = () => snapshotTree(ROOT);
+
+/* ------------------------------------------------------------
    go
    ------------------------------------------------------------ */
 
+/* A PARTIAL RUN IS NOT A GATE. It exists for the loops that can cost
+   minutes per attempt — chasing one suite while editing it, or driving
+   it from dev/mutate.mjs — and it says so twice: in the header and in
+   the result line. The full run is still the only one that means the
+   tree is green. */
+const onlyArg = process.argv.find((a) => a.startsWith('--only='));
+const only = onlyArg ? onlyArg.slice('--only='.length).split(',').map((s) => s.trim()).filter(Boolean) : null;
+const unknown = only ? only.filter((n) => !ORDER.includes(n)) : [];
+if (unknown.length) {
+  console.log('\u2717 not in ORDER: ' + unknown.join(', '));
+  console.log('  A suite that is not in ORDER is not run by the gate either — add it first.');
+  process.exit(2);
+}
+const selected = only ? ORDER.filter((n) => only.includes(n)) : ORDER;
+
 console.log(line);
-console.log('Arzuz test suite \u2014 ' + ORDER.length + ' suites, every one reported');
+console.log('Arzuz test suite \u2014 ' + (only
+  ? 'PARTIAL RUN: ' + selected.length + ' of ' + ORDER.length + ' suites (--only)'
+  : ORDER.length + ' suites, every one reported'));
 console.log(line);
 
 if (forgotten.length) {
@@ -196,7 +240,7 @@ if (forgotten.length) {
 
 const results = [];
 
-for (const name of ORDER) {
+for (const name of selected) {
   console.log('\n' + '\u2500'.repeat(66));
   console.log('\u25b6 ' + name);
   console.log('\u2500'.repeat(66));
@@ -225,12 +269,37 @@ for (const r of results) {
       : 'FAILED (exit ' + r.code + ')';
   console.log('  ' + mark + ' ' + r.name.padEnd(16) + verdict.padEnd(20) + secs(r.ms).padStart(7) +
     (r.summary ? '   ' + r.summary : ''));
+  /* Named here rather than buried in the suite's own output: the line
+     above is the one people quote, and it is the one that may be about
+     a different revision. */
+  if (r.moved && r.moved.length) {
+    console.log('      \u26a0 the tree moved while this suite ran \u2014 ' + r.moved.length +
+      ' file' + (r.moved.length === 1 ? '' : 's') + ':');
+    for (const m of r.moved.slice(0, 5)) console.log('        ' + m.kind + '  ' + m.file);
+    if (r.moved.length > 5) console.log('        … and ' + (r.moved.length - 5) + ' more');
+  }
 }
 console.log(line);
+
+const raced = results.filter((r) => r.moved && r.moved.length);
+if (raced.length) {
+  console.log('\nCONCURRENT EDITS DURING THE RUN');
+  for (const r of raced) {
+    console.log('  ' + r.name + ' \u2014 ' + (r.code === 0 ? 'passed' : 'failed') +
+      ' while ' + r.moved.map((m) => m.file).join(', ') + ' moved');
+  }
+  console.log('  Re-run after the tree settles before believing a verdict that overlaps');
+  console.log('  a save. A failed suite here may be a half-written file, not your change;');
+  console.log('  a passing one may have proved it against a revision that no longer exists.');
+}
 
 if (forgotten.length) {
   console.log('RESULT: ' + passed + ' of ' + results.length + ' passed \u00b7 ' +
     forgotten.length + ' suite(s) exist in package.json but were NOT run');
+} else if (only) {
+  console.log('RESULT (PARTIAL, ' + selected.length + ' of ' + ORDER.length + '): ' +
+    passed + ' passed' + (failed.length ? ' \u00b7 ' + failed.length + ' failed' : '') +
+    ' \u2014 this is not the gate; run `npm test` before believing the tree is green');
 } else {
   console.log('RESULT: ' + passed + ' of ' + results.length + ' suites passed' +
     (failed.length ? ' \u00b7 ' + failed.length + ' failed' : ' \u00b7 nothing failed'));

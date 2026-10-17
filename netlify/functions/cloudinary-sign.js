@@ -76,13 +76,22 @@ exports.handler = async function (event) {
   const maxFileSize  = 10 * 1024 * 1024;                 // 10 MB, matches the form copy
   const context      = COPYRIGHT_CONTEXT;                // copyright metadata on the asset
 
-  // Build the string-to-sign exactly as Cloudinary expects:
-  // signable params in alphabetical order, secret appended last.
-  // max_file_size is part of the signature, so an oversized file
-  // is rejected by Cloudinary itself — the signature cannot be
-  // reused for something bigger than what we approved.
+  /* Build the string-to-sign exactly as Cloudinary expects: signable
+     params in alphabetical order, secret appended last.
+
+     max_file_size IS NOT PART OF THE SIGNATURE. Cloudinary does not
+     verify it (its 401 quotes the string it computed, and that string
+     never contains it), so signing it made OUR hash disagree with
+     theirs and EVERY upload — every photo, every video fallback — was
+     rejected with "Invalid Signature". Production answered 200 with a
+     signature the upload endpoint then refused. It is still sent as a
+     form field (Cloudinary applies it as an unsigned upload option),
+     but a client can omit it, so the 10 MB ceiling is the console's
+     upload limit plus the page's own pre-flight check, not this
+     signature. dev/cloudinary-sign-test.mjs recomputes the hash the
+     way Cloudinary does and fails if this line and that rule drift. */
   const paramsToSign =
-    `context=${context}&eager=${eager}&folder=${folder}&max_file_size=${maxFileSize}&timestamp=${timestamp}${API_SECRET}`;
+    `context=${context}&eager=${eager}&folder=${folder}&timestamp=${timestamp}${API_SECRET}`;
   const signature    = crypto.createHash('sha1').update(paramsToSign, 'utf8').digest('hex');
 
   return {
