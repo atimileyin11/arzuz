@@ -88,6 +88,10 @@ const ORDER = [
      a signature that drifted is invisible from every other angle: the
      endpoint keeps answering 200 while every upload 401s. */
   'test:upload-sign',
+  /* the probe the smoke test and the scheduled health check both
+     trust: it must be able to see a bad signature, or its green means
+     nothing. Offline — it stands up its own endpoint. */
+  'test:upload-probe',
   /* the runner's own detector, which must be able to fire: a watcher
      that never reports anything looks exactly like a quiet tree */
   'test:tree-watch',

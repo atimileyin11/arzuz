@@ -39,6 +39,23 @@
 [functions."roommate-digest"]
   schedule = "0 6 * * *"
 
+# EVERY HALF HOUR: is media upload still switched on? The failure this
+# catches ran for weeks — /api/cloudinary-sign answering 200 while
+# every upload was refused 401 "Invalid Signature", and the first
+# person to notice was a landlord adding an apartment.
+# netlify/functions/upload-health.js signs on this deployment and asks
+# Cloudinary to accept the signature with no file attached (400
+# "Missing required parameter - file" means accepted, 401 means
+# rejected), then tampers with it once and requires a 401 — so a probe
+# that cannot see a bad signature cannot report a green one. It stores
+# nothing and pages the team through sendAlert when it fails.
+#
+# A missing schedule here is silent: the function still deploys, it
+# just never runs. That is the same class of failure it exists to
+# catch, which is why the line is not left to memory.
+[functions."upload-health"]
+  schedule = "*/30 * * * *"
+
 # EVERY HOUR, ON THE HOUR: the claim aging clock. A claim that has stood
 # in one status past the deadline for that status pages the team ONCE per
 # crossing — the queue's own ordering only helps whoever opens it.
