@@ -302,6 +302,16 @@
   status = 404
   force = true
 
+# The evidence a verification visit leaves behind: who inspected the
+# property, what they saw and when. Same rule as every other supabase-*.sql
+# — and the one the deploy guard caught, because a file added without a rule
+# here is a public URL rather than a private one.
+[[redirects]]
+  from = "/supabase-verification-evidence.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
 [[redirects]]
   from = "/dev/*"
   to   = "/404.html"

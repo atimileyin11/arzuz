@@ -58,6 +58,62 @@ function check(name, fn) {
   }
 }
 
+/* ---------------- the Care panel's controls, as an invariant ----------------
+
+   Replaces a check that asserted the absence of `data-care="adjust"` — a
+   control that appears nowhere in assets/admin.js. It passed for every role,
+   for every panel, and could never fail: the shape of assertion this repo
+   already hunts elsewhere (see scripts/verify-migrations.mjs on vacuity).
+
+   What is asserted instead is a fact about the two files that decide it:
+
+     · every control the rendered panel carries must be one the page's own
+       click dispatcher handles — otherwise the panel draws a button that
+       does nothing, which is exactly what a role-specific branch hides;
+     · every control that reaches careAct() must map to an action
+       netlify/functions/care-credit.js accepts;
+     · the money controls the panel is expected to offer must actually be
+       drawn, so a role that quietly loses one is a failure rather than a
+       shorter list.
+
+   The two vocabularies are READ OUT of those files rather than restated
+   here, because a list restated in a test is a second copy that drifts. */
+function careControlsAreSound(html, label, required) {
+  const adminSrc = fs.readFileSync(path.join(ROOT, 'assets/admin.js'), 'utf8');
+  const fnSrc = fs.readFileSync(path.join(ROOT, 'netlify/functions/care-credit.js'), 'utf8');
+  /* `act === '...'` names two different vocabularies in admin.js: the Care
+     dispatcher (data-care) and the table one (data-act: view, edit, del,
+     draft-*). Read the Care block alone, so a data-care typo cannot be
+     "wired" by an unrelated table action. */
+  const careAt = adminSrc.indexOf("closest('[data-care]')");
+  if (careAt === -1) return 'the Care panel no longer dispatches on [data-care] at all';
+  const close = adminSrc.indexOf('\r\n  });', careAt);
+  const careBlock = adminSrc.slice(careAt, close === -1 ? careAt + 2000 : close);
+  const wired = new Set([...careBlock.matchAll(/act === '([^']+)'/g)].map(m => m[1]));
+  const accepted = new Set([...fnSrc.matchAll(/action === '([a-z]+)'/g)].map(m => m[1]));
+  /* the UI names that end in careAct(), and the action each one sends */
+  const writes = { 'spend-confirm': 'spend', refund: 'refund', expire: 'expire', 'grant-submit': 'grant' };
+
+  const drawn = new Set([...String(html).matchAll(/data-care="([^"]+)"/g)].map(m => m[1]));
+  if (!drawn.size) return 'the ' + label + ' panel drew no Care control at all';
+
+  const dead = [...drawn].filter(d => !wired.has(d));
+  if (dead.length) return 'the panel draws controls the page has no handler for: ' + dead.join(', ');
+
+  const refused = Object.keys(writes).filter(k => drawn.has(k) && !accepted.has(writes[k]));
+  if (refused.length) {
+    return 'the panel drives actions the function refuses: ' +
+      refused.map(k => k + ' to ' + writes[k]).join(', ');
+  }
+
+  const absent = (required || []).filter(k => !drawn.has(k));
+  if (absent.length) {
+    return 'the ' + label + ' panel is missing a control the function would accept: ' + absent.join(', ') +
+      ' (drawn: ' + [...drawn].join(', ') + ')';
+  }
+  return true;
+}
+
 /* ---------------- driver ---------------- */
 
 async function testRole(role) {
@@ -1207,11 +1263,11 @@ async function testRole(role) {
     sb.win.arzuzCareGrant.close();
     await tick(60);
 
-    check('care: the panel offers no adjustable balance — a correction stays a conversation', () => {
+    check('care: no balance can be typed, and every control the panel draws is wired', () => {
       const html = String($('carePanel')._innerHTML) + String($('careMetric')._innerHTML);
-      if (/data-care="adjust"/.test(html)) return 'the panel offers a correction button';
       if (/<input[^>]+type="hidden"/i.test(html)) return 'the panel renders a hidden field';
-      return /careGrantBalance|data-care="balance"/.test(html) ? 'a balance can be typed by hand' : true;
+      if (/careGrantBalance|data-care="balance"/.test(html)) return 'a balance can be typed by hand';
+      return careControlsAreSound(html, 'admin', ['spend-open', 'grant-open', 'refund', 'expire']);
     });
 
     check('care: the panel never writes a Care table itself — every Care write is a POST to the function', () => {
@@ -1266,10 +1322,9 @@ async function testRole(role) {
       check('care: support IS offered the grant it takes the payment for', () =>
         careForRole.indexOf('data-care="grant-open"') !== -1
           ? true : 'support records the visits but cannot open the plan they belong to');
-      check('care: and support is still offered no correction', () =>
-        /data-care="adjust"/.test(careForRole + String($('careMetric')._innerHTML || ''))
-          ? 'support is offered a correction control'
-          : true);
+      check('care: every control support is offered is one the page and the function accept', () =>
+        careControlsAreSound(careForRole + String($('careMetric')._innerHTML || ''), 'support',
+          ['spend-open', 'grant-open', 'refund', 'expire']));
     } else {
       check('care: the marketing login never sees a Care plan', () =>
         careForRole === '' ? true : 'the Care panel rendered for marketing');
@@ -2145,6 +2200,135 @@ async function testRole(role) {
     $('claimFilter').value = '';
     await sb.win.arzuzClaims.filter();
     await tick(80);
+  }
+
+  /* --- THE ROLE THAT OWNS THE PANEL, DRIVEN IN FULL ----------------------
+
+     Every panel above is asserted for `admin`, the login that can reach all
+     of them — and that is the shape of a blind spot: a branch inside a panel
+     that only runs for the role which actually HOLDS it is never taken, so it
+     cannot fail. Two of those branches are driven here.
+
+       · support OPERATES Care: it records the visit that spends a credit.
+         Who may do that is a fact about the SERVER (care-credit.js ALLOWED =
+         admin + support). What a page test can prove is the page half — that
+         the drawer opens for support, that a call-out with nobody named is
+         refused before any request, and that the credit which IS recorded
+         moves the ledger by exactly one, naming the worker.
+
+       · marketing is the only login on the Growth page, and that page is read
+         from the PII-scrubbed growth_* views rather than the base tables
+         (assets/admin.js relFor). Three things follow, and none of them was
+         asserted: the page must carry no phone number or name from the rows
+         behind it, it must not offer a door to a section marketing cannot
+         open, and — when those views refuse — it must say which migration is
+         missing instead of drawing zeros that read as facts about the
+         business. */
+  {
+    const priorHash = sb.loc.hash;
+
+    if (role === 'support') {
+      sb.loc.hash = '#/care';
+      await tick(140);
+
+      const careDb = sb.win.__MOCK__.db();
+      const left = (id) => careDb.care_credit_events
+        .filter(e => e.plan_id === id).reduce((n, e) => n + e.delta, 0);
+      const target = careDb.care_plans_live.find(p => p.first_name === 'Ifeoma')
+        || careDb.care_plans_live.find(p => (Number(p.balance) || 0) > 0 && p.status === 'active');
+
+      check('care: support has a plan it can record a visit against', () =>
+        target ? true : 'the mock dataset leaves support nothing to operate on');
+
+      if (target) {
+        const before = left(target.id);
+        const beforeEvents = careDb.care_credit_events.length;
+
+        sb.win.arzuzCareOpenSpend(target.id);
+        await tick(80);
+        check('care: support is offered the drawer that records a visit', () =>
+          String($('carePanel')._innerHTML || '').indexOf('id="careWorker"') !== -1
+            ? true : 'no drawer opened for the login whose job this is');
+
+        sb.win.arzuzCareAct('spend', target.id);
+        await tick(80);
+        check('care: a call-out with nobody named is refused for support too, before any request', () => {
+          if (careDb.care_credit_events.length !== beforeEvents) {
+            return 'a credit was taken for work nobody is named against';
+          }
+          const note = String($('careDrawerNote').textContent || '');
+          return note.indexOf('who did the work') !== -1 ? true : 'no refusal in the drawer: ' + note;
+        });
+
+        $('careWorker').value = 'Verified worker (support harness)';
+        $('careParts').value = '0';
+        sb.win.arzuzCareAct('spend', target.id);
+        await tick(220);
+        check('care: the credit support records moves the LEDGER by exactly one, named', () => {
+          const after = left(target.id);
+          if (after !== before - 1) return 'the ledger moved by ' + (after - before) + ', not -1';
+          const row = careDb.care_credit_events.find(e => e.plan_id === target.id && e.event === 'spent'
+            && e.worker === 'Verified worker (support harness)');
+          return row ? true : 'the spent row does not name the worker support typed';
+        });
+      }
+    }
+
+    if (role === 'marketing') {
+      sb.loc.hash = '#/growth';
+      await tick(180);
+
+      const growthEl = () => qsMemo['.section-view[data-section="growth"]']
+        || sb.document.querySelector('.section-view[data-section="growth"]');
+      const growthHtml = () => String((growthEl() && (growthEl()._innerHTML || growthEl().innerHTML)) || '');
+
+      check('growth: the marketing login gets the page it exists for', () =>
+        growthHtml().indexOf('Traction right now') !== -1
+          ? true : 'the Growth page rendered nothing for the one login that has it');
+
+      check('growth: and it is NOT the missing-views message while the scrubbed views answer', () =>
+        growthHtml().indexOf('not being served to this login') === -1
+          ? true : 'the page claims the role SQL has not run while the feeds answer');
+
+      /* The seeded values are read out of the mock dataset rather than
+         invented, so this cannot pass by looking for the wrong string. */
+      check('growth: no phone number or name from the rows behind it reaches marketing', () => {
+        const html = growthHtml();
+        const leaks = [];
+        for (const r of (sb.win.__MOCK__.db().demand_records || [])) {
+          const p = (r && r.payload) || {};
+          for (const k of ['ph', 'phone', 'whatsapp', 'nm', 'last']) {
+            const v = p[k] === undefined || p[k] === null ? '' : String(p[k]).trim();
+            if (v.length > 3 && html.indexOf(v) !== -1) leaks.push(k + '=' + v);
+          }
+        }
+        return leaks.length ? 'the scrubbed page carries identity: ' + leaks.join(', ') : true;
+      });
+
+      check('growth: every Open button on it leads somewhere marketing may reach', () => {
+        const offered = new Set([...growthHtml().matchAll(/data-goto="([^"]+)"/g)].map(m => m[1]));
+        const wrong = [...offered].filter(sec => MAY_REACH.indexOf(sec) === -1);
+        return wrong.length ? 'the page offers a door marketing cannot open: ' + wrong.join(', ') : true;
+      });
+
+      /* THE FAILURE THE PAGE USED TO HIDE. With the scrubbed views refusing,
+         the numbers are unknowable, and a page that drew 0 would be
+         reporting an outage as a fact about the business. */
+      sb.win.__MOCK__.error('rest');
+      $('btnRefresh').click();
+      await tick(220);
+      sb.loc.hash = '#/growth';
+      await tick(220);
+      check('growth: with the scrubbed views refusing, the page names the migration that is missing', () =>
+        /not being served to this login/.test(growthHtml()) && /supabase-team-roles\.sql/.test(growthHtml())
+          ? true : 'it drew zeros instead of naming the role SQL: ' + growthHtml().slice(0, 160));
+      sb.win.__MOCK__.reset();
+      $('btnRefresh').click();
+      await tick(250);
+    }
+
+    sb.loc.hash = priorHash;
+    await tick(20);
   }
 
   /* --- tables: row counts (admin; other roles render subset but same code path) --- */

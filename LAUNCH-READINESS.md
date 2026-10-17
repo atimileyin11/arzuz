@@ -525,14 +525,44 @@ precisely because hundreds of students share one NAT. A hostile actor with a bot
 the global ceiling (4000/hour). **Remediation:** none needed for launch; if it ever matters, move the
 per-IP counters to a shorter window and add per-phone instead.
 
-**4. `verification` and `finance` have shallow dashboard coverage (narrowed, not closed).**
+**4. The dashboard is now driven per ROLE, not only per panel — and two of those branches had
+real defects behind them. CLOSED, with the shape of the suite changed so it stays closed.**
 
-`dev/admin-boot-test.js` now drives all five roles: each one boots, lands on a section it may reach,
-is gated off every section it may not, and renders its landing section without a console error — 444
-assertions. What is still missing is depth: the finance and claims panels are asserted in the blocks
-that exercise them for `admin`, not re-driven for the two roles that now hold them, so a role-specific
-branch inside those panels would not be caught. **Remediation:** drive the panel bodies per role
-rather than once for admin.
+`dev/admin-boot-test.js` drives all five roles: each one boots, lands on a section it may reach, is
+gated off every section it may not, and renders its landing section without a console error. What was
+still missing was `depth` — a panel is asserted for `admin`, the login that can reach all of them,
+which is exactly the shape of a blind spot: a branch that only runs for the role which actually HOLDS
+the panel is never taken, so it cannot fail. All of the panels the split created are now driven for
+the role that owns them: the books for `finance`, the repair queue for `support`, the officer's
+approve and the verification shift for `verification`, Care for `support`, and Growth for
+`marketing`. **581 assertions**, all passing.
+
+**Two checks were removed because they could never fail.** Both asserted the absence of a
+`data-care="adjust"` control — a control that appears nowhere in `assets/admin.js`. They passed for
+every role and every panel, which is the same vacuity this project hunts in fixtures: an assertion
+about a thing that does not exist. They are replaced by an invariant that can fail, and which reads
+its two vocabularies OUT of the files that decide them rather than restating either: every control the
+rendered panel carries must have a handler in the Care dispatcher, every money control must map to an
+action `netlify/functions/care-credit.js` accepts, and the controls a role is expected to be offered
+must actually be drawn. Proved to fail by mutation: a `data-care="expire-typo"` on the panel fails
+both the admin and the support check, naming the dead control.
+
+**It found a real defect on the way.** The Growth page is fed from the PII-scrubbed `growth_*` views
+for every login except admin — and when those views are missing, the page drew zeros, which reports an
+outage as a fact about the business ("no one registered this week"). The page's own comment said it
+should say so and only the overview's funnel card did — and `overview` is one of the sections
+`marketing` may NOT reach, so the one login that lives on the Growth page was the one login never
+told. `assets/strategy.js` now renders that note on the page itself, `assets/admin.js` hands it
+`state.feedsMissing`, and the marketing block asserts both directions: the page names
+`supabase-team-roles.sql` when the views refuse, and does NOT claim it while they answer.
+
+**What is still not covered here, stated rather than rounded off:** the DOM shim cannot dispatch a
+delegated click, so panel controls are driven by calling the same function the click would (the wiring
+itself is checked in a browser — `site-audit`, `admin-worst` and `admin-fault` in the gate); the
+admin-only blocks (table row counts, the team roster, the digest preview, overview traceability) are
+asserted for `admin` alone, which is correct for sections no other role may reach; and the
+server-side half of Care's authority — that the FUNCTION refuses a role outside `ALLOWED` — is a fact
+about `care-credit.js`, asserted in `scripts/test-care.mjs`, not here.
 
 **5. The reference is a bearer handle — and it is no longer one on its own. CLOSED, with one limit
 left.** `/status` (status.html + netlify/functions/status.js + supabase-status-codes.sql) is the lookup
@@ -635,8 +665,10 @@ trail; the forms still working without login; no passwords anywhere.
    cost a capability rather than redundant cover.
 2. **A deploy-time assertion that the service key exists** (risk 1), so a keyless deploy cannot reach
    students.
-3. **Depth on the finance and verification panels** (risk 4). The column-scoped verification RPC that
-   used to sit beside it (risk 2) is done: see `supabase-verification-rpc.sql`.
+3. **Depth on the finance and verification panels** (risk 4) — **done**: every panel the role split
+   created is driven for the role that owns it, and the two assertions that could never fail are
+   replaced by an invariant proved to fail by mutation. The column-scoped verification RPC that used
+   to sit beside it (risk 2) is done: see `supabase-verification-rpc.sql`.
 4. **Unify `status` and `follow_up_status`** — one column, one vocabulary, with the views rewritten
    alongside it.
 4. **The help center** (§8) — designed below, not built.

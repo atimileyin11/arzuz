@@ -854,7 +854,11 @@
         listings: state.data.listings,
         scouts: state.data.scout_submissions,
         bookings: state.data.booking_requests,
-        roommateSummary: state.roommateSummary
+        roommateSummary: state.roommateSummary,
+        /* A failed scrubbed view (state.feedsMissing) is said out loud on
+           this page, not left to draw zeros: see the note in
+           assets/strategy.js renderGrowth. */
+        feedsMissing: state.feedsMissing
       });
       if (window.ArzuzUI && ArzuzUI.deEmoji) ArzuzUI.deEmoji(growthRoot);
     }

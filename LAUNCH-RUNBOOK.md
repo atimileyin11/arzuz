@@ -52,6 +52,14 @@ because step 10 is the step that makes the door the *only* way in:
 | `ARZUZ_MAIL_FROM` | optional, with a working default | the verified sender address | falls back to the default sender in `notify.js` |
 | `OPENWA_SESSION` | ADVISED | which OpenWA session sends | falls back to a hardcoded name, and every message is refused if it is not the session your server actually has |
 
+**Also check, once, that CI can be read at all** — `node dev/ci-status.mjs` (or `npm run ci:status`).
+GitHub answers `404 Not Found` for this repository from an unauthenticated caller, and that 404 is
+not "no CI": GitHub answers 404 (never 403) for a repo the caller may not see, so it hides whether
+the repo exists at all. The tool says which answer it got and exits **2** when it could not check —
+"not verified" is never reported as "verified fine". To make it real, give it a token instead of
+installing `gh`: `GH_TOKEN=<fine-grained, Actions: read> node dev/ci-status.mjs`. The token is read
+from the environment and is never written, printed or committed.
+
 **Verify** — the build already asserts the first three: `netlify.toml` runs
 `node scripts/require-service-key.mjs --require` as its build command, so **a deploy that is live is
 itself the evidence**. For the mail pair (which the gate advises on rather than requires), run
@@ -154,6 +162,26 @@ is a different question from whether a bare insert is.
 **Expect** — then submit one more real registration. It must still come back with a reference: that
 is the door proving the revoke did not touch the role it writes with.
 
+## Step 10b — the two guards that check the dashboard per role
+
+**Run** — nothing to configure; these run in `npm test`.
+
+**Verify** — `npm test` and read the admin suite's two role blocks:
+
+- **support** drives Care the way the desk drives it — the drawer opens, a call-out with nobody
+  named is refused before any request, and the credit that *is* recorded moves the ledger by exactly
+  one and names the worker.
+- **marketing** drives the Growth page — the only page that login has. It must carry no phone number
+  or name from the rows behind it, must not offer a door to a section marketing cannot open, and when
+  the PII-scrubbed `growth_*` views refuse it must **name the missing migration instead of drawing
+  zeros**. The last one was a real defect: the page's own comment said it should say so and only the
+  overview card did, so the one login that lives on that page saw an outage reported as "zero
+  registrations".
+
+**Expect** — `TOTAL 581 · PASS 581 · FAIL 0` for the admin suite (572 before these blocks, with two
+checks removed because they could never fail: they asserted the absence of a `data-care="adjust"`
+control that exists nowhere in `assets/admin.js`).
+
 ## Step 11 — the promises around the form
 
 **Run** — the open boxes in [SETUP.md](SETUP.md#before-you-share-the-link-publicly):
@@ -168,7 +196,8 @@ is the door proving the revoke did not touch the role it writes with.
 - opened on a **real Android phone on real mobile data**
 
 **Verify** — `node scripts/test-all.mjs --live`. **Expect zero failed suites**, including
-`live-migrations` and `live-hardening`.
+`live-migrations` and `live-hardening` — and `node dev/ci-status.mjs` exit 0 for the commit you
+pushed, which is the only way to know GitHub Actions agreed with you about this tree.
 
 ## Step 12 — the board
 

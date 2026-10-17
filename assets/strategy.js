@@ -460,6 +460,18 @@
     var bookings = live(ctx && ctx.bookings);
     var rs = (ctx && ctx.roommateSummary) || null;
 
+    /* WHEN THE PAGE HAS NO DATA BECAUSE THE ROLE SQL HAS NOT RUN.
+
+       Every login except admin reads the PII-scrubbed growth_* views
+       rather than the base tables (assets/admin.js relFor), and when those
+       views are missing this page gets nothing. Drawing 0 would report an
+       outage as a fact about the business — "no one registered this week"
+       is a very different sentence from "this login cannot read the
+       table". The overview's funnel card already said so; the Growth page,
+       which is the ONLY page a marketing login has, said nothing, which is
+       the worse half to leave unsaid. */
+    var feedsMissing = !!(ctx && ctx.feedsMissing);
+
     var open = demands.filter(function (r) { return str(r.status).toLowerCase() === 'open'; });
     var won = demands.filter(function (r) { var st = str(r.status).toLowerCase(); return st === 'matched' || st === 'fulfilled'; });
     var active = listings.filter(function (r) { return str(r.status).toLowerCase() === 'active'; });
@@ -593,7 +605,13 @@
           : 'Reference distribution — marked [ESTIMATE] until BANDS is replaced with live demand_summary counts (assets/data.js).') + '</p>';
     }
 
-    root.innerHTML =
+    var feedsNote = feedsMissing
+      ? '<div class="ops-panel alert"><h3>Growth data is not being served to this login yet</h3>' +
+          '<p class="sub">Run <code>supabase-team-roles.sql</code> in Supabase &rarr; SQL Editor, then reload. ' +
+          'This role is denied the base tables, so every number below would be a zero that is not a fact about the business.</p></div>'
+      : '';
+
+    root.innerHTML = feedsNote +
       '<div class="ops-panel"><h3>📈 Traction right now</h3>' +
         '<p class="sub">Live counts from the database — never from memory. The 14-day roommate-match metric is the retention number; everything else feeds the funnel in doc 07.</p>' +
         '<div class="metrics-grid">' + cards + '</div></div>' +
