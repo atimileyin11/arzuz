@@ -32,6 +32,7 @@
     "test:admin": "node dev/admin-boot-test.js",
     "test:postgrest": "node dev/postgrest-test.js",
     "test:care-live": "node dev/care-live-check.mjs --self-test",
+    "migrations:live": "node scripts/verify-migrations.mjs",
     "seo:indexnow": "node scripts/indexnow.mjs",
     "postgrest:capture": "node dev/postgrest-capture.mjs",
     "postgrest:other-world": "node dev/postgrest-other-world.mjs",

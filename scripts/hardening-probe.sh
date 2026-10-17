@@ -89,6 +89,28 @@ expect "POST booking_requests status=confirmed"     '401|403' "$RLS_CHECK" "${AU
   -d '{"payload":{},"status":"confirmed","env":"production"}' \
   "$SUPABASE_URL/rest/v1/booking_requests"
 
+hr "== D2. the direct door is closed — anon holds no INSERT grant =="
+# THE LAST LAUNCH STEP, and the one easiest to believe without checking.
+# supabase-close-public-inserts.sql revokes anon's insert on these five
+# tables, and that revoke is what makes the server-side door the only way
+# in. Section D cannot see it: a forged STATE column (status=active,
+# tier=2) is refused by a row policy even while the grant is still open, so
+# section D passes on a database that has not run that file — it asks "may
+# you write an ACTIVE row", never "may you write at all". A bare insert is
+# the question, so it is asked here.
+#
+# The body is empty on purpose, so both answers are safe to send: `payload`
+# is NOT NULL on all five tables, so a live grant answers 400 (not-null
+# violation) and writes nothing, while a revoked grant answers 401/403.
+# 200/201 means the grant survived and this run has just left a junk row
+# behind: delete it (Table Editor, or the admin's own delete), then run
+# supabase-close-public-inserts.sql.
+for t in demand_records listings scout_submissions booking_requests support_tickets; do
+  expect "POST /$t (bare insert)" '401|403' "" "${AUTH[@]}" -X POST \
+    -H 'Content-Type: application/json' -H 'Prefer: return=minimal' -d '{}' \
+    "$SUPABASE_URL/rest/v1/$t"
+done
+
 hr "== E. anon UPDATE / DELETE — grants revoked, must be denied =="
 expect "PATCH  /listings (no rows match)"          '401|403' "$RLS_MSG" "${AUTH[@]}" -X PATCH \
   -H 'Content-Type: application/json' -d '{"notes":"probe"}' \

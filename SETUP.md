@@ -447,6 +447,10 @@ that reply is how a new worker gets found.
 
 ## Before you share the link publicly
 
+> The ordered version of this, with the command that re-verifies each step (including the six
+> migrations the launch depends on, and `npm run migrations:live` to say which are still missing),
+> is [LAUNCH-RUNBOOK.md](LAUNCH-RUNBOOK.md).
+
 - [x] Schema run (`supabase-schema.sql` or `supabase-hardening.sql`), and anon **cannot** read
       rows — verified 3 Oct 2026: anon SELECT returns 401 on all three tables
 - [ ] Test submission arrives in the Table Editor

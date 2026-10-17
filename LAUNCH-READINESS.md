@@ -249,6 +249,11 @@ and both are enforced by `CHECK` constraints. Unifying them is a post-launch tas
 
 ## 3. What you still have to do
 
+> The ordered version of this section, with the command that re-verifies each step, is
+> [LAUNCH-RUNBOOK.md](LAUNCH-RUNBOOK.md). `npm run migrations:live` says which of these files has
+> actually run on production — it exists because on 17 Oct 2026 the answer was "eight of them have
+> not", while every local suite was green.
+
 ### 3a. Run six migrations, in this order
 
 In Supabase → SQL Editor:

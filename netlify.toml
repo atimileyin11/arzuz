@@ -346,6 +346,16 @@
   status = 404
   force = true
 
+# LAUNCH-RUNBOOK.md is the operator's copy of the same thing: the ordered
+# list of which migration has not run, which credential a step depends on,
+# and the exact command that re-verifies each one. It is a map of where the
+# site is soft, so it is served to nobody.
+[[redirects]]
+  from = "/LAUNCH-RUNBOOK.md"
+  to   = "/404.html"
+  status = 404
+  force = true
+
 
 # Same rule as the SQL files, for the dev tooling: publish = "." puts these
 # on the public web the moment they are committed. They describe what the

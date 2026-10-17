@@ -195,6 +195,7 @@ const OWNED = [
 /* Opt-in: these talk to the live domain and the live database, so a
    laptop on a bad connection must never be able to block a push. */
 const LIVE_SUITES = [
+  { id: 'live-migrations', label: 'live migration state (which supabase-*.sql has run)', file: 'scripts/verify-migrations.mjs', est: 20 },
   { id: 'live-cards', label: 'live link-preview cards (production)', file: 'scripts/verify-cards.mjs', est: 10 },
   { id: 'live-hardening', label: 'live RLS hardening probe (production)', file: 'scripts/hardening-probe.sh', bash: true, est: 60 }
 ];
