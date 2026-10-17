@@ -33,6 +33,25 @@ export const MUTANTS = [
       + '(This is the production bug: the extra parameter 401s every upload.)',
   },
   {
+    id: 'probe-cannot-be-blind-checked',
+    file: 'netlify/functions/lib/upload-probe.js',
+    suite: 'test:upload-probe',
+    find: '  if (sanity) {',
+    replace: '  if (false) {',
+    why: 'The probe tampers with its own signature and requires a 401. Without that, '
+      + 'an endpoint that accepts anything reports a green — the exact blindness the '
+      + 'smoke test exists to avoid.',
+  },
+  {
+    id: 'watcher-blind-to-edits',
+    file: 'dev/tree-watch.mjs',
+    suite: 'test:tree-watch',
+    find: '    else if (before.get(file) !== hash) moved.push({ file, kind: \'changed\' });',
+    replace: '    else if (false) moved.push({ file, kind: \'changed\' });',
+    why: 'A watcher that never reports a changed file looks exactly like a quiet tree. '
+      + 'That is the whole reason its own suite exists.',
+  },
+  {
     id: 'drawer-flick-sign',
     file: 'assets/release-policy.js',
     suite: 'test:policy',
@@ -67,6 +86,33 @@ export const MUTANTS = [
     replace: "return kind === 'offline' || kind === 'busy' || kind === 'error' || kind === 'not-ready';",
     why: 'A missing function/table is not worth retrying: the deploy may land, but the '
       + 'button will be refused identically until it does. Retrying it is a lie.',
+  },
+  {
+    id: 'payment-amount-ignored',
+    file: 'netlify/functions/finance.js',
+    suite: 'test:finance',
+    find: 'return paid !== null && Number(paid) === Number(payment.amount_kobo);',
+    replace: 'return paid !== null;',
+    why: 'A Care Pass opens only when the provider took EXACTLY the order amount. '
+      + 'Ignoring the figure opens a pass on a one-naira payment.',
+  },
+  {
+    id: 'support-may-decide-coverage',
+    file: 'netlify/functions/claims.js',
+    suite: 'test:claims',
+    find: "if (ADMIN_ONLY.indexOf(action) !== -1 && role !== 'admin') {",
+    replace: "if (ADMIN_ONLY.indexOf(action) !== -1 && role === 'admin') {",
+    why: 'Deciding coverage, recording a cost and closing a claim are the admin login\'s '
+      + 'alone; support answers students and landlords. This inverts the check.',
+  },
+  {
+    id: 'status-may-be-cached',
+    file: 'netlify/functions/status.js',
+    suite: 'test:status',
+    find: "      'Cache-Control': 'no-store',\n      'X-Robots-Tag': 'noindex, nofollow',",
+    replace: "      'Cache-Control': 'public, max-age=3600',\n      'X-Robots-Tag': 'noindex, nofollow',",
+    why: 'A status answer is a moment, not a fact: a cached copy tells the next visitor '
+      + 'their reference is unknown when it is merely not this deployment\'s.',
   },
   {
     id: 'dead-link-is-retryable',

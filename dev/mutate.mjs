@@ -95,6 +95,26 @@ try {
   }
 }
 
+if (flag('coverage')) {
+  /* The honest number: a registry that covers eight of thirty suites is not
+     an audit of the suite, and saying "6 caught" without this reads as if it
+     were. Parsed from the runner's own ORDER, so the gap cannot drift. */
+  const src = readFileSync(join(ROOT, 'dev/run-tests.mjs'), 'utf8');
+  const order = [...src.matchAll(/^\s*'((?:test|sql):[a-z0-9-]+)'/gm)].map((m) => m[1]);
+  const unique = [...new Set(order)];
+  const covered = new Set(registry.map((m) => m.suite));
+  const uncovered = unique.filter((n) => !covered.has(n));
+  console.log('');
+  console.log('  ' + (unique.length - uncovered.length) + ' of ' + unique.length + ' suites have a mutant');
+  console.log('  ' + covered.size + ' mutant(s) across ' + new Set(registry.map((m) => m.suite)).size + ' suite(s)');
+  if (uncovered.length) {
+    console.log('\n  NO MUTANT YET — each of these has claims nobody has tried to break:');
+    for (const n of uncovered) console.log('    · ' + n);
+  }
+  console.log('');
+  process.exit(uncovered.length ? 1 : 0);
+}
+
 if (flag('list')) {
   console.log('');
   for (const m of registry) {
