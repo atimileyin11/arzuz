@@ -52,10 +52,17 @@ const PLAN = [
   ['supabase-status-codes.sql', 'status_codes, status_guard — the /status page reads these'],
   ['supabase-status-history.sql', 'status_code_deliveries'],
   ['supabase-care.sql', 'care_plans, care_credit_events, care_credit_balance, care_plans_live'],
-  ['supabase-claims.sql', 'repair_claims, claim_events, claims_summary'],
+  /* finance before claims, not after: supabase-claims.sql refuses to run
+     without ledger_entries, which finance creates. The order is the
+     guard's, not a preference. */
   ['supabase-finance.sql', 'finance_config, product_terms, payments, ledger_entries, referrals, …'],
+  ['supabase-claims.sql', 'repair_claims, claim_events, claims_summary'],
   ['supabase-roommate.sql', 'roommate_profiles, roommate_interests, roommate_events, …'],
   ['supabase-verification-queue.sql', 'verification_events'],
+  /* the evidence file reads the shift rpc creates, so it goes between
+     the two — its own guard says so */
+  ['supabase-verification-rpc.sql', 'verification_shift, verification_decision — the rpc the queue calls'],
+  ['supabase-verification-evidence.sql', 'listing_evidence, public_listing_checks'],
 ];
 
 const LOCKDOWN = ['supabase-close-public-inserts.sql', 'revokes anon INSERT on the five public tables'];
