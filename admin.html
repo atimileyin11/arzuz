@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
 <link rel="stylesheet" href="assets/arzuz.css">
-<link rel="stylesheet" href="assets/admin.css?v=7">
+<link rel="stylesheet" href="assets/admin.css?v=15">
 <link rel="stylesheet" href="assets/video.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
@@ -32,7 +32,7 @@
 <div class="side-grip" id="sideGrip" aria-hidden="true"></div>
 <aside class="admin-side" id="adminSide">
   <button type="button" class="side-close" id="sideClose" aria-label="Close menu"><span data-icon="x"></span></button>
-  <a href="index.html" class="admin-brand">
+  <a href="/" class="admin-brand">
     <span class="m"><span>az</span></span>
     <strong>arzuz <i>admin</i></strong>
   </a>
@@ -43,10 +43,14 @@
     <button class="nav-item" data-section="demand_records"><span class="ico" data-icon="cap"></span> Demands</button>
     <button class="nav-item" data-section="bookings"><span class="ico" data-icon="calendar"></span> Bookings</button>
     <button class="nav-item" data-section="tickets"><span class="ico" data-icon="headset"></span> Support Desk</button>
+    <button class="nav-item" data-section="claims"><span class="ico" data-icon="shield"></span> Repair Claims</button>
     <span class="nav-group-label">Supply</span>
     <button class="nav-item" data-section="listings"><span class="ico" data-icon="home"></span> Listings</button>
     <button class="nav-item" data-section="scout_submissions"><span class="ico" data-icon="clipboard"></span> Scouts</button>
     <button class="nav-item" data-section="roommate"><span class="ico" data-icon="users"></span> Roommates</button>
+    <button class="nav-item" data-section="care"><span class="ico" data-icon="tag"></span> Arzuz Care</button>
+    <span class="nav-group-label">Money</span>
+    <button class="nav-item" data-section="finance"><span class="ico" data-icon="coin"></span> Finance</button>
     <span class="nav-group-label">Growth</span>
     <button class="nav-item" data-section="growth"><span class="ico" data-icon="trending"></span> Growth</button>
     <button class="nav-item" data-section="strategy"><span class="ico" data-icon="book"></span> Strategy</button>
@@ -175,9 +179,41 @@
           <button class="btn-add-apt" id="btnOpenAddAptOverview"><span data-icon="plus"></span> Add Apartment</button>
           <button class="btn-inline" data-goto="demand_records"><span data-icon="cap"></span> View demands</button>
           <button class="btn-inline" data-goto="listings"><span data-icon="home"></span> View listings</button>
-          <a class="btn-inline" href="browse.html" target="_blank" rel="noopener"><span data-icon="external"></span> Open public listings page</a>
+          <a class="btn-inline" href="/browse" target="_blank" rel="noopener"><span data-icon="external"></span> Open public listings page</a>
         </div>
       </div>
+    </section>
+
+    <!-- ============ FINANCE ============
+         Every figure below is one the `report` action returned, read from
+         an append-only ledger. Nothing here edits a number: a wrong
+         posting is corrected by posting its reverse, and the panel below
+         shows the reconciliation instead of hiding it — including when it
+         does NOT balance. -->
+    <section class="section-view" data-section="finance" style="display:none;">
+      <div class="ops-panel" data-motion id="finHead"></div>
+      <div class="ops-panel" data-motion id="finLines"></div>
+      <div class="ops-panel" data-motion id="finRecon"></div>
+      <div class="ops-two-col">
+        <div class="ops-panel" data-motion id="finRefunds"></div>
+        <div class="ops-panel" data-motion id="finReferrals"></div>
+      </div>
+    </section>
+
+    <!-- ============ REPAIR CLAIMS ============
+         The queue a repair moves through. Every status and every figure on
+         this screen is the claim row the server returned, and the buttons
+         under a claim are the ones ITS OWN status word permits — a claim
+         that is already decided is not offered a second decision. Coverage
+         is decided in words, the call-out is taken by the database function
+         (so two approvals at once cannot spend the last one), and a job is
+         only finished by the customer's confirmation or a named resolution.
+         Support may coordinate it; only the admin may decide, record a cost
+         or close a dispute. -->
+    <section class="section-view" data-section="claims" style="display:none;">
+      <div class="ops-panel" data-motion id="claimsHead"></div>
+      <div class="ops-panel" data-motion id="claimsQueue"></div>
+      <div class="ops-panel" data-motion id="claimsWork"></div>
     </section>
 
     <!-- ============ DEMAND RECORDS ============ -->
@@ -195,6 +231,31 @@
 
     <!-- ============ LISTINGS ============ -->
     <section class="section-view" data-section="listings" style="display:none;">
+      <!-- ============ THE VERIFICATION SHIFT (stage 2) ============
+
+           Above the table on purpose: a listing live at tier 0 is owed a
+           visit, and the thing a shift's list of work must do is be the
+           first thing on the screen the officer opens. It is drawn only
+           for the two logins the queue function admits (assets/admin.js,
+           renderVerifyQueue), and its Take / Release / Approve buttons
+           are the same delegated actions as the table's.
+
+           Its ordering and its deadlines come from
+           assets/verification-queue.js — the file the hourly chaser
+           loads — so the panel never decides for itself what is late. -->
+      <div class="table-card verify-card" id="verifyQueueCard" style="display:none;" data-motion>
+        <div class="verify-card-head">
+          <b>Verification shift</b>
+          <span class="verify-counts" id="verifyQueueCounts"></span>
+        </div>
+        <div class="verify-body" id="verifyQueueBody"></div>
+        <p class="verify-note">
+          A listing goes on this list the moment it is live at tier 0, and leaves it when it is
+          approved. Take one to put your name on it — the visit is owed within
+          <b>48 hours</b> — or release it if you cannot get there. Nothing here changes what a
+          listing costs; the verification decision is the only thing this panel writes.
+        </p>
+      </div>
       <div class="table-card" data-motion>
         <div class="table-wrap">
           <table>
@@ -205,7 +266,7 @@
         <div class="cards-wrap" id="tableCards"></div>
       </div>
       <p style="color:#8D8099; font-size:12.5px; margin-top:12px;">
-        Active, verified listings appear on <a href="browse.html" target="_blank" rel="noopener" style="color:#C4B5FD">the public browse page</a> automatically.
+        Active, verified listings appear on <a href="/browse" target="_blank" rel="noopener" style="color:#C4B5FD">the public browse page</a> automatically.
         Draft invite links stay private — nothing is public until you approve it.
       </p>
     </section>
@@ -245,9 +306,51 @@
       <div class="table-card" id="roommatePanel"></div>
     </section>
 
+    <!-- ============ ARZUZ CARE ============ -->
+    <!--
+      The ₦20,000 session, as four call-out credits. The panel is how
+      support OPERATES Care — recording a visit, refunding before a
+      session starts, ending one that has run its course. It never
+      writes a balance directly: every button posts to
+      /api/care-credit, which holds the service key and appends to the
+      ledger, so a call-out and the credit it costs are always written
+      together. The panel is read-only against the database on purpose;
+      supabase-care.sql gives no client role an INSERT on either table.
+    -->
+    <section class="section-view" data-section="care" style="display:none;">
+      <div class="ops-panel" data-motion id="careMetric"></div>
+      <div class="table-card" id="carePanel"></div>
+    </section>
+
     <!-- ============ SUPPORT DESK ============ -->
     <section class="section-view" data-section="tickets" style="display:none;">
       <div class="ops-panel" data-motion id="supportMetrics"></div>
+
+      <!-- ============ STATUS CODE HISTORY ============
+
+           "I never got the code." The reference is the one thing the
+           student has to read out, so it is the one thing asked for here.
+           Everything below it comes back from public.status_history() —
+           the trail of every code asked for against that reference, the
+           channel each attempt went out on, whether the sender took it,
+           and how many tries they have left. The database decides who may
+           ask (supabase-status-history.sql §5): this panel is drawn for
+           the logins that section admits and for nobody else.
+
+           It writes nothing. A code is never re-sent from here — sending
+           one is the student's own request, on /status, where the
+           per-reference ceiling and the proof of the contact apply. -->
+      <div class="ops-panel" data-motion id="statusHistoryPanel">
+        <h3><span data-icon="key"></span> Status code history</h3>
+        <p class="sub">For a student on the phone about a reference code that never arrived. The reference is on their confirmation — but if they cannot find it, the <b>last four characters</b> will do, and so will the <b>phone number</b> they applied with. This says whether a code was asked for, where it went, and how far they got with it.</p>
+        <div class="codehist-form">
+          <input type="text" id="chRef" placeholder="ARZ-S-4A2B-9C1D-7E3F, or 7E3F, or 0803 000 0000"
+                 autocomplete="off" spellcheck="false" maxlength="32"
+                 aria-label="The reference, its last four characters, or the phone number to look up">
+          <button class="btn-inline" id="chLook"><span data-icon="search"></span> Look up</button>
+        </div>
+        <div class="codehist-out" id="chOut"></div>
+      </div>
       <div class="ops-panel" data-motion>
         <h3><span data-icon="copy"></span> Canned replies — tap to copy</h3>
         <p class="sub">Ready-to-send WhatsApp answers written from the site's own promises. Copy, paste into the chat, adjust the name.</p>
@@ -433,7 +536,7 @@
           </div>
           <div class="edit-fld">
             <label>Apartment / Lodge Name <small>optional — a title is built from the area if you leave it blank</small></label>
-            <input type="text" id="add_prop_name" placeholder="e.g. Blessing Lodge">
+            <input type="text" id="add_prop_name" maxlength="70" placeholder="e.g. Blessing Lodge">
           </div>
 
           <div class="edit-fld">
@@ -442,16 +545,16 @@
           </div>
           <div class="edit-fld">
             <label>Area / Location <span class="req">*</span></label>
-            <input type="text" id="add_ar" placeholder="e.g. Behind KWASU Gate, Malete">
+            <input type="text" id="add_ar" maxlength="80" placeholder="e.g. Behind KWASU Gate, Malete">
           </div>
 
           <div class="edit-fld">
             <label>Rent Price (₦ / Session) <span class="req">*</span></label>
-            <input type="number" id="add_rent" placeholder="e.g. 180000">
+            <input type="number" id="add_rent" min="0" max="99999999" step="1" maxlength="8" placeholder="e.g. 180000">
           </div>
           <div class="edit-fld">
             <label>Opening Ask (₦) <small>what they asked before seeing demand data</small></label>
-            <input type="number" id="add_ask" placeholder="e.g. 200000">
+            <input type="number" id="add_ask" min="0" max="99999999" step="1" maxlength="8" placeholder="e.g. 200000">
           </div>
 
           <div class="edit-fld full">
@@ -461,18 +564,19 @@
               <button type="button" class="seg-btn" data-seg="occupied" aria-pressed="false"><span data-icon="x"></span> Fully occupied</button>
             </div>
             <div id="addUnitsWrap">
-              <input type="number" id="add_units" min="1" step="1" placeholder="How many units are vacant? e.g. 3">
+              <input type="number" id="add_units" min="0" max="999" step="1" maxlength="3" placeholder="How many units are vacant? e.g. 3">
+              <div class="fld-note" id="addUnitsNote">0 means nothing is left to let — the listing is stored as <b>fully occupied</b>.</div>
             </div>
             <input type="hidden" id="add_avail" value="vacant">
           </div>
 
           <div class="edit-fld">
             <label>Contact Person</label>
-            <input type="text" id="add_nm" placeholder="e.g. Alh. Kareem">
+            <input type="text" id="add_nm" maxlength="60" placeholder="e.g. Alh. Kareem">
           </div>
           <div class="edit-fld">
             <label>Contact Phone / WhatsApp</label>
-            <input type="tel" id="add_ph" placeholder="e.g. 08012345678">
+            <input type="tel" id="add_ph" maxlength="24" placeholder="e.g. 08012345678">
           </div>
           <div class="edit-fld">
             <label>Contact Role</label>
@@ -509,6 +613,13 @@
             </select>
           </div>
 
+          <!-- The browse board needs status=active AND tier>=1 AND
+               env=production. This line answers "why is my listing not
+               on the site?" before the save, not after. -->
+          <div class="edit-fld full">
+            <div class="fld-note" id="addBoardNote" aria-live="polite"></div>
+          </div>
+
           <div class="edit-fld full">
             <label>Amenities &amp; Utilities <small>type to search — press Enter for a new one</small></label>
             <div class="tag-field" id="addAmenityField">
@@ -521,7 +632,7 @@
 
           <div class="edit-fld full">
             <label>Description &amp; Features <small>optional</small></label>
-            <textarea id="add_desc" rows="3" placeholder="Running water, prepaid meter, paved compound, 5 mins walk to school…"></textarea>
+            <textarea id="add_desc" rows="3" maxlength="2000" placeholder="Running water, prepaid meter, paved compound, 5 mins walk to school…"></textarea>
           </div>
 
           <div class="edit-fld full">
@@ -572,7 +683,7 @@
 
           <div class="edit-fld full">
             <label><span data-icon="pin"></span> Access &amp; Navigation Notes <small>optional — landmark, gate colour, stairs, what to look for</small></label>
-            <textarea id="add_access_notes" rows="3" placeholder="e.g. Opposite the blue mosque, brown double gate with a small green door, first floor — stairs at the back."></textarea>
+            <textarea id="add_access_notes" rows="3" maxlength="600" placeholder="e.g. Opposite the blue mosque, brown double gate with a small green door, first floor — stairs at the back."></textarea>
           </div>
         </div>
       </div>
@@ -639,6 +750,44 @@
     <div class="modal-actions">
       <button type="button" class="btn-inline" id="btnCloseDetails">Close</button>
       <button type="button" class="next" id="btnEditFromDetails" style="padding:10px 20px; font-size:14px;"><span data-icon="pencil"></span> Edit Record</button>
+    </div>
+  </div>
+</div>
+
+<!-- Student Dossier Modal — one student, everything about them -->
+<div class="modal-overlay" id="dossierModal" role="dialog" aria-modal="true" aria-labelledby="dossierTitle">
+  <div class="modal-box wide" style="max-width:760px;">
+    <div class="modal-head">
+      <h3 id="dossierTitle">Student Dossier</h3>
+      <button type="button" class="modal-close" data-close="dossierModal" aria-label="Close"><span data-icon="x"></span></button>
+    </div>
+    <div class="sub">Everything the database holds about one student — what they answered, every decision in either direction, and their full consent trail. A phone complaint is meant to be answerable from this one screen.</div>
+    <!-- print-only: filled in by btnPrintDossier, and invisible on screen.
+         @media print in admin.css is what turns the modal into the sheet. -->
+    <div class="print-only" id="dossierPrintMeta"></div>
+    <div id="dossierContent"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-inline" id="btnCloseDossier">Close</button>
+      <button type="button" class="btn-inline" id="btnExportDossier"><span data-icon="download"></span> Export JSON</button>
+      <button type="button" class="next" id="btnPrintDossier" style="padding:10px 20px; font-size:14px;"><span data-icon="copy"></span> Print / save as PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- Daily Digest Modal — what the 06:00 message will say, composed on demand -->
+<div class="modal-overlay" id="digestModal" role="dialog" aria-modal="true" aria-labelledby="digestTitle">
+  <div class="modal-box wide" style="max-width:720px;">
+    <div class="modal-head">
+      <h3 id="digestTitle"><span data-icon="calendar"></span> The daily digest</h3>
+      <button type="button" class="modal-close" data-close="digestModal" aria-label="Close"><span data-icon="x"></span></button>
+    </div>
+    <div class="sub" id="digestPreviewNote">Reading the same tables the 06:00 job reads. Nothing is sent.</div>
+    <!-- Shown as text on purpose: this is Telegram's HTML dialect with the
+         student-typed values escaped server-side, and a preview should show
+         exactly what the message contains rather than a rendering of it. -->
+    <pre class="digest-pre" id="digestPreviewText"></pre>
+    <div class="modal-actions">
+      <button type="button" class="btn-inline" id="btnCloseDigest">Close</button>
     </div>
   </div>
 </div>
@@ -762,7 +911,7 @@
 
 <!-- Lightboxes -->
 <div class="lightbox" id="photoLightbox">
-  <div style="max-width:90vw;">
+  <div class="lb-inner">
     <img id="lightboxImg" src="" alt="Full view">
     <div class="lb-hint">Click anywhere to close</div>
   </div>
@@ -770,20 +919,21 @@
 <div class="lightbox" id="videoLightbox">
   <div class="lb-frame">
     <button type="button" class="lb-close" id="videoLightboxClose"><span data-icon="x"></span> Close</button>
-    <h4>Apartment Video Tour</h4>
+    <h4 class="lb-head">Apartment Video Tour</h4>
     <div id="videoLightboxContainer"></div>
   </div>
 </div>
 
 <script src="assets/admin-ui.js?v=5"></script>
 <script src="assets/config.js"></script>
-<script src="assets/auth.js?v=2"></script>
+<script src="assets/api-errors.js?v=1"></script>
+<script src="assets/auth.js?v=3"></script>
 <script src="assets/data.js"></script>
-<script src="assets/strategy.js?v=4"></script>
+<script src="assets/strategy.js?v=5"></script>
 <script src="assets/notify.js"></script>
-<script src="assets/video.js?v=2"></script>
-<script src="assets/submit.js?v=3"></script>
-<script src="assets/arzuz-map.js?v=3"></script>
+<script src="assets/video.js?v=3"></script>
+<script src="assets/submit.js?v=4"></script>
+<script src="assets/arzuz-map.js?v=4"></script>
 <script>/* dev-only mock harness — only ever runs on localhost with ?mock=1 (see dev/admin-mock.js) */
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '0.0.0.0') {
     if (new URLSearchParams(location.search).get('mock') === '1') {
@@ -791,7 +941,19 @@
     }
   }
   </script>
-<script src="assets/admin.js?v=14"></script>
+<script src="assets/roommate-score.js"></script>
+<!-- The verification shift's clock and its queue ordering, in one file
+     that the hourly chaser (netlify/functions/verification-aging.js)
+     requires too — one copy of the deadlines, so the panel and the
+     message cannot disagree about what is late. -->
+<script src="assets/verification-queue.js?v=1"></script>
+<script src="assets/release-policy.js?v=1"></script>
+<script src="assets/swipe-gesture.js?v=1"></script>
+<!-- The freshness/completeness score, shared with the listings sitemap
+     (netlify/functions/listings-sitemap.js) so the Crawl column and the
+     <changefreq> the engines are given are one number, not two. -->
+<script src="assets/listing-score.js?v=1"></script>
+<script src="assets/admin.js?v=30"></script>
 <script>
 /* shell-only wiring that has no place in admin.js */
 (function(){
@@ -823,5 +985,17 @@
   // (no further shell wiring — admin.js owns the rest)
 })();
 </script>
+<script>/* dev-only harness boot — the dashboard's own boot check, localhost only
+   and only under ?mock=1 (see dev/page-harness-boot.js). It is injected LAST,
+   after admin.js, so it can tell whether the page's own boot ran: a script
+   request lost between the page being sent and the parser running it leaves the
+   dashboard on its shell with nothing in the console to say why — a lost request
+   wearing a page-bug's clothes. It looks; it never mocks anything; it never ships. */
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '0.0.0.0') {
+    if (new URLSearchParams(location.search).get('mock') === '1') {
+      document.write('<script src="dev/page-harness-boot.js"><' + '/script>');
+    }
+  }
+  </script>
 </body>
 </html>

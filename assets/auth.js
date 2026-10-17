@@ -51,12 +51,24 @@ var ArzuzAuth = (function(){
     return Date.now() > (s.expires_at - 30000);
   }
 
-  /* GoTrue returns errors as {error, error_description} or {msg}. */
+  /* The site-wide failure vocabulary (assets/api-errors.js), if this
+     page loaded it. */
+  function E(){ return (typeof ArzuzApiErrors !== 'undefined') ? ArzuzApiErrors : null; }
+
+  /* GoTrue returns errors as {error, error_description} or {msg}. Its
+     own sentence is kept when it has one — "Invalid login credentials"
+     IS the answer to what the person just did — and a bare status is
+     never shown: a 500 on the way to the sign-in endpoint is our side
+     of the wire, not a wrong password. */
   function toError(res, body){
     var msg = (body && (body.error_description || body.msg || body.message)) || '';
-    if (!msg && res.status === 400) msg = 'Wrong email or password.';
-    if (!msg) msg = 'Sign-in failed (HTTP ' + res.status + ').';
-    return new Error(msg);
+    if (!msg && (res.status === 400 || res.status === 401)) msg = 'Wrong email or password.';
+    var W = E();
+    var err = new Error(msg || (W ? W.sentence({ status: res.status })
+      : 'Arzuz could not sign you in just now — that is our side, not yours. Try again in a minute.'));
+    err.status = res.status;
+    if (body && body.error_code) err.code = body.error_code;
+    return err;
   }
 
   function goTrue(path, payload){
@@ -78,6 +90,17 @@ var ArzuzAuth = (function(){
           email:         (body.user && body.user.email) || payload.email || ''
         };
       });
+    }).catch(function(err){
+      /* fetch() rejects with a TypeError and no status at all when the
+         request never left the browser; the sign-in box showed the
+         browser's own words for that ("Failed to fetch"). The class has
+         a better sentence, and the status the classifier needs. */
+      if (err && typeof err.status === 'number') throw err;
+      var W = E();
+      var wrapped = new Error(W ? W.sentence(err)
+        : 'We could not reach Arzuz — check your connection and try again.');
+      wrapped.status = (err && err.status) || 0;
+      throw wrapped;
     });
   }
 
@@ -127,10 +150,20 @@ var ArzuzAuth = (function(){
   /* Role claim from the signed JWT's app_metadata. Managed from the
      dashboard's Settings → Team panel (netlify/functions/team.js)
      or by hand in Supabase → Authentication → Users.
-     Unset (or anything unrecognised) = 'admin': the main admin sees
-     the whole dashboard. 'marketing' gets the prioritised Growth +
-     Strategy view only. 'support' gets the Support Desk, Bookings,
-     Demands and read-only Listings. */
+
+     THE MAPPING IS THE DATABASE'S, DELIBERATELY. public.arzuz_role()
+     normalizes operations→support and super_admin→admin, and this
+     function decodes the same claim to the same five names, so the
+     nav the browser hides and the rows Postgres returns cannot
+     disagree. This is the WEAKER of the two gates by design — hiding
+     a nav item is a courtesy, the policies are the enforcement (see
+     the header of supabase-team-roles.sql).
+
+     Unset (or anything unrecognised) = 'admin'. That is the safe
+     default for the main admin's own token and it is why a typo in
+     app_metadata can never mint a lesser role by accident: the only
+     way to get a restricted login is a role this file knows, written
+     by a function that validates it against a closed list. */
   function role(){
     var s = read();
     var tok = s && s.access_token;
@@ -141,7 +174,9 @@ var ArzuzAuth = (function(){
       var payload = JSON.parse(json);
       var r = payload && payload.app_metadata && payload.app_metadata.role;
       if (r === 'marketing') return 'marketing';
-      if (r === 'support') return 'support';
+      if (r === 'support' || r === 'operations') return 'support';
+      if (r === 'verification') return 'verification';
+      if (r === 'finance') return 'finance';
       return 'admin';
     } catch (e) {
       return 'admin';

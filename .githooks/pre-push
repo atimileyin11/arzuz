@@ -1,0 +1,54 @@
+#!/bin/sh
+# ============================================================
+# Arzuz — the push gate
+#
+# Runs every suite in the repo (scripts/test-all.mjs) and refuses
+# the push if any of them failed. Installed by pointing git at this
+# directory:
+#
+#     git config core.hooksPath .githooks
+#
+# WHY HERE: Netlify deploys whatever lands on main, so a broken page
+# or a public .sql file is live the moment it is pushed. The suites
+# take a few minutes; that is cheaper than a bad deploy.
+#
+# `git push --no-verify` skips this — use it when you mean it, and
+# say why in the commit.
+# ============================================================
+
+set -u
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+cd "$root" || exit 0
+
+if [ ! -f scripts/test-all.mjs ]; then
+  echo "pre-push: scripts/test-all.mjs is missing — nothing to gate on, pushing." >&2
+  exit 0
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-push: node is not on PATH, so the suites cannot run." >&2
+  echo "          Push with --no-verify if you know the tree is good." >&2
+  exit 1
+fi
+
+echo "pre-push: running every suite (node scripts/test-all.mjs --quiet --strict)…" >&2
+
+# --strict: a suite that could not run (no node_modules, so no SQL proof)
+# blocks the push too. "Not verified" is not "verified fine".
+if node scripts/test-all.mjs --quiet --strict; then
+  echo "pre-push: every suite passed — pushing." >&2
+  exit 0
+fi
+
+echo "" >&2
+echo "✗ pre-push: a suite failed, so this push is blocked." >&2
+echo "   See the failures above, then run the full output:" >&2
+echo "     node scripts/test-all.mjs" >&2
+echo "   One suite only:" >&2
+echo "     node scripts/test-all.mjs --only=<id>" >&2
+echo "   If the tree really is good, git push --no-verify pushes anyway." >&2
+echo "   If every suite passed and it refused anyway, the runner is telling you this" >&2
+echo "   gate has got slower three runs in a row: see --accept-slow-gate (the machine" >&2
+echo "   really did change) or --timing=off in scripts/test-all.mjs." >&2
+exit 1

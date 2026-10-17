@@ -2,6 +2,7 @@
    Run from arzuz-site/:  node scripts/test-strategy-docs.mjs
    Mocks global.fetch (Supabase) and file reads; no network or secrets. */
 import { readFile, rm, mkdir, copyFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -14,6 +15,13 @@ function check(name, cond, detail) {
 
 const PATH = 'netlify/functions/strategy-docs.js';
 const src = await readFile(PATH, 'utf8');
+
+/* The function is loaded with its SOURCE evaluated from here, so it has to get
+   the require its own path would have had. It requires its siblings relative
+   to netlify/functions/ (`../../assets/api-errors.js` — the same failure
+   vocabulary the page loads), and a relative path resolved from scripts/ is a
+   directory those files are not in. */
+const fnRequire = createRequire(resolve(PATH));
 
 const SUPA = 'https://supa.example';
 process.env.SUPABASE_URL = SUPA;
@@ -47,7 +55,7 @@ for (const f of [
   await copyFile('strategy/' + f, SANDBOX + '/strategy/' + f);
 }
 
-fn(moduleShim, moduleShim.exports, require, SANDBOX, process, global.fetch);
+fn(moduleShim, moduleShim.exports, fnRequire, SANDBOX, process, global.fetch);
 const handler = moduleShim.exports.handler;
 
 const req = (name, token) => ({
@@ -114,7 +122,7 @@ check('wrong case rejected (exact whitelist)', res.statusCode === 404);
 /* 5. missing file in sandbox → 500, not a leak */
 const shim2 = { exports: {} };
 new Function('module', 'exports', 'require', '__dirname', 'process', 'fetch', src)(
-  shim2, shim2.exports, require, 'netlify/functions/__nope', process, global.fetch
+  shim2, shim2.exports, fnRequire, 'netlify/functions/__nope', process, global.fetch
 );
 res = await shim2.exports.handler(req('README.md', 'live-token-0123456789abcdef'));
 check('sandbox missing doc: 500 error', res.statusCode === 500 && res.body.includes('missing from deployment'));

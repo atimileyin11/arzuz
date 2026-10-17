@@ -325,6 +325,11 @@ select
   property_type,
   area,
   rooms,
+  -- Whether the owner wrote a description, WITHOUT shipping it: the
+  -- listings sitemap sizes a room with this, and a boolean is a few
+  -- bytes where the text is a paragraph times a thousand rows. It reads
+  -- the same two keys the room page reads (desc, then description).
+  (coalesce(nullif(payload ->> 'desc', ''), nullif(payload ->> 'description', '')) is not null) as has_description,
   payload - 'nm' - 'last' - 'ph' - 'who' - 'email' as payload
 from listings
 where status = 'active'

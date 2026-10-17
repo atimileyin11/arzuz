@@ -46,9 +46,12 @@ global.fetch = async (url) => {
   return { ok: true, status: 200, json: async () => [] };
 };
 
-// sandbox: copy listing.html next to the function, as included_files would
+// sandbox: copy listing.html next to the function, as included_files would —
+// and the shared address module, which is what makes the canonical point at
+// /rooms/<slug> instead of the query-string form
 await mkdir('netlify/functions/__sandbox', { recursive: true });
 await copyFile('listing.html', 'netlify/functions/__sandbox/listing.html');
+await copyFile('assets/listing-url.js', 'netlify/functions/__sandbox/listing-url.js');
 const realRequire = require;
 const Module = require('module');
 const origResolve = Module._resolveFilename;
@@ -76,10 +79,34 @@ check('found: status 200', res.statusCode === 200);
 check('found: og:title has real name+area', body.includes('content="Sunrise Lodge &mdash;'.replace('&mdash;', '\u2014')) || body.includes('Sunrise Lodge \u2014 Malete | Arzuz'));
 check('found: og:description has ₦250,000', body.includes('&#8358;250,000 per session') || body.includes('₦250,000 per session'));
 check('found: og:image is first media photo (not video, not old cover)', body.includes('property="og:image" content="https://res.cloudinary.com/demo/photo-1.jpg"'));
-check('found: og:url canonical with id', body.includes('property="og:url" content="https://arzuz.com/listing?id=' + listingRow.id + '"'));
+/* The canonical of a listing is its /rooms/<slug> address, not the query
+   string it was asked for: that is what stops the two from competing. */
+const ROOM_PATH = '/rooms/sunrise-lodge-malete-' + listingRow.id;
+check('found: og:url is the room address, not the query string',
+  body.includes('property="og:url" content="https://arzuz.com' + ROOM_PATH + '"'),
+  'og:url is still the query-string form');
+check('found: canonical link is the room address',
+  body.includes('<link rel="canonical" href="https://arzuz.com' + ROOM_PATH + '">'),
+  'the legacy address claims to be canonical — two addresses for one room');
 check('found: twitter:image mirrored', body.includes('name="twitter:image" content="https://res.cloudinary.com/demo/photo-1.jpg"'));
 check('found: <title> rewritten', body.includes('<title>Sunrise Lodge \u2014 Malete | Arzuz</title>'));
-check('found: JSON-LD has offers NGN', /"offers":\{"@type":"Offer","price":250000,"priceCurrency":"NGN"\}/.test(body));
+/* The same builder the /rooms/<slug> function uses, so both addresses
+   describe the room identically — price, currency and vacancy included. */
+const ogLd = /<script type="application\/ld\+json" id="ldjson">([\s\S]*?)<\/script>/.exec(body);
+let ogGraph = [];
+try {
+  ogGraph = (JSON.parse(ogLd[1]) || {})['@graph'] || [];
+} catch (e) {
+  check('found: JSON-LD parses', false, e.message);
+}
+const ogPlace = ogGraph.find((n) => n['@type'] === 'Apartment');
+check('found: JSON-LD describes the apartment', !!ogPlace);
+check('found: JSON-LD has offers NGN',
+  !!ogPlace && !!ogPlace.offers && ogPlace.offers.price === 250000 && ogPlace.offers.priceCurrency === 'NGN',
+  'the share card has no price on it');
+check('found: JSON-LD says InStock while rooms are vacant',
+  !!ogPlace && !!ogPlace.offers && ogPlace.offers.availability === 'https://schema.org/InStock');
+check('found: JSON-LD url is the room address', !!ogPlace && ogPlace.url === 'https://arzuz.com' + ROOM_PATH);
 check('found: no og:image duplication', (body.match(/<meta\s+property="og:image"/g) || []).length === 1);
 check('found: page body intact (booking form present)', body.includes('book') && body.includes('assets/arzuz.css'));
 
@@ -114,6 +141,25 @@ const fn2 = new Function('module', 'exports', 'require', '__dirname', 'process',
 fn2(fn2mod, fn2mod.exports, require, path.resolve('netlify/functions/__nope'), process, global.fetch);
 res = await fn2mod.exports.handler(qs({ id: listingRow.id }));
 check('missing page file: 302 redirect to /listing.html', res.statusCode === 302 && res.headers.Location.startsWith('/listing.html'));
+
+// 7. shared module missing from the sandbox → the card still ships, at the old
+// address, rather than the whole preview breaking over a bundling mistake.
+// (Its own fetch: test 5 replaced global.fetch with a throwing stub.)
+const okFetch = async (url) => {
+  if (/id=eq\./.test(String(url))) return { ok: true, status: 200, json: async () => [listingRow] };
+  return { ok: true, status: 200, json: async () => [] };
+};
+await mkdir('netlify/functions/__nomodule', { recursive: true });
+await copyFile('listing.html', 'netlify/functions/__nomodule/listing.html');
+const fnNoMod = { exports: {} };
+new Function('module', 'exports', 'require', '__dirname', 'process', 'fetch', fnSrc)(
+  fnNoMod, fnNoMod.exports, require, path.resolve('netlify/functions/__nomodule'), process, okFetch
+);
+res = await fnNoMod.exports.handler(qs({ id: listingRow.id }));
+check('listing-url.js missing: card still ships with the old og:url',
+  res.statusCode === 200 && res.body.includes('property="og:url" content="https://arzuz.com/listing?id=' + listingRow.id + '"'),
+  'got ' + res.statusCode);
+await rm('netlify/functions/__nomodule', { recursive: true, force: true });
 
 await rm('netlify/functions/__sandbox', { recursive: true, force: true });
 console.log('\nPASS: ' + PASS.length);

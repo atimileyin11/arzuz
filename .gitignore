@@ -27,3 +27,12 @@ branch_structure.json
 temp_auto_push.bat
 temp_interactive_push.bat
 .gitignore
+
+# The hero paint suite writes the run that failed beside the baseline it missed
+# (scripts/test-hero-visual.mjs). The baselines themselves are tracked.
+dev/hero-baselines/*.current.png
+
+# The runner's learned per-suite timings and run reports: they describe a
+# machine and a run, not the project (scripts/test-all.mjs). Deleting the
+# file just re-learns them.
+.test-timings*.json

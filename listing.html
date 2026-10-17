@@ -35,7 +35,7 @@
 </head>
 <body>
   <div class="ld" id="ldRoot">
-    <a class="back" href="browse.html">&#8592; Back to verified listings</a>
+    <a class="back" href="/browse">&#8592; Back to verified listings</a>
 
     <!-- skeleton while the listing loads -->
     <div id="ldSkeleton">
@@ -55,8 +55,8 @@
         <p>It may have been rented, paused, or the link is incomplete. Every room on
            Arzuz is checked before it appears — see what's verified right now.</p>
         <div class="h-doors">
-          <a class="h-btn h-p" href="browse.html">Browse verified listings</a>
-          <a class="h-btn h-s" href="register.html">Register your need</a>
+          <a class="h-btn h-p" href="/browse">Browse verified listings</a>
+          <a class="h-btn h-s" href="/register">Register your need</a>
         </div>
       </div>
     </div>
@@ -65,7 +65,7 @@
   <!-- sticky mobile CTA -->
   <div class="sticky-cta" id="stickyCta" style="display:none">
     <button type="button" class="sbtn p" id="ctaBook">Book this apartment</button>
-    <a class="sbtn g" id="ctaWa" href="#" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+    <a class="sbtn g" id="ctaWa" href="https://wa.me/2349024814771" target="_blank" rel="noopener noreferrer">WhatsApp</a>
   </div>
 
   <!-- lightbox -->
@@ -78,14 +78,20 @@
   </div>
 
   <script src="assets/config.js"></script>
+  <script src="assets/api-errors.js?v=1"></script>
+  <!-- One source of truth for a listing's address, its walk to campus and
+       its badge wording. browse.html, the /rooms/<slug> function and the
+       listings sitemap read the same file, so the page a crawler is handed
+       and the page a visitor opens cannot disagree. -->
+  <script src="assets/listing-url.js"></script>
   <script src="assets/data.js"></script>
   <script src="assets/attribution.js"></script>
   <script src="assets/notify.js"></script>
-  <script src="assets/submit.js?v=3"></script>
+  <script src="assets/submit.js?v=4"></script>
   <script src="assets/share.js"></script>
   <script src="assets/whatsapp.js"></script>
-  <script src="assets/arzuz-map.js?v=3"></script>
-  <script src="assets/video.js?v=2"></script>
+  <script src="assets/arzuz-map.js?v=4"></script>
+  <script src="assets/video.js?v=3"></script>
   <script src="assets/app.js"></script>
   <script src="assets/motion.js"></script>
   <script>
@@ -134,26 +140,20 @@
       var la = parseFloat(ROW.latitude), ln = parseFloat(ROW.longitude);
       return (isFinite(la) && isFinite(ln)) ? { lat: la, lng: ln } : null;
     }
-    function haversineKm(lat1, lng1, lat2, lng2){
-      var R = 6371, toRad = Math.PI / 180;
-      var dLat = (lat2 - lat1) * toRad, dLng = (lng2 - lng1) * toRad;
-      var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) *
-              Math.sin(dLng/2) * Math.sin(dLng/2);
-      return 2 * R * Math.asin(Math.sqrt(a));
-    }
+    /* Used to be computed here. It is now ArzuzListing.walkText(), because
+       the server-rendered /rooms/<slug> page prints the same number and two
+       implementations of it would eventually print two different numbers for
+       one room. */
     function walkText(lat, lng){
-      if (!lat || !lng) return '';
-      var km = haversineKm(parseFloat(lat), parseFloat(lng), CAMPUS.lat, CAMPUS.lng) * 1.25;
-      var min = Math.round(km / 4.5 * 60);
-      if (min < 1) return 'On campus street';
-      if (min > 90) return '';
-      return '\uD83D\uDEB6 \u2248 ' + min + ' min walk to KWASU';
+      return ArzuzListing.walkText(lat, lng);
     }
+    /* The label comes from ArzuzListing so the badge here and the chip on the
+       server-rendered page cannot drift apart. The markup stays local: this
+       one is a photo badge, the other is a stat chip. */
     function tierBadge(tier){
-      if (Number(tier) >= 2) return '<span class="h-badge b2">Inspected</span>';
-      if (Number(tier) === 1) return '<span class="h-badge b1">Community verified</span>';
-      return '<span class="h-badge b0">Unverified</span>';
+      var n = Number(tier);
+      var cls = n >= 2 ? 'b2' : (n === 1 ? 'b1' : 'b0');
+      return '<span class="h-badge ' + cls + '">' + ArzuzListing.tierLabel(tier) + '</span>';
     }
     function iconFor(u){
       var s = String(u).toLowerCase();
@@ -340,12 +340,14 @@
         html += '<div class="mate-box"><b>Shared by design.</b> You can book this room and split the ' +
           'cost with a compatible roommate — tell us in the form and we introduce you to each other on ' +
           'WhatsApp, the same way landlord matches work. Arzuz never shares a room the landlord has not ' +
-          'offered for sharing.</div>';
+          'offered for sharing. Who you split it with matters too \u2014 ' +
+          '<a href="/roommates">take the roommate questionnaire</a> and we will show you the ' +
+          'students who fit before you book.</div>';
       }
       html += '<div id="form"></div>' +
-        '<p class="bk-note">Booking a viewing is free. Arzuz does not collect rent, hold deposits or take ' +
-        'payment \u2014 you pay the landlord directly, and the owner\u2019s number stays private until the team ' +
-        'connects you.</p>' +
+        '<p class="bk-note">Booking a viewing is free. Arzuz takes no rent and holds no deposit \u2014 you ' +
+        'pay the landlord directly, and the owner\u2019s number stays private until the team connects you. ' +
+        'The only thing Arzuz sells is an optional Care Pass.</p>' +
         '</div></div>';
       return { html: html, mate: MATE };
     }
@@ -498,7 +500,7 @@
 
       Arzuz.form({
         table: 'booking_requests',
-        backHref: 'browse.html', backLabel: '\u2190 Back to listings',
+        backHref: '/browse', backLabel: '\u2190 Back to listings',
         steps: steps,
         done:
           '<div class="done"><div class="m"><span>az</span></div><h3>Booking request sent.</h3>' +
@@ -516,7 +518,7 @@
               Number(LRENT).toLocaleString() + ' per session on Arzuz, zero agent fees.'
           }) +
           '<div class="nav" style="display:flex;gap:10px;justify-content:center;margin-top:18px">' +
-          '<a class="next" href="browse.html">Keep browsing</a></div></div>'
+          '<a class="next" href="/browse">Keep browsing</a></div></div>'
       });
     }
 
@@ -730,13 +732,18 @@
       if (mt) mt.setAttribute('content', LNAME + ' \u2014 ' + area + ' | Arzuz');
       if (md) md.setAttribute('content', '\u20A6' + Number(LRENT).toLocaleString() + ' per session \u00B7 verified \u00B7 measured walk to KWASU.');
       if (mi && MEDIA.length && MEDIA[0].type === 'image') mi.setAttribute('content', MEDIA[0].url);
+      /* One builder, shared with the function that serves /rooms/<slug>
+         (assets/listing-url.js). The inline version this replaced carried a
+         name, an area and a photo — no price, which is the field a listing
+         result actually needs — and set numberOfRooms from the count of
+         VACANT rooms, which says something else entirely. */
       var jd = document.getElementById('ldjson');
-      if (jd) jd.textContent = JSON.stringify({
-        '@context': 'https://schema.org', '@type': 'Apartment',
-        name: LNAME, address: area,
-        numberOfRooms: first(p, ['rm']) || undefined,
-        image: MEDIA.filter(function(m){ return m.type === 'image'; }).map(function(m){ return m.url; })
-      });
+      if (jd && ArzuzListing) {
+        var cn = document.querySelector('link[rel="canonical"]');
+        jd.textContent = JSON.stringify(
+          ArzuzListing.schema(ROW, (cn && cn.getAttribute('href')) || location.href)
+        );
+      }
     }
 
     /* ---------- boot ---------- */
@@ -746,15 +753,22 @@
     }
 
     function boot(){
+      /* /listing?id=<uuid> carries the id in the query string. /rooms/<slug>
+         does not have one — the function that serves it already knows which
+         listing it built the page for, and hands the id over in a global.
+         Without this the client would boot with no id on a live /rooms/ page
+         and paint "this listing isn't live" over it. */
       var params = new URLSearchParams(location.search);
-      var id = (params.get('id') || '').trim();
+      var id = (params.get('id') || window.ARZUZ_LISTING_ID || '').trim();
       if (!id || !c.SUPABASE_URL || !c.SUPABASE_ANON_KEY) { showError(); return; }
 
       var url = c.SUPABASE_URL.replace(/\/+$/, '') +
         '/rest/v1/public_listings?select=*&id=eq.' + encodeURIComponent(id);
       fetch(url, { headers: { 'apikey': c.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + c.SUPABASE_ANON_KEY } })
         .then(function(res){
-          if (!res.ok) throw new Error('HTTP ' + res.status);
+          if (!res.ok) throw new Error(typeof ArzuzApiErrors !== 'undefined'
+            ? ArzuzApiErrors.sentence({ status: res.status })
+            : 'Arzuz could not load this listing.');
           return res.json();
         })
         .then(function(rows){

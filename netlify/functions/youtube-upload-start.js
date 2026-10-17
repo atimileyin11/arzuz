@@ -34,11 +34,19 @@ const TOKEN_TTL_MS  = 50 * 60 * 1000;      // refresh safely before the 1 h expi
    module warm between invocations often enough for this to help. */
 let cachedToken = { token: '', expiresAt: 0 };
 
-function json(status, body) {
+/* The shared failure vocabulary — the SAME file the page loads, so the
+   class in this body is the class assets/video.js reads, not a second
+   guess at the same status code. A deploy with no Google credentials
+   throws a 503 that means "not switched on", which is NOT the 503 that
+   means "try again in a minute" — only this function can tell them
+   apart, so it says which. */
+const ApiErrors = require('../../assets/api-errors.js');
+
+function json(status, body, kind) {
   return {
     statusCode: status,
     headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(ApiErrors.wireBody(status, body, kind)),
   };
 }
 
@@ -48,9 +56,12 @@ async function getAccessToken() {
   const refreshToken = process.env.YOUTUBE_REFRESH_TOKEN;
 
   if (!clientId || !clientSecret || !refreshToken) {
+    /* `kind` rides the throw and the handler's catch puts it on the
+       wire verbatim: a 503 with no credentials is a deployment fact,
+       not the "briefly unwell" 503 the class would otherwise derive. */
     throw Object.assign(new Error(
       'Video uploads are not configured on the server yet (missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / YOUTUBE_REFRESH_TOKEN).'
-    ), { status: 503 });
+    ), { status: 503, kind: 'not-ready' });
   }
   if (cachedToken.token && Date.now() < cachedToken.expiresAt) return cachedToken.token;
 
@@ -123,9 +134,30 @@ exports.handler = async function (event) {
       throw Object.assign(new Error('YouTube refused the upload session (' + init.status + ') ' + detail), { status: 502 });
     }
 
+    /* The one instant the free tier's spend is knowable, and the reason
+       this line sits HERE. YouTube has just accepted a resumable session,
+       and THIS request is what it bills as a videos.insert: 1,600 of the
+       10,000 units a project gets per day, so about six uploads.
+
+         · not emitted on the browser's PUT — the video bytes go straight
+           to Google and never pass through here, so this function cannot
+           see that upload finish, and it can still fail after a session
+           exists;
+         · not emitted on the failure paths above — a refused session
+           costs nothing, so counting it would overstate the day.
+
+       scripts/youtube-quota.mjs reads this marker out of the function log
+       and charts uploads, units and percent per day against the ceiling. */
+    console.log('[youtube-quota] ' + JSON.stringify({
+      at: new Date().toISOString(),
+      event: 'videos.insert',
+      units: 1600,
+      title: String(req.title || '').slice(0, 80),
+    }));
+
     return json(200, { uploadUrl, maxBytes: MAX_BYTES });
   } catch (err) {
     console.error('[youtube-upload-start]', err.message);
-    return json(err.status || 500, { error: err.message || 'Could not start the video upload' });
+    return json(err.status || 500, { error: err.message || 'Could not start the video upload' }, err.kind);
   }
 };

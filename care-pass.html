@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buy your Arzuz Care Pass — price, cover and receipt — Arzuz</title>
+  <meta name="description" content="Buy an Arzuz Care Pass: the price, the covered and not-covered lists, the call-out limit and the refund rule are all shown in full before you pay.">
+  <link rel="canonical" href="https://arzuz.com/care-pass">
+  <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
+  <meta property="og:title" content="Buy your Arzuz Care Pass — price, cover and receipt — Arzuz">
+  <meta property="og:description" content="The published terms, shown in full before you pay. A receipt, coverage dates, a call-out limit — and a private pass page with no login.">
+  <meta property="og:image" content="https://arzuz.com/assets/social/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Arzuz — verified student hostels, zero agent fees">
+  <meta property="og:url" content="https://arzuz.com/care-pass">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Arzuz">
+  <meta property="og:locale" content="en_NG">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Buy your Arzuz Care Pass — price, cover and receipt — Arzuz">
+  <meta name="twitter:description" content="Published terms shown in full before you pay. Receipt, coverage dates, a call-out limit, a private pass page.">
+  <meta name="twitter:image" content="https://arzuz.com/assets/social/og-image.png">
+  <meta name="twitter:image:alt" content="Arzuz — verified student hostels, zero agent fees">
+  <link rel="stylesheet" href="assets/arzuz.css">
+  <style>
+    /* The reading column care.html and my-care.html use, so a customer
+       moving between the three pages is never re-learning a layout. */
+    .doc {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 34px 20px 70px
+    }
+
+    html.motion-ready .doc > [data-rise] {
+      transition-duration: .5s, .62s;
+    }
+
+    .doc h1 {
+      font-family: var(--display);
+      font-size: clamp(28px, 5vw, 40px);
+      font-weight: 800;
+      letter-spacing: -.035em;
+      line-height: 1.08;
+      margin-bottom: 16px
+    }
+
+    .doc h2 {
+      font-family: var(--display);
+      font-size: 21px;
+      font-weight: 600;
+      letter-spacing: -.02em;
+      margin: 34px 0 12px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line)
+    }
+
+    .doc p {
+      font-size: 15.5px;
+      line-height: 1.65;
+      color: var(--body-c);
+      margin-bottom: 14px
+    }
+
+    .doc strong { color: var(--ink) }
+    .doc a { color: var(--stamp) }
+    .lede { font-size: 16.5px; color: var(--mid); max-width: 62ch }
+    .termsline { font-size: 13px; color: var(--mid); font-family: var(--mono) }
+    .hint { font-size: 13px; color: var(--mid); line-height: 1.55; margin-top: 6px }
+
+    /* the price — the first thing a buyer wants and the last thing this
+       page is allowed to invent: it is printed from the server's terms */
+    .pricebox {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--stamp);
+      border-radius: 0 10px 10px 0;
+      padding: 18px 22px;
+      margin: 6px 0 14px
+    }
+
+    .pricebox .p {
+      font-family: var(--display);
+      font-size: clamp(24px, 5vw, 32px);
+      font-weight: 800;
+      letter-spacing: -.03em;
+      color: var(--ink)
+    }
+
+    .pricebox p { margin: 8px 0 0; font-size: 14.5px; color: var(--mid) }
+
+    /* the covered / not-covered lists, same shape as care.html */
+    .cov { margin: 0 0 16px; padding: 0; list-style: none }
+
+    .cov li {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 9px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .6);
+      margin-bottom: 8px;
+      font-size: 14.5px
+    }
+
+    .cov li .ic { flex: none; font-weight: 800; width: 18px; text-align: center }
+    .cov.yes li .ic { color: var(--stamp) }
+    .cov.no li { background: transparent }
+    .cov.no li .ic { color: var(--alert) }
+
+    /* the terms, as facts — label left, answer right, wrapping on phones */
+    .facts { margin: 0 0 16px; padding: 0; list-style: none }
+
+    .facts li {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 12px;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .6);
+      margin-bottom: 8px;
+      font-size: 14.5px
+    }
+
+    .facts li b { color: var(--ink); font-weight: 600 }
+    .facts li span { color: var(--mid); min-width: 0; overflow-wrap: anywhere }
+
+    /* the form */
+    .form { border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; background: var(--surface) }
+    .form .row { display: flex; gap: 12px; flex-wrap: wrap }
+    .form .fld { flex: 1 1 210px; min-width: 0; margin-bottom: 12px }
+    .form label { display: block; font-size: 13px; font-weight: 600; color: var(--mid); margin-bottom: 5px }
+    .form .opt { font-weight: 400 }
+    .form input {
+      width: 100%;
+      font: inherit;
+      font-size: 15px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink)
+    }
+
+    .accept { margin-top: 18px }
+    .check { display: flex; gap: 10px; align-items: flex-start; font-size: 14.5px; line-height: 1.55; color: var(--body-c) }
+    .check input { flex: none; width: 18px; height: 18px; margin-top: 2px }
+
+    .btn {
+      display: inline-block;
+      font: inherit;
+      font-weight: 700;
+      font-size: 15px;
+      padding: 12px 20px;
+      margin-top: 12px;
+      border: none;
+      border-radius: 9px;
+      background: var(--ink);
+      color: #fff;
+      cursor: pointer;
+      text-decoration: none
+    }
+
+    .btn[disabled] { opacity: .45; cursor: not-allowed }
+    .btn.quiet { background: transparent; color: var(--ink); border: 1px solid var(--line) }
+
+    .note { font-size: 13.5px; line-height: 1.6; color: var(--mid); margin: 10px 0 0 }
+    .note.bad { color: var(--alert) }
+    .note.good { color: var(--stamp) }
+
+    .statebox {
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--stamp);
+      border-radius: 0 8px 8px 0;
+      background: var(--surface);
+      padding: 16px 18px;
+      margin: 18px 0
+    }
+
+    .statebox.good { border-left-color: var(--stamp) }
+    .statebox b { display: block; font-size: 15.5px; margin-bottom: 6px }
+    .statebox span { font-size: 14.5px; line-height: 1.6; color: var(--body-c) }
+
+    .lookup { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end }
+    .lookup label { display: block; font-size: 13px; font-weight: 600; color: var(--mid); margin-bottom: 5px }
+    .lookup input {
+      flex: 1 1 220px;
+      min-width: 0;
+      font: inherit;
+      font-size: 15px;
+      font-family: var(--mono);
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink)
+    }
+
+    .lookup .btn { margin-top: 0 }
+
+    .wa {
+      display: inline-block;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 14px;
+      padding: 9px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      color: var(--ink)
+    }
+  </style>
+</head>
+
+<body>
+  <div class="doc">
+    <h1 data-rise>Your Arzuz Care Pass</h1>
+    <p class="lede" data-rise>One optional pass, for one term. The price, the covered list, the not-covered
+      list, the call-out limit, the parts ceiling and the refund rule are all on this page before you pay —
+      and what you accept is recorded against your receipt.</p>
+
+    <div data-rise id="passPanel"></div>
+
+    <h2 data-rise>What this pass is not</h2>
+    <ul class="cov no" data-rise>
+      <li><span class="ic">&#10007;</span><span>Not a wallet. It is coverage for a term — there is no cash
+        balance to spend, withdraw or lose.</span></li>
+      <li><span class="ic">&#10007;</span><span>Not a fee on your rent. Arzuz takes no commission from a
+        landlord, no listing fee, and no percentage of any tenancy payment — housing is free, and a pass is
+        never bundled into rent.</span></li>
+      <li><span class="ic">&#10007;</span><span>Not a condition of anything. You can browse listings, contact
+        landlords and rent a room without buying a pass, and nobody is asked to purchase one to reach a
+        property.</span></li>
+      <li><span class="ic">&#10007;</span><span>Not insurance, and not a substitute for your landlord's own
+        repair obligations under your tenancy.</span></li>
+    </ul>
+
+    <h2 data-rise>What happens when you pay</h2>
+    <p data-rise>The order is recorded with the price and the terms version you accepted, frozen — a later
+      price change cannot re-price what you bought. You pay on Paystack's page, and this site only opens your
+      coverage once <strong>the provider itself</strong> confirms the payment to our server: a browser
+      landing back here with a receipt-like address is not a payment, and is never treated as one. Payment
+      confirmed, you get a receipt reference, the coverage start and end dates, and a private pass page —
+      no login, no password, one link. If a payment fails or stalls, no coverage opens and nothing is
+      charged; a confirmed payment that fails to open automatically is flagged to the team and fixed by
+      hand without charging you again.</p>
+
+    <div data-rise id="passLookup"></div>
+
+    <h2 data-rise>Questions people ask</h2>
+    <p data-rise><strong>Can I use it for anything in the covered list?</strong> Up to the published number
+      of call-outs, and only for things on the covered list — each request is checked against these terms
+      and against the call-outs you have left, and Arzuz says yes or no in writing before a worker is sent.
+      A call-out is finished when you confirm the job, or when a dispute is settled.</p>
+    <p data-rise><strong>What if I change my mind?</strong> The refund rule in the terms above is the rule:
+      ask before coverage starts. After that, what you paid is coverage for the rest of the term.</p>
+    <p data-rise><strong>Where is the rest?</strong> The <a href="/care">Care page</a> explains the service,
+      and the site's <a href="/terms">terms</a> and <a href="/privacy">privacy notice</a> apply to it.</p>
+  </div>
+  <script src="assets/config.js"></script>
+  <script src="assets/api-errors.js?v=1"></script>
+  <script src="assets/data.js"></script>
+  <script src="assets/submit.js?v=4"></script>
+  <script src="assets/app.js"></script>
+  <script src="assets/motion.js"></script>
+  <script src="assets/care-pass.js"></script>
+  <script>Arzuz.chrome(null); Arzuz.footer();</script>
+</body>
+
+</html>

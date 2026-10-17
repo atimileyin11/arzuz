@@ -46,11 +46,56 @@ const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
 const scripts = pkg.scripts || {};
 
 const ORDER = [
+  /* first because it is the cheapest of all: pure Node, no DOM, no
+     network, no wasm — the release policies swept across every integer
+     height and hundreds of drawer widths, which the boot suite can only
+     reach at the handful of geometries a phone lays out */
+  'test:policy',
+  /* then the fixtures themselves. Pure Node, no wasm: it requires
+     netlify/functions/status.js and parses the migrations, so it costs
+     nothing — and it is the check that keeps every OTHER suite honest,
+     because a fixture the product would refuse makes a green test a
+     claim about a value that cannot exist. It runs early for that
+     reason: when it fails, the results below it are worth less than
+     they look. */
+  'test:fixtures',
+  /* and the mocks against the schema they imitate — the same class of
+     mistake from the other side: a stand-in that accepts a word
+     Postgres would refuse. Also pure Node (it reads the SQL, it does
+     not boot it), so it sits beside the fixtures rather than down
+     with the two PGlite suites. */
+  'test:schema',
+  /* then the gesture engine's physics, driven by synthetic events */
+  'test:gesture',
   'test:roommate',
+  'test:roommate-page',
   'test:care',
+  'test:finance',
+  'test:claims',
+  /* the verification shift's own suite, beside the other queue work: the
+     ordering and the clock are pure policy, so it needs no database —
+     the chaser's hooks in netlify/functions/verification-aging.js are
+     stubbed, and what it proves is that a lateness is announced once, and
+     that a job nobody did comes back */
+  'test:verify-queue',
+  'test:care-pass',
   'test:my-care',
   'test:admin',
   'test:postgrest',
+  'test:care-live',
+  'test:draft-errors',
+  'test:api-errors',  'test:waitlist',
+  /* the status page, which is the other end of the same reference the
+     door hands out — so it runs beside it rather than at the bottom */
+  'test:status',
+  /* the deploy gate, right after the door it protects: both are about
+     the same fact — that there is one way in, and it needs a key */
+  'test:deploy-key',
+  'test:seo',
+  'test:rooms',
+  'test:listing-og',
+  'test:browse',
+  'test:indexnow',
   'sql:proof',
   'sql:guards',
 ];
@@ -63,6 +108,12 @@ const line = '='.repeat(66);
    Naming it here is the point: it is a deliberate exemption, not a
    suite somebody forgot to add to ORDER. */
 const NOT_A_SUITE = ['sql:mutate'];
+
+/* `care:live` is not a suite either, for the opposite reason: it asks
+   the deployed site and the live database, so it needs the internet
+   and a Care that has been switched on. `test:care-live` is its
+   offline half — the verdicts it would print — and that one IS in the
+   gate. */
 
 /* ------------------------------------------------------------
    the pairing — the list and package.json cannot drift

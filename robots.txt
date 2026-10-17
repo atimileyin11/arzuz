@@ -1,16 +1,33 @@
 # Arzuz — robots.txt
-# Plain UTF-8, no byte-order mark: a BOM here makes Search Console
-# reject the file (the same thing that broke the sitemap once).
+#
+# Plain UTF-8, no byte-order mark: a BOM here makes Search Console reject
+# the file outright (the same thing that broke the sitemap once).
+#
+# Almost nothing is disallowed, and that is deliberate. A robots Disallow is
+# the wrong tool for a private page: a disallowed URL is never fetched, so a
+# noindex on it is never read, and the URL can still appear in results with
+# no description the moment something links to it. The genuinely private
+# pages (/complete-listing, /my-care) are kept out with an
+# X-Robots-Tag: noindex header in netlify.toml instead, which a crawler does
+# read, because it is sent with the page.
+#
+# /admin.html is the one path disallowed below. It is the office dashboard,
+# it needs a signed-in session, and it carries the same noindex header — the
+# Disallow saves the crawl, the header covers a crawler that ignores this.
 
 User-agent: *
 Allow: /
 
-# The admin dashboard is never for crawlers. Netlify also sends
-# X-Robots-Tag: noindex on this path, in case a crawler ignores us.
 Disallow: /admin.html
 
-# /owner-list.html is the landlord form; it carries a canonical link
-# to /list, which stays indexable — "list your property on Arzuz"
-# is a landing page worth ranking.
-
+# Every <loc> in this sitemap is a canonical, indexable URL — the same
+# address the page puts in its own <link rel="canonical">. A sitemap is not
+# a substitute for being linked: it is where a search engine confirms what it
+# already found, which is why the footer of every page links every other one.
 Sitemap: https://arzuz.com/sitemap.xml
+
+# The listings, generated from the database because listings come and go and
+# nobody will remember to edit an XML file when one does. It is a SECOND
+# sitemap on purpose: if the database is unreachable this one answers 503 and
+# the hand-maintained pages are unaffected.
+Sitemap: https://arzuz.com/sitemap-listings.xml

@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Where your request has got to — Arzuz</title>
+  <meta name="description" content="Check the status of an Arzuz request or listing: enter the reference we gave you and the phone number or email on the file, and we send a six-digit code there.">
+  <!--
+    THE PUBLIC STATUS PAGE. Two steps and no session: the reference
+    AND a contact we hold for the record — the phone number, or the
+    email address — then a code sent to that contact, and only then the
+    stage. The reference on its own shows nobody anything: it is a
+    handle, and handles leak. Both channels exist because the phone is
+    the contact a student is most likely to have changed, and because
+    WhatsApp itself goes down.
+
+    Not indexed, and deliberately: there is nothing here for a search
+    engine, the page is useless without a reference, and the stage it
+    can show is one person's business. The noindex header in
+    netlify.toml covers a crawler; this meta tag covers one that reads
+    the document anyway.
+  -->
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
+  <link rel="stylesheet" href="assets/arzuz.css">
+  <style>
+    .st-lede {
+      font-size: 16px;
+      line-height: 1.65;
+      color: var(--mid);
+      max-width: 58ch;
+      margin-bottom: 22px
+    }
+
+    .st-card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 20px 22px;
+      margin: 0 0 16px
+    }
+
+    .st-note {
+      border-left: 3.5px solid var(--stamp);
+      background: var(--stamp-soft);
+      border-radius: 0 10px 10px 0;
+      padding: 13px 16px;
+      font-size: 14.5px;
+      line-height: 1.6;
+      color: var(--body-c);
+      margin: 0 0 16px
+    }
+
+    .st-note.bad {
+      border-left-color: var(--alert);
+      background: rgba(199, 62, 29, .05)
+    }
+
+    .st-note.wait {
+      border-left-color: var(--alert);
+      background: rgba(199, 62, 29, .05)
+    }
+
+    .st-who {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--mid);
+      margin: 0 0 14px
+    }
+
+    .st-who code { color: var(--ink) }
+
+    /* The channel choice, and the two fields it swaps between. A
+       fieldset rather than a div because the two radios ARE one
+       question: a screen reader should read "Where should we send the
+       code?, WhatsApp, selected" and not two unrelated switches. */
+    .st-ch {
+      border: 0;
+      padding: 0;
+      margin: 0 0 16px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center
+    }
+
+    .st-ch legend {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+      color: var(--mid);
+      padding: 0 0 7px;
+      width: 100%
+    }
+
+    .st-ch-opt {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--line-strong);
+      border-radius: 9px;
+      padding: 9px 14px;
+      font-size: 15px;
+      color: var(--ink);
+      cursor: pointer
+    }
+
+    .st-ch-opt:has(input:checked) {
+      border-color: var(--stamp);
+      background: var(--stamp-soft)
+    }
+
+    .st-ch-opt input { margin: 0 }
+
+    /* The channel line under the button. Quiet, because it is a
+       reassurance and not an instruction — and it is static page copy
+       about the channel the STUDENT chose, never a read-out of what
+       the server answered. */
+    .st-where {
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--mid);
+      margin: 12px 0 0;
+      max-width: 56ch
+    }
+
+    .st-acts {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 6px
+    }
+
+    .st-go {
+      font-family: var(--display);
+      font-size: 15.5px;
+      font-weight: 700;
+      letter-spacing: -.01em;
+      color: var(--paper);
+      background: var(--stamp);
+      border: 1px solid var(--stamp);
+      border-radius: 9px;
+      padding: 12px 20px;
+      cursor: pointer
+    }
+
+    .st-go:hover:not(:disabled) { background: var(--stamp-hover) }
+
+    .st-go:disabled {
+      opacity: .62;
+      cursor: default
+    }
+
+    /* The quieter of the two actions on each step. A button that looks
+       the same as the one beside it is a button people press by
+       accident, and "send a new code" is the one that must not be. */
+    .st-go.ghost {
+      color: var(--ink);
+      background: transparent;
+      border-color: var(--line-strong)
+    }
+
+    .st-go.ghost:hover:not(:disabled) {
+      background: var(--surface-hover);
+      color: var(--ink)
+    }
+
+    /* The honeypot: a field no person can see and no person fills in.
+       Not `display:none`, because a bot that reads the stylesheet
+       skips it — off the screen, out of the tab order, out of the
+       accessibility tree, and still submittable. */
+    .hp {
+      position: absolute;
+      left: -9999px;
+      width: 1px;
+      height: 1px;
+      overflow: hidden
+    }
+
+    .rvy {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--stamp);
+      border-radius: 0 12px 12px 0;
+      padding: 20px 22px
+    }
+
+    .rvy-ref {
+      font-size: 13px;
+      color: var(--mid);
+      margin-bottom: 10px
+    }
+
+    .rvy-ref code {
+      font-family: var(--mono);
+      font-size: 14px;
+      color: var(--ink);
+      letter-spacing: .02em
+    }
+
+    .rvy h2 {
+      font-family: var(--display);
+      font-size: clamp(20px, 4vw, 26px);
+      font-weight: 800;
+      letter-spacing: -.03em;
+      line-height: 1.15;
+      margin: 0 0 12px;
+      color: var(--ink)
+    }
+
+    .rvy-facts {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 14px
+    }
+
+    .rvy-facts li {
+      position: relative;
+      padding-left: 18px;
+      font-size: 15px;
+      line-height: 1.6;
+      color: var(--body-c);
+      margin-bottom: 7px
+    }
+
+    .rvy-facts li:before {
+      content: "";
+      position: absolute;
+      left: 2px;
+      top: .62em;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--stamp)
+    }
+
+    .rvy-keep {
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--mid);
+      border-top: 1px solid var(--line);
+      padding-top: 13px;
+      margin: 0 0 16px
+    }
+
+    /* The heading's rule, size and spacing are the shared reading-page ones
+       (assets/arzuz.css, .doc h2) — this page only says how wide the list
+       under it should run, because the rule above it is already drawn. */
+    .st-help li {
+      max-width: 62ch
+    }
+
+    .st-help a { color: var(--stamp) }
+  </style>
+</head>
+
+<body>
+  <div class="doc">
+    <h1 data-rise>Where your request has got to</h1>
+    <p class="st-lede" data-rise>Enter the reference we gave you and a contact we already hold for you
+      &mdash; the phone number you gave us, or the email address. We send a six-digit code there, and the
+      code is what opens your file: nobody who has not got your phone or your inbox can read it, and
+      knowing your reference on its own is not enough.</p>
+
+    <div class="st-note ok" id="stNote" hidden></div>
+    <p class="st-who" id="stWho" hidden></p>
+
+    <!-- STEP 1 — the reference and the number -->
+    <div id="stAsk">
+      <div class="st-card">
+        <form id="stForm" novalidate>
+          <div class="fld">
+            <label for="stRef">Your reference</label>
+            <input type="text" id="stRef" name="ref" autocomplete="off" autocapitalize="characters"
+              spellcheck="false" maxlength="19" placeholder="ARZ-S-4F7A-2C9B-1D3E">
+          </div>
+          <!-- WHICH CONTACT, AND WHY THERE IS A CHOICE. The phone was
+               the only channel this page had, and it is the one a
+               student is most likely to have changed. The email they
+               gave us does not change when a SIM does, and it still
+               works on a day WhatsApp does not. -->
+          <fieldset class="st-ch">
+            <legend>Where should we send the code?</legend>
+            <label class="st-ch-opt">
+              <input type="radio" name="channel" id="stChWa" value="whatsapp" checked>
+              <span>WhatsApp</span>
+            </label>
+            <label class="st-ch-opt">
+              <input type="radio" name="channel" id="stChMail" value="email">
+              <span>Email</span>
+            </label>
+          </fieldset>
+
+          <div class="fld" id="stPhoneFld">
+            <label for="stPhone">The phone number you gave us</label>
+            <input type="tel" id="stPhone" name="phone" autocomplete="tel" maxlength="20"
+              placeholder="0803 123 4567">
+          </div>
+          <div class="fld" id="stEmailFld" hidden>
+            <label for="stEmail">The email address you gave us</label>
+            <input type="email" id="stEmail" name="email" autocomplete="email" maxlength="254"
+              placeholder="you@example.com">
+          </div>
+          <div class="hp" aria-hidden="true">
+            <label for="stHp">Leave this empty</label>
+            <input type="text" id="stHp" name="hp" tabindex="-1" autocomplete="off">
+          </div>
+          <div class="st-acts">
+            <button type="submit" class="st-go" id="stGo">Send me a code</button>
+          </div>
+          <p class="st-where" id="stWhere">The code goes to the number you gave us, on WhatsApp. If WhatsApp cannot
+            reach you and we hold an email address for you, the same code goes to that inbox as well.</p>
+          <noscript>
+            <p class="st-note bad">This page needs JavaScript switched on, because the code is sent and checked
+              without ever reloading the page. Message us on WhatsApp with your reference instead &mdash; we will
+              find your file.</p>
+          </noscript>
+        </form>
+      </div>
+    </div>
+
+    <!-- STEP 2 — the code -->
+    <div id="stCodeBox" hidden>
+      <div class="st-card">
+        <form id="stCodeForm" novalidate>
+          <div class="fld">
+            <label for="stCode">The six-digit code</label>
+            <input type="text" id="stCode" name="code" inputmode="numeric" autocomplete="one-time-code"
+              maxlength="6" placeholder="000000">
+          </div>
+          <div class="st-acts">
+            <button type="submit" class="st-go" id="stVerify">Check my status</button>
+            <button type="button" class="st-go ghost" id="stResend">Send a new code</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- THE ANSWER -->
+    <div id="stOut" hidden></div>
+
+    <section class="st-help">
+      <h2>What this page can and cannot tell you</h2>
+      <ul>
+        <li><b>The stage, not the file.</b> You get where your request or listing has got to &mdash; received,
+          someone has been in touch, a match is in play, closed &mdash; and nothing else. Not your answers, not
+          the price of anything, not anyone's phone number.</li>
+        <li><b>Your number, or your email, is the proof.</b> Either one we already hold for you can open this
+          page &mdash; a code goes to it and you type that code back. <b>Changed the number you gave us?</b>
+          Choose <b>Email</b> above and use the address you submitted with; that does not change when a SIM
+          does. If we hold neither, or neither reaches you, <a href="https://wa.me/2349024814771">message us on
+          WhatsApp</a> with your reference and we will sort it out by hand.</li>
+        <li><b>Nothing is stored here.</b> Your reference is not kept in this browser and there is no session
+          &mdash; close the page and it is gone, which is what you want on a phone you share.</li>
+        <li><b>Lost your reference?</b> The same WhatsApp number finds your file from the name and number you
+          gave us. A reference nobody can look up is worse than no reference at all.</li>
+      </ul>
+    </section>
+  </div>
+
+  <script src="assets/api-errors.js?v=1"></script>
+  <script src="assets/status.js?v=2"></script>
+  <script>ArzuzStatus.mount();</script>
+</body>
+
+</html>

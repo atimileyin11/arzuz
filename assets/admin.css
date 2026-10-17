@@ -554,6 +554,43 @@ body.side-open .side-scrim { opacity: 1; pointer-events: auto; }
 
 /* ---------------- 8. Tables + cards ---------------- */
 
+/* THE VERIFICATION SHIFT (LAUNCH-READINESS.md §8.2, stage 2).
+
+   A work list, not a table: one row per listing owing a visit, with the
+   deadline as words (assets/verification-queue.js owns those words, so
+   the panel and the hourly message use the same ones). A LATE row is
+   marked on the left edge rather than by colour alone — the same
+   convention the claim queue uses, because a queue that signals only in
+   colour is a queue half the team cannot read. */
+.verify-card { margin-bottom: 16px; }
+.verify-card-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  padding: 14px 16px; border-bottom: 1px solid var(--aline);
+}
+.verify-card-head b { color: #fff; font-size: 14px; }
+.verify-counts { color: var(--atext3); font-size: 12.5px; }
+.verify-body { padding: 6px 0; }
+.verify-empty { color: var(--atext3); font-size: 13px; padding: 14px 16px; }
+.verify-note {
+  color: var(--atext3); font-size: 12px; line-height: 1.5;
+  padding: 10px 16px 14px; border-top: 1px solid var(--aline); margin: 0;
+}
+.verify-note b { color: #C4B5FD; }
+.verify-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  padding: 11px 16px; border-left: 3px solid transparent;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.verify-row:last-child { border-bottom: none; }
+.verify-row.late { border-left-color: #F59E0B; background: rgba(245,158,11,0.06); }
+.verify-head { display: flex; align-items: baseline; gap: 8px; min-width: 180px; }
+.verify-head b { color: #fff; font-size: 13px; }
+.verify-area { color: var(--atext3); font-size: 12px; }
+.verify-age { color: var(--atext3); font-size: 12.5px; flex: 1; min-width: 220px; }
+.verify-row.late .verify-age { color: #FCD34D; }
+
 .table-card {
   background: var(--a1);
   backdrop-filter: blur(16px);
@@ -631,6 +668,34 @@ body.side-open .side-scrim { opacity: 1; pointer-events: auto; }
 .tag-draft { background: rgba(59,130,246,.18); color: var(--ainfo); border: 1px solid rgba(59,130,246,.3); }
 .tag-open, .tag-in_progress { background: rgba(245,158,11,.18); color: var(--awarn); border: 1px solid rgba(245,158,11,.3); }
 .tag-resolved { background: rgba(16,185,129,.18); color: #34D399; border: 1px solid rgba(16,185,129,.3); }
+/* A dispute is not the same as a refusal: the work happened and the
+   customer says it is not right, so it reads as an alert rather than as
+   one of the greys. */
+.tag-disputed { background: rgba(239,68,68,.2); color: var(--aerr); border: 1px solid rgba(239,68,68,.38); }
+.tag-awaiting_customer { background: rgba(59,130,246,.18); color: var(--ainfo); border: 1px solid rgba(59,130,246,.3); }
+
+/* THE AGING CLOCK on a claim.
+
+   Three states, and the difference between the last two is the whole
+   point of having them: `claim-late` is a claim WE owe somebody an
+   answer on, `claim-waiting` is one where the customer has gone quiet —
+   a reminder to chase, not a failure to act. Rendering both as red would
+   teach whoever reads this queue to ignore red, which is how an alert
+   stops working. So ours is the alarm colour and theirs is the calm one. */
+/* The deadline's second half — "whose move it is" — on its own line, so
+   the Status column is sized by the longer half of the sentence rather
+   than by the sentence. Without this the date column beside it is
+   squeezed into three lines by one long late claim. */
+.claim-says { display: block; }
+
+.claim-due, .claim-late, .claim-waiting {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .01em;
+}
+.claim-due { color: var(--atext3); }
+.claim-late { color: var(--aerr); }
+.claim-waiting { color: var(--awarn); }
 
 .table-amenity-tag {
   display: inline-block;
@@ -644,6 +709,58 @@ body.side-open .side-scrim { opacity: 1; pointer-events: auto; }
   margin: 1px;
   white-space: nowrap;
 }
+/* ---------- the waitlist pipeline ----------
+   Five stages, one look each, so the column reads at a glance instead of
+   being a word somebody has to parse. Warm to cool on purpose: 'new' is
+   work still waiting, 'closed' is finished business. The colours are
+   literals rather than variables because this block must not depend on
+   a palette name that a later theme change could rename. */
+.pipeline-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-left: 4px;
+  white-space: nowrap;
+  cursor: help;
+  background: rgba(148,163,184,.14);
+  border: 1px solid rgba(148,163,184,.35);
+  color: #94a3b8;
+}
+.pipeline-tag.pipeline-new        { background: rgba(59,130,246,.16);  border-color: rgba(59,130,246,.35);  color: #60a5fa; }
+.pipeline-tag.pipeline-contacted  { background: rgba(245,158,11,.16);  border-color: rgba(245,158,11,.35);  color: var(--awarn); }
+.pipeline-tag.pipeline-interested { background: rgba(139,92,246,.16);  border-color: rgba(139,92,246,.35);  color: var(--aaccent); }
+.pipeline-tag.pipeline-matched    { background: rgba(16,185,129,.16);  border-color: rgba(16,185,129,.35);  color: #34d399; }
+.pipeline-tag.pipeline-closed     { background: rgba(100,116,139,.16); border-color: rgba(100,116,139,.3);  color: #94a3b8; }
+
+.pipeline-select {
+  display: block;
+  margin-top: 5px;
+  max-width: 132px;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 5px;
+  background: rgba(15,23,42,.6);
+  color: inherit;
+  border: 1px solid rgba(148,163,184,.3);
+}
+
+.ref-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  letter-spacing: .04em;
+  cursor: help;
+  background: rgba(99,102,241,.14);
+  border: 1px solid rgba(99,102,241,.3);
+  color: #a5b4fc;
+}
+
 .no-ask-flag {
   display: inline-block;
   font-size: 10px;
@@ -684,7 +801,18 @@ body.side-open .side-scrim { opacity: 1; pointer-events: auto; }
   color: var(--aaccent);
 }
 
-.cell-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+/* A dense row — a draft with Share / Copy / WA / New link / Approve /
+   Publish / Edit / View / Delete — measured 490px of buttons on one
+   line, which is what pushed the table past its container. They wrap
+   now instead of pushing the last columns off screen. */
+.cell-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; flex-wrap: wrap; max-width: 230px; }
+
+/* A long value must never dictate a column's width. An area name at the
+   80-character ceiling is one unbroken string, and it produced a 509px
+   cell — the table came out 2,343px wide inside a 991px container and
+   the two rightmost columns (Actions, browse-board state) were simply
+   not on screen. Breaks anywhere, so the worst case is 180px of it. */
+.cell-clamp { display: inline-block; min-width: 140px; max-width: 190px; overflow-wrap: break-word; word-break: break-word; white-space: normal; vertical-align: top; }
 .act-btn {
   display: inline-flex;
   align-items: center;
@@ -742,6 +870,34 @@ body.side-open .side-scrim { opacity: 1; pointer-events: auto; }
 .draft-badge svg { width: 11px; height: 11px; }
 .draft-badge.sent { background: rgba(59,130,246,.14); color: var(--ainfo); }
 .draft-badge.done { background: rgba(16,185,129,.16); color: #34D399; }
+
+/* The browse-board state. public_listings shows a row only when
+   status='active' AND tier>=1 AND env='production' — three ANDed
+   conditions the dashboard used to keep to itself, which is how an
+   approved listing stayed invisible to every student while the screen
+   showed a green toast. */
+.board-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.board-badge svg { width: 11px; height: 11px; }
+.board-badge.live { background: rgba(16,185,129,.16); color: #34D399; }
+.board-badge.hidden { background: rgba(245,158,11,.16); color: #FBBF24; }
+
+/* How often the engines come back to re-read a room, off the score in
+   assets/listing-score.js. The badge stays short because the table is
+   already wider than its pane — the whole answer is in its title and in
+   the details modal, which prints the missing facts one chip each. */
+.crawl-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.crawl-badge svg { width: 11px; height: 11px; }
+.crawl-badge.daily { background: rgba(16,185,129,.16); color: #34D399; }
+.crawl-badge.weekly { background: rgba(59,130,246,.16); color: #60A5FA; }
+.crawl-badge.rare { background: rgba(148,163,184,.16); color: #94A3B8; }
+.crawl-missing { display: inline-block; font-size: 11.5px; padding: 3px 10px; margin: 0 4px 4px 0; border-radius: 999px; background: rgba(245,158,11,.14); color: #FBBF24; }
+.crawl-complete { font-size: 12px; color: #34D399; }
+
+/* the same answer inside the Add / Edit composer, before the save */
+.fld-note { margin-top: 6px; font-size: 12px; line-height: 1.45; padding: 7px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,.08); color: var(--atext3); }
+.fld-note:empty { display: none; }
+.fld-note.is-live { color: #34D399; border-color: rgba(16,185,129,.28); background: rgba(16,185,129,.07); }
+.fld-note.is-hidden { color: #FBBF24; border-color: rgba(245,158,11,.28); background: rgba(245,158,11,.07); }
 .age-old { color: var(--aerr); font-weight: 700; }
 .age-cell { font-size: 12px; color: var(--atext3); white-space: nowrap; }
 
@@ -820,6 +976,59 @@ body.side-open .side-scrim { opacity: 1; pointer-events: auto; }
 .canned-btn { border: 1px solid rgba(139,92,246,.4); background: rgba(139,92,246,.08); color: var(--aaccent); border-radius: var(--r-full); padding: 7px 14px; font-size: 12.5px; cursor: pointer; font-family: var(--body); transition: background var(--dur-1) ease, color var(--dur-1) ease; }
 @media (hover: hover) {
   .canned-btn:hover { background: rgba(139,92,246,.2); color: #fff; }
+}
+
+/* ---------------- 17. Status code history (the desk's answer) ----------------
+
+   A reference and its trail, read on a phone call. It is a strip of
+   facts rather than a card per code, because the officer is talking
+   while they read it: the newest code first, the channel each attempt
+   went out on, and the one word that says whether the setup is broken. */
+
+.codehist-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+.codehist-form input { flex: 1; min-width: 210px; max-width: 330px; background: #241d31; color: var(--atext); border: 1px solid rgba(255,255,255,.12); border-radius: 10px; padding: 10px 13px; font-size: 14px; font-family: var(--mono, monospace); letter-spacing: .04em; text-transform: uppercase; }
+.codehist-form input:focus { outline: none; border-color: rgba(139,92,246,.6); }
+.codehist-out:empty { display: none; }
+.codehist-empty { color: var(--atext3); font-size: 13px; line-height: 1.6; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07); border-radius: var(--r-md); padding: 12px 14px; }
+.codehist-empty.bad { color: #F87171; border-color: rgba(248,113,113,.3); }
+
+.ch-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.ch-head b { font-family: var(--mono, monospace); font-size: 14px; color: #fff; letter-spacing: .04em; }
+.ch-tag { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--atext2); background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.09); border-radius: 999px; padding: 3px 9px; }
+.ch-tag.warn { color: #FBBF24; background: rgba(251,191,36,.1); border-color: rgba(251,191,36,.3); }
+
+.ch-code { border: 1px solid rgba(255,255,255,.08); border-left: 3px solid rgba(139,92,246,.5); border-radius: var(--r-md); padding: 11px 14px; margin-bottom: 10px; background: rgba(255,255,255,.02); }
+.ch-code-head { display: flex; flex-wrap: wrap; gap: 9px; align-items: baseline; }
+.ch-code-head b { color: var(--atext); font-size: 14px; font-variant-numeric: tabular-nums; }
+.ch-ago { font-size: 12px; color: var(--atext3); }
+.ch-state { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; border-radius: 999px; padding: 2px 9px; }
+.ch-state.ok { color: #34D399; background: rgba(52,211,153,.12); }
+.ch-state.muted { color: var(--atext3); background: rgba(255,255,255,.05); }
+.ch-meta { font-size: 12.5px; color: var(--atext3); margin: 7px 0 8px; font-variant-numeric: tabular-nums; }
+
+.ch-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; font-size: 12.5px; padding: 5px 0; border-top: 1px solid rgba(255,255,255,.05); }
+.ch-chan { display: inline-flex; align-items: center; gap: 5px; color: var(--atext2); font-weight: 600; min-width: 92px; }
+.ch-chan .ico { color: var(--aaccent); }
+.ch-out { font-weight: 700; }
+.ch-out.ok { color: #34D399; }
+.ch-out.bad { color: #F87171; }
+.ch-out.warn { color: #FBBF24; }
+.ch-when { color: var(--atext3); font-variant-numeric: tabular-nums; }
+.ch-note { color: var(--atext3); flex: 1 1 220px; }
+
+/* The pick list, for a fragment or a number that more than one reference
+   answers. A row is a whole button: the reference is what the officer has
+   to read out, so it is the loudest thing in the row and the only thing
+   that is monospaced. */
+.ch-pick { border: 1px solid rgba(251,191,36,.28); background: rgba(251,191,36,.05); border-radius: var(--r-md); padding: 13px 14px; }
+.ch-pick-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 6px; }
+.ch-pick-head b { color: #FBBF24; font-size: 13.5px; }
+.ch-pick-sub { color: var(--atext3); font-size: 12.5px; line-height: 1.55; margin: 0 0 10px; }
+.ch-pick-row { display: flex; flex-wrap: wrap; gap: 9px; align-items: baseline; width: 100%; text-align: left; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 9px 12px; margin-bottom: 7px; cursor: pointer; font-family: var(--body); transition: background var(--dur-1) ease, border-color var(--dur-1) ease; }
+.ch-pick-row:last-child { margin-bottom: 0; }
+.ch-pick-row b { font-family: var(--mono, monospace); font-size: 13.5px; color: #fff; letter-spacing: .04em; }
+@media (hover: hover) {
+  .ch-pick-row:hover { background: rgba(139,92,246,.16); border-color: rgba(139,92,246,.45); }
 }
 
 .team-role-select { background: #241d31; color: var(--atext); border: 1px solid rgba(255,255,255,.12); border-radius: 8px; padding: 5px 8px; font-size: 12.5px; }
@@ -1077,6 +1286,7 @@ body.side-open .side-scrim { opacity: 1; pointer-events: auto; }
   padding: 16px;
 }
 .lightbox.open { display: flex; }
+.lightbox .lb-inner { max-width: 90vw; }
 .lightbox img {
   max-width: 90vw; max-height: 86vh;
   border-radius: 10px;
@@ -1446,6 +1656,14 @@ input, select, textarea, button { font-family: var(--body); }
   .row-card .rc-head { min-width: 0; flex: 1; }
   .row-card .rc-head b { color: #fff; font-size: 15px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .row-card .rc-head .rc-sub { color: var(--atext3); font-size: 12.5px; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 4px 10px; }
+  /* A flex item's min-width is auto, so an unbreakable area name (80
+     characters, no spaces) grows past the card instead of wrapping in
+     it — and the card clips the difference. Both declarations are
+     load-bearing, which the mutation run measured: with min-width: 0
+     ALONE the card still clips 165 px at 390 px, and each wrap property
+     carries the break on its own. min-width: 0 lets the item shrink;
+     the wrap permission breaks the word inside it. */
+  .row-card .rc-head .rc-sub > span { min-width: 0; overflow-wrap: break-word; word-break: break-word; }
   .row-card .rc-price { font-family: var(--display); font-weight: 800; color: #fff; font-size: 16px; margin-top: 8px; }
   .row-card .rc-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; align-items: center; }
   .row-card .rc-actions { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
@@ -1500,6 +1718,55 @@ input, select, textarea, button { font-family: var(--body); }
     will-change: transform;
   }
   @media (prefers-reduced-motion: reduce) { .modal-box { transition: none; } }
+
+  /* lightboxes: the same throw as the sheets. The photo viewer has no
+     header, so the whole surface is the grab zone and the pill rides the
+     screen's top edge; the video card hands over its title row. */
+  #photoLightbox { touch-action: none; }
+  #photoLightbox::before {
+    content: '';
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    width: 40px;
+    height: 4px;
+    margin-left: -20px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.32);
+  }
+  #videoLightbox .lb-head {
+    position: relative;
+    touch-action: none;
+    padding-top: 14px;
+  }
+  #videoLightbox .lb-head::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 40px;
+    height: 4px;
+    margin-left: -20px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.24);
+  }
+  /* --lb-o rides the overlay's own alpha (like --sheet-o) so a pull lets
+     the page behind show through; --lb-y is painted every frame and the
+     transition carries the release. */
+  .lightbox { background: rgba(0,0,0, calc(.9 * var(--lb-o, 1))); }
+  .lightbox .lb-inner,
+  #videoLightbox .lb-frame {
+    transform: translate3d(0, var(--lb-y, 0px), 0);
+    transition: transform var(--dur-2) cubic-bezier(.22, 1, .36, 1);
+  }
+  body.lb-dragging .lightbox .lb-inner,
+  body.lb-dragging #videoLightbox .lb-frame {
+    transition: none;
+    will-change: transform;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lightbox .lb-inner, #videoLightbox .lb-frame { transition: none; }
+  }
 }
 
 @media (min-width: 861px) {
@@ -1929,3 +2196,124 @@ input, select, textarea, button { font-family: var(--body); }
 .cancel-choice button.discard:hover { border-color: rgba(239,68,68,.5); background: rgba(239,68,68,.08); }
 .cancel-choice .cc-t { display: block; font-weight: 700; font-size: 14px; color: #fff; }
 .cancel-choice .cc-d { display: block; color: var(--atext3); font-size: 12.5px; margin-top: 2px; line-height: 1.45; }
+
+/* ---------------- 12. The daily digest preview ----------------
+   The message as Telegram will receive it, shown verbatim. Monospace and
+   pre-wrapped because the whole point is to read the exact bytes — the
+   <b> tags and the escaped entities included — rather than a rendering
+   of them (see the note in admin.js §4h).
+
+   It can be long on a bad day, so it scrolls inside the modal instead of
+   pushing the buttons off the bottom of a phone. */
+.digest-pre {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid var(--aline2);
+  border-radius: var(--r-sm);
+  padding: 14px 16px;
+  margin: 0;
+  max-height: 46vh;
+  overflow: auto;
+  color: var(--atext);
+}
+
+/* ---------------- 13. The dossier, on paper ----------------
+   Everything above this line is built for a dark screen. A printed
+   record has to be the opposite of that: black on white, no chrome, and
+   nothing on the page except the one student it documents — the sheet a
+   support agent attaches to a ticket or reads out over the phone.
+
+   The switch is a class on <body> (admin.js, #btnPrintDossier) that
+   exists only for the duration of the print dialog, so the screen is
+   never touched. These rules sit last in the file on purpose: they have
+   to beat the dark tokens above and the mobile sheet rules, both of
+   which are still in force when the media is print. */
+
+.print-only { display: none; }
+
+/* Two long labels in one row: "Vacant units available" + "Fully
+   occupied" measured 306px of content inside a 231px group, and at a
+   309px viewport the second option ran 28px past the edge — off screen
+   and un-tappable. Under 420px the group stacks instead. */
+@media (max-width: 420px) {
+  .seg { flex-wrap: wrap; }
+  .seg-btn { flex: 1 1 100%; white-space: normal; justify-content: flex-start; }
+}
+
+@media print {
+  body.printing-dossier { background: #fff; }
+  /* Every child of <body> except the modal: the sidebar, the topbar, the
+     whole dashboard behind the overlay. The modal is a direct child of
+     <body> — if that ever changes, this rule prints an empty page. */
+  body.printing-dossier > *:not(#dossierModal) { display: none !important; }
+
+  body.printing-dossier #dossierModal {
+    position: static;
+    display: block !important;
+    padding: 0;
+    background: #fff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    overflow: visible;
+  }
+  body.printing-dossier #dossierModal .modal-box {
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: #fff;
+    transform: none;
+    overflow: visible;
+  }
+
+  /* the on-screen controls are not part of the record */
+  body.printing-dossier #dossierModal .modal-close,
+  body.printing-dossier #dossierModal > .modal-box > .sub,
+  body.printing-dossier #dossierModal .modal-actions { display: none !important; }
+
+  body.printing-dossier .print-only { display: block; }
+  body.printing-dossier #dossierPrintMeta {
+    font-size: 10pt;
+    color: #444 !important;
+    border-bottom: 1px solid #999 !important;
+    padding-bottom: 6pt;
+    margin-bottom: 12pt;
+  }
+
+  /* re-ink: every colour above is a dark-theme token (--aerr, --awarn,
+     --aaccent …). Black text on white paper, and no tinted panels. */
+  body.printing-dossier #dossierModal,
+  body.printing-dossier #dossierModal * {
+    color: #111 !important;
+    background: transparent !important;
+    border-color: #bbb !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  body.printing-dossier #dossierModal h3 { font-size: 16pt; }
+  body.printing-dossier #dossierModal h4 { font-size: 9pt; opacity: 1 !important; }
+  body.printing-dossier #dossierModal .sub { font-size: 10pt; color: #333 !important; }
+
+  /* a line of the trail, a decision, a pair: kept whole where it lands */
+  body.printing-dossier #dossierModal .mate-cand,
+  body.printing-dossier #dossierModal .mate-card,
+  body.printing-dossier #dossierModal .ops-row {
+    border: 1px solid #ddd !important;
+    border-radius: 4pt;
+    padding: 6pt 8pt;
+    break-inside: avoid;
+  }
+  body.printing-dossier #dossierModal .details-kv-grid { break-inside: avoid; }
+  body.printing-dossier #dossierModal .tag-status {
+    border: 1px solid #999 !important;
+    border-radius: 3pt;
+    padding: 1pt 5pt;
+  }
+}

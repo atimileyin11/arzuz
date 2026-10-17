@@ -16,7 +16,10 @@
    (complete-listing.html) can be walked end to end without a token
    or a live database — see dev/complete-listing-harness.html:
 
-     POST /mock/sb/seed                     → set the draft row the page will read
+     POST /mock/sb/seed                     → set the draft row the page will read,
+                                              and any scripted failure (seed.fail) so
+                                              the page's failure copy can be walked:
+                                              { status, code, message } or { drop: true }
      POST /mock/sb/rest/v1/rpc/listing_draft_get    → that row (null when revoked)
      POST /mock/sb/rest/v1/rpc/listing_draft_update → merge the patch, echo the id
      GET  /mock/sb/last-patch               → { patch, writes } for assertions
@@ -70,7 +73,27 @@ const MOCK_SB = {
   patch: null,        // last patch the page sent
   writes: [],         // every patch, in order
   completedAt: null,
+  /* A scripted failure per route, so the page's own words for each
+     class can be exercised in a browser. `drop` is the network
+     going away instead of answering. */
+  fail: { get: null, update: null },
 };
+
+/* The recorded shapes (dev/admin-test-report.md §20): a relation the
+   schema cache does not have, a grant this page does not hold, a token
+   that is not a uuid, and a connection that never arrives. */
+function failWith(res, which) {
+  const f = MOCK_SB.fail[which];
+  if (!f) return false;
+  if (f.drop) {
+    console.log('[mock] ' + which + ': dropping the connection (the offline class)');
+    res.destroy();
+    return true;
+  }
+  console.log('[mock] ' + which + ': HTTP ' + f.status + ' ' + (f.code || ''));
+  json(res, f.status, { code: f.code || null, details: null, hint: null, message: f.message || '' });
+  return true;
+}
 
 function defaultRow() {
   return {
@@ -141,20 +164,27 @@ const server = http.createServer(async (req, res) => {
     if (seed.row && seed.row.payload) {
       MOCK_SB.row.payload = Object.assign(defaultRow().payload, seed.row.payload);
     }
+    /* `revoked` is the one way to reach the mock's own null row — the
+       token that matches nothing, which is the only failure that
+       really is about the link. */
+    if (seed.revoked) MOCK_SB.row = null;
+    MOCK_SB.fail = Object.assign({ get: null, update: null }, seed.fail || {});
     MOCK_SB.patch = null;
     MOCK_SB.writes = [];
-    MOCK_SB.completedAt = MOCK_SB.row.draft_completed_at || null;
+    MOCK_SB.completedAt = MOCK_SB.row ? (MOCK_SB.row.draft_completed_at || null) : null;
     json(res, 200, { ok: true, row: MOCK_SB.row });
     return;
   }
   if (url.pathname === '/mock/sb/rest/v1/rpc/listing_draft_get' && req.method === 'POST') {
     const body = JSON.parse((await readText(req)) || '{}');
     console.log('[mock] draft_get token:', body.p_token);
+    if (failWith(res, 'get')) return;
     json(res, 200, MOCK_SB.row || null);
     return;
   }
   if (url.pathname === '/mock/sb/rest/v1/rpc/listing_draft_update' && req.method === 'POST') {
     const body = JSON.parse((await readText(req)) || '{}');
+    if (failWith(res, 'update')) return;
     const patch = body.p_patch || {};
     MOCK_SB.patch = patch;
     MOCK_SB.writes.push(patch);
@@ -170,8 +200,11 @@ const server = http.createServer(async (req, res) => {
     json(res, 200, { id: MOCK_SB.row.id, draft_completed_at: MOCK_SB.row.draft_completed_at });
     return;
   }
+  /* `fail` is read back with the row: it is the answer the page's own
+     fetch got, so a suite asserting on the sentence for a scripted
+     failure reads the body off the mock instead of restating it. */
   if (url.pathname === '/mock/sb/last-patch') {
-    json(res, 200, { patch: MOCK_SB.patch, writes: MOCK_SB.writes, row: MOCK_SB.row });
+    json(res, 200, { patch: MOCK_SB.patch, writes: MOCK_SB.writes, row: MOCK_SB.row, fail: MOCK_SB.fail });
     return;
   }
   if (url.pathname.startsWith('/mock/cloudinary/') && req.method === 'POST') {

@@ -109,6 +109,34 @@ var ArzuzVideo = (function () {
 
   var MAX_BYTES = 200 * 1024 * 1024;   // mirrored by youtube-upload-start
 
+  /* The site-wide failure vocabulary (assets/api-errors.js), if this
+     page loaded it. A video upload talks to Arzuz (the start function)
+     and then to Google (the resumable endpoint): a status from either is
+     a wire fact, and this is what turns one into words instead of into
+     the string "HTTP 500". */
+  function E(){ return (typeof ArzuzApiErrors !== 'undefined') ? ArzuzApiErrors : null; }
+
+  /* A failure that carries its CLASS, read from the answer rather than
+     guessed from the number — so the caller can tell a deployment with
+     no Google credentials (which no amount of pressing will fix) from a
+     bad minute. `message` is the server's own sentence when it sent one,
+     because "…/YOUTUBE_REFRESH_TOKEN missing" is the line an operator
+     can act on.
+
+     `res` is the Response or a bare status (the resumable endpoint is
+     Google, and answers with a number and nothing of ours). */
+  function fail(res, body){
+    var W = E();
+    if (W) return W.failed(res, body);
+    var status = (res && typeof res === 'object') ? (res.status || 0) : (res || 0);
+    var message = body ? String((body.error || body.message) || body) : '';
+    var err = new Error(message || 'Arzuz could not start that just now — that is our side, not yours. ' +
+      'Try again in a minute.');
+    err.status = status;
+    err.detail = String(status);
+    return err;
+  }
+
   function startSession(file, title) {
     return fetch('/api/youtube-upload-start', {
       method: 'POST',
@@ -120,8 +148,8 @@ var ArzuzVideo = (function () {
         title: title || 'Apartment video tour',
       }),
     }).then(function (r) {
-      return r.json().then(function (body) {
-        if (!r.ok) throw new Error(body && body.error ? body.error : 'Could not start the video upload (HTTP ' + r.status + ')');
+      return r.json().catch(function () { return null; }).then(function (body) {
+        if (!r.ok) throw fail(r, body);
         return body;
       });
     });
@@ -180,7 +208,7 @@ var ArzuzVideo = (function () {
             } catch (e) { /* fall through */ }
             reject(new Error('Upload finished but no video id came back'));
           } else {
-            reject(new Error('Upload failed (HTTP ' + xhr.status + ')'));
+            reject(fail({ status: xhr.status }));
           }
         };
         xhr.onerror = function () {

@@ -109,7 +109,12 @@ var ArzuzData = (function(){
         'Authorization': 'Bearer ' + c.SUPABASE_ANON_KEY
       }
     }).then(function(r){
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+      /* Nothing here reaches a person — reload() falls back to the stored
+         amenity list — but the status still must not be composed into a
+         message, so that one rule can be checked across the whole site. */
+      if (!r.ok) throw new Error(typeof ArzuzApiErrors !== 'undefined'
+        ? ArzuzApiErrors.sentence({ status: r.status })
+        : 'Arzuz could not read the amenity list.');
       return r.json();
     }).then(function(rows){
       return (rows || []).map(function(x){ return x.name; }).filter(Boolean);

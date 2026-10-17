@@ -1,48 +1,110 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Every <loc> here is the canonical URL of a page, and it is the same URL
+  that page puts in its own <link rel="canonical"> and that every internal
+  link on the site points at. A sitemap that disagrees with the canonicals
+  is worse than no sitemap: it hands a search engine two addresses for one
+  page and lets them compete.
+
+  /care-pass is a public product page, so it IS listed: the return from
+  the provider carries a reference in the query string, and the page
+  declares this canonical so the two addresses cannot compete.
+
+  Only fetchable, indexable pages belong in this file. Not listed, on
+  purpose: /admin.html, /complete-listing.html and /my-care.html (private,
+  X-Robots-Tag: noindex), /404.html (noindex), and /listing — every listing
+  now has a real address at /rooms/<slug> and those are in the SECOND
+  sitemap, https://arzuz.com/sitemap-listings.xml, which is generated from
+  the database because listings come and go. /listing?id=<uuid> still
+  answers, but it declares /rooms/<slug> as its canonical, so it is not
+  listed here and does not compete with the room's own page.
+
+  The lastmod field is the only one Google actually reads here, and only while it
+  stays verifiably accurate. <changefreq> and <priority> have been ignored
+  by Google for years and are kept for other engines. A fabricated lastmod
+  is worse than none, so this date changes only when the page's own content
+  changes — not on every deploy.
+
+  Plain UTF-8, no byte-order mark: a BOM makes Search Console reject the
+  file outright.
+-->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://arzuz.com/</loc>
+    <lastmod>2026-10-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://arzuz.com/register</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://arzuz.com/my-building</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://arzuz.com/list</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
     <loc>https://arzuz.com/browse</loc>
+    <lastmod>2026-10-12</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://arzuz.com/safety</loc>
-    <changefreq>yearly</changefreq>
-    <priority>0.5</priority>
+    <loc>https://arzuz.com/register</loc>
+    <lastmod>2026-10-12</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://arzuz.com/list</loc>
+    <lastmod>2026-10-12</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://arzuz.com/my-building</loc>
+    <lastmod>2026-10-12</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://arzuz.com/roommates</loc>
+    <lastmod>2026-10-12</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://arzuz.com/rent-in-malete</loc>
+    <lastmod>2026-10-12</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://arzuz.com/hostels-near-kwasu</loc>
+    <lastmod>2026-10-12</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://arzuz.com/care</loc>
+    <lastmod>2026-10-12</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://arzuz.com/privacy</loc>
+    <loc>https://arzuz.com/care-pass</loc>
+    <lastmod>2026-10-13</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://arzuz.com/safety</loc>
+    <lastmod>2026-10-12</lastmod>
     <changefreq>yearly</changefreq>
-    <priority>0.4</priority>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://arzuz.com/privacy</loc>
+    <lastmod>2026-10-12</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
   </url>
   <url>
     <loc>https://arzuz.com/terms</loc>
+    <lastmod>2026-10-12</lastmod>
     <changefreq>yearly</changefreq>
-    <priority>0.4</priority>
+    <priority>0.3</priority>
   </url>
 </urlset>

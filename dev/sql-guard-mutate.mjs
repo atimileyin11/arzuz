@@ -38,7 +38,7 @@
 
    WHY IT IS NOT IN `npm test`
 
-     It runs the guard suite once per mutation — eight full runs.
+     It runs the guard suite once per mutation — a dozen full runs.
      That is a tool you reach for when you change the guards or the
      harness, not a gate on every commit. `sql:guards` is the gate.
 
@@ -60,7 +60,14 @@ const sha = (file) => createHash('sha256').update(readFileSync(file)).digest('he
 
 /* The files the guard suite reads. The repo's copies are hashed
    before and after so this tool can PROVE it left them alone. */
-const GUARDED = ['supabase-team-roles.sql', 'supabase-roommate.sql', 'supabase-care.sql'];
+const GUARDED = [
+  'supabase-team-roles.sql',
+  'supabase-roommate.sql',
+  'supabase-care.sql',
+  'supabase-finance.sql',
+  'supabase-claims.sql',
+  'supabase-verification-queue.sql',
+];
 
 /* ------------------------------------------------------------
    the battery — one broken guard each
@@ -72,6 +79,9 @@ const GUARDED = ['supabase-team-roles.sql', 'supabase-roommate.sql', 'supabase-c
 const TEAM = 'supabase-team-roles.sql';
 const MATE = 'supabase-roommate.sql';
 const CARE = 'supabase-care.sql';
+const FIN = 'supabase-finance.sql';
+const CLAIMS = 'supabase-claims.sql';
+const SHIFT = 'supabase-verification-queue.sql';
 
 const MUTATIONS = [
   {
@@ -137,6 +147,71 @@ const MUTATIONS = [
       return block ? s.replace(block[0], '') : s;
     },
   },
+  {
+    name: 'finance: the Care guard is deleted',
+    file: FIN,
+    breaks: 'the coverage columns would be added to tables that are not there',
+    apply: (s) => s.replace(
+      /\n\s*if to_regclass\('public\.care_plans'\) is null[\s\S]*?end if;/,
+      ''
+    ),
+  },
+  {
+    name: 'claims: the ledger_entries guard is deleted',
+    file: CLAIMS,
+    breaks: 'a claim could be built on books that do not exist',
+    apply: (s) => s.replace(
+      /\n\s*if to_regclass\('public\.ledger_entries'\) is null[\s\S]*?end if;/,
+      ''
+    ),
+  },
+  {
+    name: 'claims: the call-out argument guard is inverted',
+    file: CLAIMS,
+    breaks: 'a call-out could be reserved against NO pass at all',
+    apply: (s) => s.replace(
+      'if p_plan_id is null then',
+      'if p_plan_id is not null then'
+    ),
+  },
+
+  /* Not an edit to an existing file: a NEW migration arriving in the
+     root with a preflight and no rung. The scope check exists for
+     exactly this, so it is the one thing the battery has to prove it
+     can see — otherwise "no root migration raises untested" is a
+     sentence, not a rule. */
+  {
+    name: 'a new root migration arrives with an untested guard',
+    addFile: {
+      name: 'supabase-newthing.sql',
+      text: '-- a brand-new migration, guarded, and known to nobody\n' +
+        'do $$\n' +
+        'begin\n' +
+        "  raise exception 'nothing tests this guard';\n" +
+        'end $$;\n',
+    },
+    breaks: 'a file that raises to protect an install would land untested',
+  },
+
+  /* STAGE 2 OF THE VERIFICATION LAYER. Its three preflights are the newest
+     guards in the tree, and a battery that stops at the files it was first
+     written for is how the newest migration becomes the only untested one. */
+  {
+    name: 'verification-queue: the columns guard names the wrong file',
+    file: SHIFT,
+    breaks: 'a database missing the launch columns is sent to supabase-schema.sql, which has no such columns',
+    apply: (s) => s.replace(
+      'Run supabase-waitlist-launch.sql before this file.',
+      'Run supabase-schema.sql before this file.'),
+  },
+  {
+    name: 'verification-queue: a new guard nobody wrote a rung for',
+    file: SHIFT,
+    breaks: 'a rule the harness has never seen, in the newest migration — the pairing must catch it',
+    apply: (s) => s.replace(
+      'end $$;',
+      "raise exception 'a brand new rule nobody tests';\nend $$;"),
+  },
 ];
 
 /* The control. It changes a guarded file without changing any
@@ -164,7 +239,10 @@ function stage(mutation) {
   }
   copyFileSync(join(ROOT, HARNESS), join(dir, HARNESS));
 
-  if (mutation) {
+  if (mutation && mutation.addFile) {
+    /* a whole new root migration — see the last entry in MUTATIONS */
+    writeFileSync(join(dir, mutation.addFile.name), mutation.addFile.text);
+  } else if (mutation) {
     const target = join(dir, mutation.file);
     const before = readFileSync(target, 'utf8');
     const after = mutation.apply(before);

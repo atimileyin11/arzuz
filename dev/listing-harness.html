@@ -21,7 +21,8 @@
 dev-only things: it loads <code>dev/listing-fixture.js</code> first so every Supabase call is answered
 from a local dataset, and it root-prefixes the page's relative asset paths because the page is being
 served from <code>/dev/</code>. Nothing here ships.</p>
-<p>Query options: <code>?case=demo|worst|halfpos|empty|one|huge</code> — a switcher is pinned to the
+<p>Query options: <code>?case=demo|worst|halfpos|empty|one|huge|exotic|shapes|oddities</code> — every case
+is generated from a declared field · state matrix (<code>dev/listing-fixture.js</code>), and a switcher is pinned to the
 bottom of the loaded page so you can flip cases without reloading by hand.</p>
 <p>To see any case on its own at the real URL, run <code>node scripts/test-listing-render.mjs --open</code>.</p>
 <p class="note" id="hbStatus">Booting…</p>
@@ -40,6 +41,39 @@ bottom of the loaded page so you can flip cases without reloading by hand.</p>
   var params = new URLSearchParams(location.search);
   var caseKey = params.get('case') || params.get('fx') || 'demo';
   var id = params.get('id') || 'fx-harness';
+  /* set by dev/listing-harness-boot.js when it reloads because the document
+     it got never loaded its shared layer */
+  var retried = params.get('hreload') === '1';
+
+  /* script → the global the page's inline boot needs from it. Only the ones
+     listing.html actually names are required, so this cannot drift away from
+     the page: delete a script tag and it stops being expected. */
+  var LAYER = {
+    'assets/app.js': 'Arzuz',
+    'assets/submit.js': 'ArzuzSubmit',
+    'assets/share.js': 'ArzuzShare',
+    'assets/arzuz-map.js': 'ArzuzMap',
+    'assets/video.js': 'ArzuzVideo',
+    'assets/attribution.js': 'ArzuzRef',
+    'assets/whatsapp.js': 'ArzuzWhatsApp'
+  };
+  var baseName = function (src) { return String(src).replace(/^\//, '').split('?')[0]; };
+
+  /* A request lost between this fetch and the parser is the failure this
+     harness has to survive: the document gets written, one script never
+     arrives, the parser carries on, and the page's inline boot dies with
+     "Arzuz is not defined" — which the suite then reports as a broken page.
+     So ask for every script first, with retries, before writing anything. */
+  function preflight(src, tries) {
+    return fetch(src, { cache: 'reload' }).then(function (r) {
+      if (r.ok) return true;
+      throw new Error(src + ' → HTTP ' + r.status);
+    }).catch(function (e) {
+      if (tries <= 1) throw e;
+      return new Promise(function (done) { setTimeout(done, 120); })
+        .then(function () { return preflight(src, tries - 1); });
+    });
+  }
 
   /* the fixture answers every public_listings read with the selected case
      row no matter which id is asked for, so any non-empty id will do —
@@ -59,24 +93,54 @@ bottom of the loaded page so you can flip cases without reloading by hand.</p>
          but be explicit: the stub is installed before any page script runs */
       var stub = '<script src="/dev/listing-fixture.js"><\/script>\n';
       var patched = html.split('"assets/').join('"/assets/');
-      patched = patched.replace('<head>', '<head>\n' + stub);
-      if (patched.indexOf('/dev/listing-fixture.js') === -1) throw new Error('could not inject the fixture');
-      say('booting the real page · case=' + caseKey + ' · ' + patched.length + ' chars');
-      document.open();
-      document.write(patched);
-      document.close();
-      window.addEventListener('error', function (e) {
-        console.log('[harness] page error:', e.message);
+
+      var scripts = [];
+      patched.replace(/<script[^>]+src="([^"]+)"/g, function (whole, src) { scripts.push(src); return whole; });
+      var needed = [];
+      scripts.forEach(function (src) {
+        var g = LAYER[baseName(src)];
+        if (g && needed.indexOf(g) === -1) needed.push(g);
+      });
+      say('scripts named by the page: ' + scripts.length + '\nshared layer the boot needs: ' + (needed.join(', ') || 'none') +
+        (retried ? '\nreloading after a lost script' : ''));
+
+      return Promise.all(scripts.map(function (s) { return preflight(s, 3); })).then(function () {
+        /* the boot check has to be able to run even if the page's own boot
+           threw, so it is inserted last, right before </body>, and it decides
+           for itself whether this document is usable */
+        var cfg = '<script>window.__HARNESS__ = ' + JSON.stringify({
+          scripts: scripts, expected: needed, retried: retried, caseKey: caseKey
+        }) + ';document.documentElement.setAttribute("data-harness-boot","pending");<\/script>\n';
+        var bootCheck = '<script src="/dev/listing-harness-boot.js"><\/script>\n';
+
+        patched = patched.replace('<head>', '<head>\n' + stub + cfg);
+        patched = patched.replace('</body>', bootCheck + '</body>');
+        if (patched.indexOf('/dev/listing-fixture.js') === -1) throw new Error('could not inject the fixture');
+        if (patched.indexOf('/dev/listing-harness-boot.js') === -1) throw new Error('could not inject the boot check');
+
+        say('booting the real page · case=' + caseKey + ' · ' + patched.length + ' chars');
+        document.open();
+        document.write(patched);
+        document.close();
+        window.addEventListener('error', function (e) {
+          console.log('[harness] page error:', e.message);
+        });
       });
     })
     .catch(function (e) {
+      /* the suite reads this attribute, so a harness that cannot even write a
+         document is reported as a harness failure rather than as a page that
+         never rendered */
+      try { document.documentElement.setAttribute('data-harness-boot', 'preflight-failed'); } catch (err) {}
+      var msg = String(e && e.message || e);
       var el = document.getElementById('hbStatus');
       if (el) {
-        el.textContent = 'Harness failed: ' + e.message +
+        el.textContent = 'Harness failed: ' + msg +
           ' — is a dev server running? try: node scripts/dev-server.mjs 8123';
       } else {
-        alert('Harness failed: ' + e.message);
+        alert('Harness failed: ' + msg);
       }
+      console.error('[harness] failed:', msg);
     });
 })();
 </script>

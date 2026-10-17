@@ -159,6 +159,17 @@ begin
     end if;
   end if;
 
+  -- coordinates: lat/lng are generated columns cast to double precision, so
+  -- a pin that is not a number raises 22P02 — for ANY writer. A listing must
+  -- never fail to save because a pin was typed, pasted or traced wrongly, so
+  -- an unparseable coordinate is stored as null and the map simply has no pin.
+  foreach v_key in array array['lat','lng'] loop
+    if v_out ? v_key and jsonb_typeof(v_out -> v_key) = 'string'
+       and (v_out ->> v_key) !~ '^-?[0-9]+(\.[0-9]+)?$' then
+      v_out := jsonb_set(v_out, array[v_key], 'null'::jsonb, true);
+    end if;
+  end loop;
+
   -- a media list nobody can scroll through: keep the first sixty
   if v_out ? 'media' and jsonb_typeof(v_out -> 'media') = 'array'
      and jsonb_array_length(v_out -> 'media') > 60 then
@@ -172,6 +183,34 @@ begin
   return v_out;
 end;
 $$;
+
+-- ------------------------------------------------------------
+-- 2c. The same ceilings for EVERY writer
+--     The clamp above covered one door: the draft-update RPC. The
+--     dashboard posts to /rest/v1/listings directly, the public
+--     "I have a property" form posts to the same table as anon, and
+--     the SQL editor posts as the table owner — three more doors, and
+--     the ceilings only held for the one that called the function.
+--     A BEFORE trigger closes all of them at once: whoever writes the
+--     row, the payload is clamped on the way in. `update of payload`
+--     keeps it out of the way of a status/tier change, and the clamp
+--     is idempotent, so a writer that already clamped is not clamped
+--     twice (and the RPC's own call stays harmless).
+-- ------------------------------------------------------------
+create or replace function public.listings_guard_payload()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.payload := public.listing_payload_clamp(coalesce(new.payload, '{}'::jsonb));
+  return new;
+end;
+$$;
+
+drop trigger if exists listings_guard_payload on listings;
+create trigger listings_guard_payload
+  before insert or update of payload on listings
+  for each row execute function public.listings_guard_payload();
 
 create or replace function public.listing_draft_update(p_token uuid, p_patch jsonb)
 returns jsonb
@@ -248,6 +287,7 @@ $$;
 revoke execute on function public.listing_draft_get(uuid)           from public;
 revoke execute on function public.listing_draft_update(uuid, jsonb) from public;
 revoke execute on function public.listing_payload_clamp(jsonb)     from public;
+revoke execute on function public.listings_guard_payload()         from public;
 grant execute on function public.listing_draft_get(uuid)            to anon, authenticated, service_role;
 grant execute on function public.listing_draft_update(uuid, jsonb)  to anon, authenticated, service_role;
 

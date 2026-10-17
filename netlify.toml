@@ -7,13 +7,119 @@
 #   OPENWA_URL
 #   OPENWA_API_KEY
 #   OPENWA_SESSION
+#   OPENWA_WEBHOOK_SECRET (the secret on the OpenWA webhook pointed at
+#                           /api/wa-inbound — the same value OpenWA signs
+#                           each delivery with. It is the only thing that
+#                           makes a worker's "yes"/"no" to a handover
+#                           trustworthy; without it that function refuses
+#                           every request. One-time setup: SETUP.md →
+#                           Step 4b-3.)
+#   PAYSTACK_SECRET_KEY    (the money core — Paystack secret key, server-side only;
+#                           without it every payment write answers 503 not-ready)
 #   TELEGRAM_BOT_TOKEN     (never added to any page source)
 #   TELEGRAM_CHAT_ID       (get it from /api/notify → action: detect)
+#   INDEXNOW_HOOK_SECRET   (the shared secret Supabase's database webhook sends
+#                           in the x-arzuz-hook header to /api/listing-live, so
+#                           the moment a listing goes live its /rooms/<slug> URL
+#                           is pushed to IndexNow. One-time setup: SEO.md → §5.
+#                           Without it that function refuses every request.)
 #   GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / YOUTUBE_REFRESH_TOKEN
 #                          (video tours upload to unlisted YouTube videos —
 #                           one-time setup: SETUP.md → scripts/youtube-auth.mjs)
 
+# ONE message a day, at 06:00 UTC (07:00 in Lagos): the last 24 hours of
+# roommate activity, plus any match older than three days that NEITHER
+# student has opened. A quiet day sends nothing.
+#
+# The cron lives in this file rather than inline in the function because
+# Netlify's inline `export const config` needs an ES module, and every
+# function in this repo is CommonJS. A missing schedule here is silent:
+# the function still deploys, it just never runs. See
+# netlify/functions/roommate-digest.js.
+[functions."roommate-digest"]
+  schedule = "0 6 * * *"
+
+# EVERY HOUR, ON THE HOUR: the claim aging clock. A claim that has stood
+# in one status past the deadline for that status pages the team ONCE per
+# crossing — the queue's own ordering only helps whoever opens it.
+# netlify/functions/claims-aging.js writes an 'overdue_nudge' row to the
+# claim's trail, which is what keeps it from repeating every hour.
+#
+# The same silence rule as above applies: a missing schedule deploys fine
+# and never runs.
+[functions."claims-aging"]
+  schedule = "0 * * * *"
+
+# EVERY HOUR, ON THE HOUR: the verification clock. A live listing nobody
+# has visited, or one an officer took and went quiet on, pages the team
+# ONCE per lateness — and a job that was nudged and stayed silent for
+# POLICY.reclaim_after_hours goes back to the queue by itself
+# (netlify/functions/verification-aging.js). The queue's own ordering
+# only helps whoever opens the dashboard.
+#
+# The policy lives in assets/verification-queue.js, which this function
+# and the dashboard both load — one copy of "48 hours", so the page and
+# the message cannot disagree about whether a listing is late. The same
+# silence rule as above applies: a missing schedule deploys fine and
+# never runs.
+[functions."verification-aging"]
+  schedule = "0 * * * *"
+
+# ONE message a day, at 07:00 UTC (08:00 in Lagos): the visits that have
+# not happened yet, and how many of them are actually pinned down —
+# agreed versus still being haggled over between the worker and the
+# customer, with each day quoted in the words of the person who said it.
+# A quiet day sends nothing: everything agreed and nothing moved is not
+# news, and a daily "all fine" is how a team learns to ignore a channel.
+#
+# An hour after roommate-digest, so the two do not arrive together. The
+# same silence rule applies: a missing schedule deploys fine and never
+# runs. See netlify/functions/claims-digest.js.
+[functions."claims-digest"]
+  schedule = "0 7 * * *"
+
 [build]
+  # THE GATE THAT MAKES A DEPLOY THAT CANNOT KEEP A PROMISE IMPOSSIBLE.
+  #
+  # Three credentials, and each one fails the same way when it is missing:
+  # NOTHING looks broken. There is no crash to notice — only a person who was
+  # told their request was received and then never heard anything again.
+  #
+  #   SUPABASE_SERVICE_ROLE_KEY
+  #     supabase-close-public-inserts.sql revoked anon's INSERT on the five
+  #     public tables and assets/submit.js deleted the fallback, so
+  #     /api/waitlist is the only way a public form reaches the database.
+  #     Without the key the door answers 503, the page holds the answers in
+  #     the student's browser, and a student who never comes back is a lead
+  #     nobody sees.
+  #
+  #   OPENWA_URL / OPENWA_API_KEY
+  #     Every confirmation, coverage and dispute notice goes out over OpenWA
+  #     — and so does the six-digit code the status page depends on. Without
+  #     them the code is ISSUED and never delivered: the student waits at a box
+  #     that stays empty, and the notice is recorded as unsent in a trail
+  #     nobody is reading. See netlify/functions/status.js.
+  #
+  # OPENWA_SESSION and RESEND_API_KEY are on the script's ADVISED list: their
+  # absence degrades the site rather than breaking a promise (WhatsApp still
+  # delivers; the status page's second email channel and the claim emails go
+  # quiet). Those are warnings, and they never fail the build — a gate that
+  # fails on a preference is a gate people learn to override.
+  #
+  # So the build refuses. A failed build does not publish, which is what leaves
+  # the last working deploy live rather than exposing students to one that
+  # cannot store their answer or deliver their code. The script prints no part
+  # of any value, and it names the two causes it cannot tell apart from inside
+  # a build — the variable was never set, or it was scoped to "Functions" only
+  # — so a correctly-scoped project is a one-minute fix rather than a mystery.
+  #
+  # A deploy that is deliberately going out without the door can say so with
+  # ARZUZ_ALLOW_MISSING_ENV=1 (everything) or ARZUZ_ALLOW_MISSING_ENV=OPENWA_URL
+  # (exactly that one). It is logged as a warning. This command does NOT carry
+  # that override, and scripts/test-deploy-key.mjs fails the build if it ever
+  # does.
+  command = "node scripts/require-service-key.mjs --require"
+
   publish = "."
   # 404.html needs no redirect rule: Netlify serves it automatically at every
   # missing URL. It uses root-absolute paths (/assets/…) because the failed
@@ -21,7 +127,26 @@
   # listing-og.js reads listing.html from the function sandbox to inject
   # per-listing preview tags; strategy-docs.js serves the strategy pack
   # to signed-in team members only. Both bundle their files into the deploy.
-  included_files = ["netlify/functions/**", "listing.html", "strategy/*.md"]
+  # What the functions read at runtime has to be bundled with them. rooms.js
+  # serves listing.html with a listing already written into it, and answers an
+  # unknown room with the real 404 page and a real 404 status — a page that
+  # says "not found" while answering 200 is a soft 404, and it tells a crawler
+  # the page exists.
+  #
+  # assets/listing-url.js is loaded, not copied: it is the one place that knows
+  # a listing's address and the walk to campus, and browse.html, listing.html
+  # and both new functions read the same file.
+  # browse.html and assets/indexnow.js are the two newest readers:
+  # netlify/functions/browse.js writes the room links into browse.html
+  # before the page ships, and netlify/functions/listing-live.js posts to
+  # IndexNow through the same module the CLI uses.
+  #
+  # The IndexNow key file is named here, not globbed, ON PURPOSE: its
+  # FILE NAME is the key, so an explicit line is the only form that can be
+  # checked. scripts/test-seo.mjs fails the build when the key file in the
+  # root is not the one this line names, which is what happens the day
+  # somebody rotates the key by creating a new file.
+  included_files = ["netlify/functions/**", "listing.html", "browse.html", "404.html", "assets/listing-url.js", "assets/listing-score.js", "assets/indexnow.js", "8e15f62cc98636edef91c1ba76943ebb.txt", "strategy/*.md"]
 
 # Repo files that are NOT part of the website. `publish = "."` means Netlify
 # will happily serve any of them as plain text — and it was: supabase-hardening.sql
@@ -35,6 +160,12 @@
 # /supabase-schema.sql — only a trailing /* does), so each SQL file is listed.
 # ADD A LINE HERE WHEN YOU ADD A supabase-*.sql FILE. Verified on the live site:
 # every one of these must answer 404, or the whole RLS design is public.
+[[redirects]]
+  from = "/supabase-roommate.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
 [[redirects]]
   from = "/supabase-schema.sql"
   to   = "/404.html"
@@ -83,6 +214,94 @@
   status = 404
   force = true
 
+# The Care ledger. This line was MISSING until the Care feature was
+# finished: `publish = "."` serves every repo file, so the moment the
+# next deploy shipped, the complete RLS design for Care credits — table
+# shapes, view definitions, the check-list of what support may read —
+# would have been a public URL. (It answers 404 on the live site today
+# only because the deployed build predates this file.)
+[[redirects]]
+  from = "/supabase-care.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+# The Care ledger is the same class of file as the rest of them: its CHECK
+# constraints and RLS policies describe the whole credit model. scripts/
+# test-deploy-guards.mjs fails the build if a supabase-*.sql is ever added
+# without the rule above this line.
+[[redirects]]
+  from = "/supabase-care.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+# The launch waitlist migration. Same class of file as the rest: it
+# describes the reference format, the throttle ceilings and, in its
+# comments, exactly which staff role may read the audit trail — a map
+# worth more to an attacker than to anyone else. scripts/
+# test-deploy-guards.mjs fails the build if a supabase-*.sql is ever
+# added without the rule above this line.
+[[redirects]]
+  from = "/supabase-waitlist-launch.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+# The file that closes the direct path. It is the last migration in the
+# chain and, like the others, it says in prose what the database now
+# refuses and which role holds what — the same map. scripts/
+# test-deploy-guards.mjs fails the build if a supabase-*.sql is ever
+# added without the rule above this line.
+[[redirects]]
+  from = "/supabase-close-public-inserts.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+# The column-scoped verification RPC. Its header spells out which officer
+# may change which four columns of a listing and why the row-wide policy
+# was withdrawn — a description of the write path, which is the map these
+# rules exist to keep off the public web. Same rule as every other
+# supabase-*.sql: scripts/test-deploy-guards.mjs fails the build if a new
+# one is ever added without it.
+[[redirects]]
+  from = "/supabase-verification-rpc.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+# The shift: who holds which listing, the append-only trail of takes and
+# releases, and the note fields the chaser writes when it takes a job
+# back. A file that describes how the verification queue is worked is a
+# map of the operation, which is the same reason as every other
+# supabase-*.sql here.
+[[redirects]]
+  from = "/supabase-verification-queue.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+# The status page's code table and its own throttle. Its header is the
+# clearest single description of how a reference is proved to belong to
+# the person holding it, which is a description of the mechanism anyone
+# trying to read someone else's file would want. Same rule as every other
+# supabase-*.sql.
+[[redirects]]
+  from = "/supabase-status-codes.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+# The desk's half of the same page: the delivery trail and the function
+# that reads it. Same rule again — it describes which logins may ask
+# about a reference and what the answer contains.
+[[redirects]]
+  from = "/supabase-status-history.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
 [[redirects]]
   from = "/dev/*"
   to   = "/404.html"
@@ -106,17 +325,56 @@
   to   = "/404.html"
   status = 404
   force = true
+# SEO.md is the runbook for the one thing the other docs do not cover, and
+# it names the live gaps in this site by name — the private SQL files, the
+# unindexed listings, the hand-maintained lastmod. Same rule as README.md
+# and SETUP.md, and scripts/test-deploy-guards.mjs fails the build if a new
+# root .md file is ever added without one of these.
+[[redirects]]
+  from = "/SEO.md"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+# LAUNCH-READINESS.md is the worst of them to leak: it is a written list of
+# the residual risks in this site, the env vars each function needs, which
+# migrations are still unapplied and what a verification step does not yet
+# cover. It was created and left with no rule, which the guard below caught.
+[[redirects]]
+  from = "/LAUNCH-READINESS.md"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+
+# Same rule as the SQL files, for the dev tooling: publish = "." puts these
+# on the public web the moment they are committed. They describe what the
+# repo runs locally, which is nobody's business but the owner's.
+[[redirects]]
+  from = "/netlify.toml"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/package.json"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/package-lock.json"
+  to   = "/404.html"
+  status = 404
+  force = true
 
 # Link-preview cards: scrapers (WhatsApp, X, iMessage) never run JS,
 # so /listing is served by a function that writes the real listing's
 # tags into the head before the page ships. Query string is preserved.
+# (/listing.html is a 301 to this path, in the canonical block below —
+#  two live addresses for one listing is exactly what that block ends.)
 [[redirects]]
   from = "/listing"
-  to   = "/.netlify/functions/listing-og"
-  status = 200
-
-[[redirects]]
-  from = "/listing.html"
   to   = "/.netlify/functions/listing-og"
   status = 200
 
@@ -124,6 +382,23 @@
 [[redirects]]
   from = "/complete-listing"
   to   = "/complete-listing.html"
+  status = 200
+# A listing's own address, and the page that serves it. The function writes
+# the room into the HTML, so /rooms/anything is answered by it whatever the
+# slug says: it decides whether the slug is the current one (301 to the
+# current one, if the property has been renamed) or whether there is no such
+# room at all (a real 404). See netlify/functions/rooms.js.
+[[redirects]]
+  from = "/rooms/*"
+  to   = "/.netlify/functions/rooms"
+  status = 200
+
+# The listing half of the sitemap, generated from the database. Separate from
+# sitemap.xml — the ten hand-maintained pages — so a Supabase failure cannot
+# take them down with it. robots.txt lists both.
+[[redirects]]
+  from = "/sitemap-listings.xml"
+  to   = "/.netlify/functions/listings-sitemap"
   status = 200
 
 # Private strategy API: the dashboard fetches docs here with the
@@ -160,9 +435,16 @@
   to   = "/owner-list.html"
   status = 200
 
+# The board is served by a FUNCTION, not by the file. /browse is how a
+# crawler finds a room at all: every listing now has its own /rooms/<slug>
+# address, but the cards that link them were drawn from Supabase after
+# load, so the links existed only in JavaScript. netlify/functions/browse.js
+# writes them into the HTML before the page ships — and still serves the
+# same page when the database is unreachable. /browse.html answers a 301
+# down in the canonical block below, so the two addresses cannot compete.
 [[redirects]]
   from = "/browse"
-  to   = "/browse.html"
+  to   = "/.netlify/functions/browse"
   status = 200
 
 [[redirects]]
@@ -180,6 +462,38 @@
   to   = "/care.html"
   status = 200
 
+# Buying a pass. A real page with a real address, so it is indexable like
+# /care — and the reference in the address after payment is never trusted
+# for anything: the page asks the server, and the server asks Paystack.
+[[redirects]]
+  from = "/care-pass"
+  to   = "/care-pass.html"
+  status = 200
+
+# Also a private-link page: /roommates?t=… is one student's key, so it
+# is never cached and never indexed while a token is present.
+[[redirects]]
+  from = "/roommates"
+  to   = "/roommates.html"
+  status = 200
+
+# One student's Care account: /my-care?t=… is the whole credential, and
+# unlike /roommates there is no public face of this page at all — so it
+# is noindexed in the file itself as well as here.
+[[redirects]]
+  from = "/my-care"
+  to   = "/my-care.html"
+  status = 200
+
+# Where a student's own submission has got to. Not private in the way
+# /my-care is — there is nothing on it until someone types a reference
+# and a number — but it is a page about one person's business, so it is
+# noindexed below and deliberately absent from the sitemap.
+[[redirects]]
+  from = "/status"
+  to   = "/status.html"
+  status = 200
+
 [[redirects]]
   from = "/privacy"
   to   = "/privacy.html"
@@ -189,6 +503,138 @@
   from = "/terms"
   to   = "/terms.html"
   status = 200
+# The two reading pages. They exist to answer the questions students
+# actually search for — what rent costs around KWASU, and what "near
+# campus" is worth — which no other page on the site was written for.
+[[redirects]]
+  from = "/rent-in-malete"
+  to   = "/rent-in-malete.html"
+  status = 200
+
+[[redirects]]
+  from = "/hostels-near-kwasu"
+  to   = "/hostels-near-kwasu.html"
+  status = 200
+
+
+# ---- one address per page -------------------------------------------
+# Netlify serves both /register and /register.html, and it also answers
+# /owner-list and /scout for the landlord and building pages — so the
+# landlord page alone had three live URLs. A canonical tag names the one
+# that counts, but the copies still compete for the same query and spend
+# crawl budget, and crawl budget is the whole game on a site Google has
+# not indexed yet. Every duplicate now answers a 301 to the address in
+# its own canonical tag and in sitemap.xml.
+#
+# force = true is required: /register.html is a real file in the deploy,
+# and without it Netlify serves the file and never applies the rule.
+#
+# NOT redirected, deliberately: /admin.html, /complete-listing.html and
+# /my-care.html (noindex and private — they already carry an
+# X-Robots-Tag header), and /404.html, which Netlify serves at every
+# missing path and which would loop if it redirected anywhere.
+
+[[redirects]]
+  from = "/index.html"
+  to   = "/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/register.html"
+  to   = "/register"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/browse.html"
+  to   = "/browse"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/owner-list.html"
+  to   = "/list"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/owner-list"
+  to   = "/list"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/scout.html"
+  to   = "/my-building"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/scout"
+  to   = "/my-building"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/listing.html"
+  to   = "/listing"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/roommates.html"
+  to   = "/roommates"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/safety.html"
+  to   = "/safety"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/care.html"
+  to   = "/care"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/care-pass.html"
+  to   = "/care-pass"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/privacy.html"
+  to   = "/privacy"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/terms.html"
+  to   = "/terms"
+  status = 301
+  force = true
+[[redirects]]
+  from = "/rent-in-malete.html"
+  to   = "/rent-in-malete"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/hostels-near-kwasu.html"
+  to   = "/hostels-near-kwasu"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/status.html"
+  to   = "/status"
+  status = 301
+  force = true
+
 
 # API routes → Netlify Functions
 [[redirects]]
@@ -207,6 +653,25 @@
 # The draft invite page is per-link, never for search engines.
 [[headers]]
   for = "/complete-listing.html"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
+# A student's Care balance and ledger: private, and never cached. A
+# cached copy would be readable by whoever shares the device next, and a
+# shared cache would hand one student's balance to another.
+[[headers]]
+  for = "/my-care.html"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+    Cache-Control = "no-store"
+
+# The status page: noindex in the file as well, because the header is the
+# copy a crawler is guaranteed to read and the meta tag is the one that
+# survives being scraped into something else. NOT no-store — unlike
+# /my-care there is nothing of anybody's on it until they act, so
+# caching it costs nothing and saves a round trip on the second visit.
+[[headers]]
+  for = "/status.html"
   [headers.values]
     X-Robots-Tag = "noindex, nofollow"
 
@@ -234,3 +699,28 @@
     X-Frame-Options = "SAMEORIGIN"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
+
+# The money core. Same rule as every other supabase-*.sql: `publish = "."`
+# makes every repo file a URL, and this file names the ledger's accounts,
+# the payment constraints and the referral uniqueness. Public reads of the
+# RLS design are how the whole point of it is lost.
+[[redirects]]
+  from = "/supabase-claims.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-finance.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+# The listings edit stamp: one column, one trigger, and the reason the
+# listings sitemap can report a truthful lastmod. Same rule as the rest —
+# it is schema design, not part of the website.
+[[redirects]]
+  from = "/supabase-listings-updated-at.sql"
+  to   = "/404.html"
+  status = 404
+  force = true

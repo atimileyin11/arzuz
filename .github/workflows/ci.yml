@@ -2,8 +2,10 @@
 # Arzuz — the test gate
 #
 # WHY THIS EXISTS
-#   Five suites guard this site — the roommate engine, Care credits,
-#   the admin dashboard, and two that execute the real SQL. Between
+#   The suites guard this site — the roommate engine, Care credits, the
+#   student's Care page, the admin dashboard, a replay of the live
+#   platform's own 401/403 answers, the live-Care verdicts, and two that
+#   execute the real SQL. Between
 #   them they hold the two things that fail silently in production —
 #   the RLS role model and the money arithmetic — and until now
 #   nothing ran them but a person remembering to. A suite nobody runs
@@ -21,12 +23,52 @@
 #   suite — were silently not run at all.
 #
 #   Plus one step that `npm test` cannot do: scripts/test-all.mjs runs
-#   the four suites that need a real browser or the deploy config —
+#   every suite that needs a real browser or the deploy config —
 #   every page in the repo at 1440 and 390 (reveals, assets, links),
-#   the homepage's motion and placement, the listing render, and the
-#   deploy guard that fails when a supabase-*.sql is added without its
-#   404. ubuntu-latest ships Chrome, and --skip-npm keeps the five Node
-#   suites from running twice.
+#   the homepage's motion and placement, the listing render (including
+#   the fault modes that lose a script, two at once, the harness's own
+#   preflight, or the stylesheet on purpose — each requiring its own
+#   recovery or detection), and the deploy guard that fails when a
+#   supabase-*.sql is added without its 404. ubuntu-latest ships Chrome,
+#   and --skip-npm keeps the Node suites from running twice.
+#
+#   That step also writes what every suite cost as a JSON report and hands
+#   it the PREVIOUS run's report (restored from the cache), so a suite that
+#   got slower across commits says so in the log. Each runner starts from an
+#   empty checkout, so the cached report is the memory the runner itself
+#   cannot have here; the report is uploaded as an artifact too, because the
+#   numbers beside a failure are usually why it failed.
+#
+#   The runner's own BASELINE is cached beside that report, and on purpose.
+#   The report is what one run cost; the baseline is the history a run is
+#   judged against — the wall clock this gate normally costs, and how many
+#   runs in a row have been slower than that. A slowdown streak is a fact
+#   about runs, so it cannot live inside one of them: without the baseline a
+#   runner starts from nothing every time, the same slow PR is always its
+#   first slow run, and the escalation that exists for exactly that PR can
+#   never fire here. Restoring and saving that file is what makes three slow
+#   runs in a row fail in CI the way they fail before a push.
+#
+#   A cached file is shared, and the streak is deliberately shared with it.
+#   The slowdown this check exists to catch is the RUNNER getting slower, and
+#   that shows up on whichever branch happens to run third — so the count
+#   carries on across refs instead of restarting on every new branch (counting
+#   it per branch would make every branch's first run the first slow run, for
+#   ever, and the one regression that slows every run would never escalate).
+#   Each run labels itself with --gate-ref so the line that reports a streak
+#   can say whether it was one branch three times — somebody's regression — or
+#   three branches once, which is the machine. The cache is therefore restored
+#   by prefix from ANY ref (see the restore-keys below): the most recent entry
+#   is the most recent history of the machine, whoever ran it.
+#
+#   And the gate can be satisfied again, or it is just a wall. A manual run
+#   with `accept_slow_gate` checked takes this run's cost as the reference for
+#   the run that dispatched it; setting the repository variable
+#   ARZUZ_ACCEPT_SLOW_GATE=true (Settings → Secrets and variables → Actions →
+#   Variables) says the same thing for every ref at once, which is the one to
+#   reach for when the runner fleet itself changed speed and every branch is
+#   suddenly slower. Nothing about this writes to production; it is a file in
+#   a cache.
 #
 #   The suites are not a build step. The site ships as plain files
 #   with no bundler (see netlify.toml, which publishes the folder as
@@ -52,8 +94,8 @@
 # WHAT IS STILL UNPROVEN HERE
 #   Two runs of this workflow are not the same kind of thing. The npm
 #   step is verified: it passes locally, from a clean install, in about
-#   a minute. The browser step is not — the nine suites pass locally in
-#   about six minutes, but they render real pages, so they need Chrome
+#   a minute. The browser step is not — the browser and deploy-guard suites
+#   pass locally in about six minutes, but they render real pages, so they need Chrome
 #   on the image, and that has only been reasoned about, never run. The
 #   first push is what settles it. If that step is the only red X, look
 #   there before looking at the code.
@@ -65,6 +107,11 @@ on:
   push:
   pull_request:
   workflow_dispatch: # so it can be re-run from the Actions tab
+    inputs:
+      accept_slow_gate:
+        description: 'Accept this run as the gate reference (clears a slowdown streak)'
+        type: boolean
+        default: false
 
 # The job only reads the repository.
 permissions:
@@ -107,9 +154,70 @@ jobs:
       - name: Run every suite
         run: npm test
 
+      # The previous run's timings AND its baseline, because they are two
+      # different memories: the report is what one run cost (compared against
+      # the run before it), the baseline is what this gate normally costs and
+      # how many runs in a row have been past that — which is the only way the
+      # escalation can happen here. Both files are one cache entry, so the run
+      # that wrote them hands both to the next one. The key is unique per run so
+      # the cache is always written; the restore key is deliberately NOT per ref.
+      # It picks the most recent entry from any branch, which is what makes one
+      # shared streak out of every branch's runs — a branch's own older entry was
+      # the newest match before, and restoring it would have hidden another
+      # branch's two slow runs behind this branch's one.
+      - name: Fetch the previous run's timings and baseline
+        uses: actions/cache@v4
+        with:
+          path: |
+            .test-timings-ci.json
+            .test-timings-ci-baseline.json
+          key: arzuz-timings-${{ github.ref }}-${{ github.run_id }}
+          restore-keys: |
+            arzuz-timings-
+
       # The browser suites: a page that stops revealing, a stylesheet or
-      # font that 404s, an internal link whose route was renamed, or a new
-      # .sql file that would be served as plain text. Each suite starts its
-      # own dev server on 8123 and exits non-zero on any failure.
+      # font that 404s, an internal link whose route was renamed, a listing
+      # page whose script request is lost on purpose (three ways: one script,
+      # two at once, or the harness's own preflight), a listing page whose
+      # stylesheet is lost so the harness has to notice, or a new .sql file
+      # that would be served as plain text. Each suite starts its own dev
+      # server on 8123 and exits non-zero on any failure.
       - name: Run the browser and deploy-guard suites
-        run: node scripts/test-all.mjs --quiet --skip-npm
+        env:
+          # The escape from a gate that has decided the runner itself got
+          # slower. Checked on a manual run, or a repository variable for the
+          # case where every ref is suddenly slower (see the header).
+          ACCEPT_SLOW_GATE: ${{ github.event.inputs.accept_slow_gate || vars.ARZUZ_ACCEPT_SLOW_GATE }}
+          # Handed over as an environment variable and quoted below, not
+          # interpolated into the script: a ref is text a branch author
+          # chooses, and this is a shell.
+          GATE_REF: ${{ github.ref }}
+        run: |
+          ACCEPT=""
+          if [ "$ACCEPT_SLOW_GATE" = "true" ]; then ACCEPT="--accept-slow-gate"; fi
+          if [ -f .test-timings-ci.json ]; then cp .test-timings-ci.json .test-timings-prev.json; fi
+          node scripts/test-all.mjs --quiet --skip-npm \
+            --baseline=.test-timings-ci-baseline.json \
+            --gate-ref="$GATE_REF" \
+            --timing-report=.test-timings-ci.json \
+            --timing-compare=.test-timings-prev.json \
+            $ACCEPT
+
+      # Even when a suite failed: the timings beside a failure are usually
+      # why it failed, and they are what the next run compares against. The
+      # baseline comes too — the streak it carries is the other number worth
+      # reading next to a red gate. And the report itself now explains the run:
+      # the blamed suites, what each is past its own baseline by, which refs a
+      # streak was seen on and the line the log printed, so whoever picks the
+      # artifact up to fix a red gate does not have to have been watching the
+      # log at the time.
+      - name: Keep this run's timings and baseline
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: suite-timings
+          path: |
+            .test-timings-ci.json
+            .test-timings-ci-baseline.json
+          if-no-files-found: warn
+          retention-days: 30

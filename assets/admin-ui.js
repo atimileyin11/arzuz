@@ -43,6 +43,8 @@
     headset: '<path d="M4 13a8 8 0 0 1 16 0"/><rect x="2" y="13" width="4" height="7" rx="2"/><rect x="18" y="13" width="4" height="7" rx="2"/><path d="M20 17a4 4 0 0 1-4 4h-3"/>',
     users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8"/><path d="M18 14.3c2.1.7 3.5 2.4 3.5 5.7"/>',
     trending: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+    /* money: a coin with the naira's two strokes through it */
+    coin: '<circle cx="12" cy="12" r="9"/><path d="M8 8.5l4 7 4-7"/><path d="M8 11.5h8"/><path d="M8 14h8"/>',
     book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
     gear: '<circle cx="12" cy="12" r="3.2"/><path d="M12 2v3"/><path d="M12 19v3"/><path d="M4.9 4.9l2.1 2.1"/><path d="M17 17l2.1 2.1"/><path d="M2 12h3"/><path d="M19 12h3"/><path d="M4.9 19.1 7 17"/><path d="M17 7l2.1-2.1"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>',

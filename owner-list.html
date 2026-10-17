@@ -23,21 +23,78 @@
   <meta name="twitter:description" content="List your student property on Arzuz. Now open in Malete, with more locations coming soon.">
   <meta name="twitter:image" content="https://arzuz.com/assets/social/og-image.png">
   <meta name="twitter:image:alt" content="Arzuz — verified student hostels, zero agent fees">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "List Your Property — Arzuz Student Housing",
+  "description": "List a student property on Arzuz for free. Reach students who already know their budget, starting in Malete near KWASU, Kwara State.",
+  "url": "https://arzuz.com/list",
+  "inLanguage": "en-NG",
+  "isPartOf": { "@type": "WebSite", "name": "Arzuz", "url": "https://arzuz.com" }
+}
+</script>
 <link rel="stylesheet" href="assets/arzuz.css">
 <link rel="stylesheet" href="assets/share.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body>
-<div class="wrap pad"><div id="form"></div></div>
+<!--
+  The introduction below is the page a crawler reads. Without it this
+  document arrived as one empty <div>, because every visible word of
+  /list is drawn by assets/app.js after ArzuzData resolves against
+  Supabase — and a page with no text and no heading is a page Google
+  will not index. Arzuz.form() overwrites #form on its first draw, so
+  nobody with JavaScript ever sees this.
+-->
+<div class="wrap pad">
+  <!-- The h1 sits outside #form on purpose: the form engine overwrites
+       #form on its first draw and its step question is an <h2>, so a
+       heading inside the intro leaves the rendered page with no h1. -->
+  <h1 class="page-h1">List your student property on Arzuz</h1>
+  <div id="form"><div class="intro">
+  <p>Listing on Arzuz is free and it stays free. You are not paying an agent's cut out of the
+rent you charge: we put your vacant rooms in front of students who have already told us what
+they can pay, and they contact you through us.</p>
+  <p>Registering a property takes about ten minutes. Have the rent you are charging this session
+to hand, and stand at the gate when you drop the pin — the walking distance we show students is
+measured from that pin, not estimated, and a measured number is what they trust.</p>
+  <h2>What we ask you for</h2>
+  <ul>
+    <li>The property — type, street or area, and how many rooms are genuinely vacant right now.</li>
+    <li>A pin at the gate, so we can work out the real walk to campus.</li>
+    <li>How someone finds the entrance: the landmark, the gate, the stairs.</li>
+    <li>The rent per session, and who runs the compound day to day.</li>
+    <li>What the property has — water, power, security and the rest. We check these when we verify.</li>
+    <li>Photos, taken from outside the building. Listings with a photo get three times the enquiries.</li>
+    <li>Your WhatsApp number, which stays hidden until a student contacts you.</li>
+  </ul>
+  <h2>What listing gets you</h2>
+  <ul>
+    <li>Students who already know their budget, calling about a room that exists.</li>
+    <li>A free verification visit, about 30 minutes. Inspected properties get significantly more
+enquiries.</li>
+    <li>Everything you tell us is reviewed within 24 hours, and we message you on WhatsApp.</li>
+  </ul>
+  <h2>Keep looking</h2>
+  <ul class="ilinks">
+    <li><a href="/browse">Browse verified rooms</a></li>
+    <li><a href="/register">Find a room</a></li>
+    <li><a href="/my-building">Register your building</a></li>
+    <li><a href="/care">Arzuz Care</a></li>
+    <li><a href="/safety">Your safety</a></li>
+  </ul>
+</div></div></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="assets/config.js"></script>
+<script src="assets/api-errors.js?v=1"></script>
 <script src="assets/data.js"></script>
 <script src="assets/attribution.js"></script>
 <script src="assets/notify.js"></script>
-<script src="assets/submit.js?v=3"></script>
+<script src="assets/submit.js?v=4"></script>
 <script src="assets/share.js"></script>
 <script src="assets/whatsapp.js"></script>
-<script src="assets/arzuz-map.js?v=3"></script>
+<script src="assets/arzuz-map.js?v=4"></script>
 <script src="assets/app.js"></script>
 <script src="assets/motion.js"></script>
 <script>
@@ -46,7 +103,7 @@ Arzuz.chrome('owner');
 ArzuzData.ready.then(function(){
 Arzuz.form({
   table:'listings',
-  backHref:'index.html', backLabel:'\u2190 Back to home',
+  backHref:'/', backLabel:'\u2190 Back to home',
   steps:[
    {k:'p', h:"About the property",
     hint:"Give us a name for the property if it has one \u2014 helps students recognise it. Everything else is required.",
@@ -73,8 +130,11 @@ Arzuz.form({
     opt:true,
     f:[["photo","Property photo","photo"]]},
    {k:'ow', h:"Your details",
-    hint:"Students reach you on this number. It stays hidden until someone contacts you.",
-    f:[["nm","Your first name","text"],["last","Your last name","text"],["ph","WhatsApp number","tel"]]},
+    hint:"Students reach you on this number. It stays hidden until someone contacts you. An email is optional \u2014 if you give us one it is the second way we reach you, and it is how you can open your status page with a code if you ever change your number.",
+    /* `{opt:true}` is what makes the email optional: the form engine
+       treats a field with no fourth element as required. */
+    f:[["nm","Your first name","text"],["last","Your last name","text"],["ph","WhatsApp number","tel"],
+       ["email","Email","email",{opt:true}]]},
    {k:'vf', h:"Can we come and verify it?",
     hint:"Free, about 30 minutes. Inspected properties get significantly more enquiries.",
     o:["Yes, come and check it","Not right now"]}
@@ -99,7 +159,7 @@ Arzuz.form({
      body: 'Send them this \u2014 listing is free, and the students come to them.',
      text: 'Arzuz lists student rooms near KWASU straight to verified students \u2014 free to list, no agent cut:'
    }) +
-   '<div class="nav"><a class="next" href="index.html">Done</a></div></div>'
+   '<div class="nav"><a class="next" href="/">Done</a></div></div>'
 });
 });
 

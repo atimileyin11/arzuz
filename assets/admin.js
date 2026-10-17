@@ -34,6 +34,8 @@
     data: { demand_records: [], listings: [], scout_submissions: [], booking_requests: [], support_tickets: [] },
     minors: [],                      // rows of minors_needing_guardian view
     roommateSummary: null,           // row of roommate_match_summary view
+    roommatePool: { engine: null, profiles: [], pairs: [], trail: [] },   // questionnaire tables + views
+    dossier: null,   // what the dossier modal is showing, for the export
     roommateFor: null,               // demand id whose candidates are open
     pendingDelete: null,
     detail: null,
@@ -41,7 +43,12 @@
     statusFilter: 'all',
     needsAskOnly: false,
     showTestRows: false,
-    shareSchemaMissing: false   // true when supabase-draft-sharing.sql has not been run yet
+    shareSchemaMissing: false,  // true when supabase-draft-sharing.sql has not been run yet
+    /* The open-a-plan drawer: null when it is shut, an object of what
+       has been typed while it is open, and { done: <the grant's own
+       answer> } once the server has opened the plan and handed back
+       the student's private link. */
+    careGrant: null
   };
 
   function esc(str) {
@@ -58,6 +65,11 @@
   function apiRoot() { return (cfg.SUPABASE_URL || '').replace(/\/+$/, ''); }
   function show(el) {
     if (!el) return;
+    /* every open gets a token. A dismiss can already be scheduled when a
+       surface is reopened (the swipe's slide-away runs on a timer), and a
+       stale close must never land on the fresh one — see slideAway() in
+       2d/2e, the same idea as ArzuzUI's __closeToken. */
+    el.__openToken = (el.__openToken || 0) + 1;
     el.classList.add('open');
     if (window.ArzuzUI) {
       ArzuzUI.popIn(el.querySelector('.modal-box, .gate-card, .lb-frame') || el);
@@ -86,6 +98,53 @@
 
   function str(v) { return (v === null || v === undefined) ? '' : String(v); }
 
+  /* ---------------- failures ----------------
+
+     Every failed request in this dashboard makes its Error through
+     apiErr(), which carries the wire facts (status, PostgREST code) AND
+     a sentence in words: `message` is what a person reads, `detail` is
+     what the console prints. Before this, twenty-odd call sites each
+     composed "HTTP 500" by hand, so the dashboard could not tell a table
+     that was never created from a rate limit from a missing permission —
+     and neither could the person reading it. */
+  function E(){ return (typeof ArzuzApiErrors !== 'undefined') ? ArzuzApiErrors : null; }
+
+  /* `body` may be a parsed {code, message} payload or an already-read
+     sentence. A sentence the server sent is always preferred — it is the
+     answer to what was asked — and a class sentence is only the fallback
+     for a failure that arrived with no words of its own. */
+  function apiErr(res, body, extra){
+    var status = (res && res.status) || 0;
+    /* An already-read sentence arrives as a string; JSON arrives as one
+       too, from the callers that kept the raw text. Both are normalised
+       here so the classifier below reads a payload either way. */
+    var b = body;
+    if (typeof b === 'string') {
+      try { b = b ? JSON.parse(b) : null; } catch (e) { b = { error: b.slice(0, 200) }; }
+    }
+    var code = (b && typeof b === 'object' && b.code) || null;
+    var platform = (b && typeof b === 'object') ? (b.message || b.error || '') : '';
+    var W = E();
+    /* `session: true` because every request in this dashboard carries one:
+       a 401 here is a stale token (sign in again), and a 403 is a grant
+       that is missing — the two readings the file's own comment draws.
+       The CLASS comes from the function's own answer where it named one,
+       so the panel branches on exactly what the function meant instead
+       of on the number: a 503 that says "SUPABASE_SERVICE_ROLE_KEY is
+       missing" is a deploy to finish, not a minute to wait out. */
+    var err = W ? W.failed({ status: status }, b, { audience: 'operator', session: true })
+      : new Error(platform || 'Arzuz could not do that just now — that is our side, not yours. Try again in a minute.');
+    err.status = status;
+    if (code) err.code = code;
+    if (platform) err.platform = platform;
+    /* The wire facts for the console. The platform's own words are kept
+       even when the classifier module is absent, so a console line never
+       degrades to a bare number. */
+    err.detail = W ? err.detail : (String(status) + (platform ? ' ' + platform : ''));
+    if (extra) Object.assign(err, extra);
+    return err;
+  }
+
   /* First truthy value among a row column and its legacy payload keys. */
   function pick(row, col, payloadKeys) {
     if (row && row[col] !== undefined && row[col] !== null && row[col] !== '') return row[col];
@@ -96,11 +155,11 @@
     return '';
   }
 
-  function waLink(phone) {
+  function waLink(phone, text) {
     var digits = str(phone).replace(/[^0-9]/g, '');
     if (!digits) return '';
     if (digits.charAt(0) === '0') digits = '234' + digits.slice(1);
-    return 'https://wa.me/' + digits;
+    return 'https://wa.me/' + digits + (text ? '?text=' + encodeURIComponent(text) : '');
   }
 
   function isTestRow(row) { return str(row.env) === 'test'; }
@@ -163,6 +222,381 @@
     var s = str(status || 'pending').toLowerCase();
     return '<span class="tag-status tag-' + esc(s) + '">' + esc(s) + '</span>';
   }
+
+  /* ---- is this listing actually on the browse page, and if not, why? ----
+
+     browse.html reads public_listings, which is
+
+         where status = 'active' and tier >= 1 and env = 'production'
+
+     Three ANDed conditions. The dashboard showed none of them, so a
+     listing could look perfectly healthy here — added by hand, saved
+     with a green toast — and be invisible to every student on the
+     public page, with nothing anywhere on screen to say why. Approving
+     a submitted listing by setting its status to active left the tier
+     at 0, which is exactly that trap. This is the screen saying why. */
+  function boardState(r) {
+    var status = str(r && r.status).toLowerCase();
+    var tier = Number(r && r.tier);
+    if (!isFinite(tier)) tier = 0;
+    /* env is NULLABLE, and the view asks for 'production' — so a row
+       with no env at all is hidden, which is exactly the kind of row
+       that looks healthy in this table. Empty is not production. */
+    var env = str(r && r.env).toLowerCase();
+    if (status !== 'active') return { live: false, why: 'its status is ' + (status || 'empty') };
+    if (tier < 1) return { live: false, why: 'it is tier 0 — not verified yet' };
+    if (env !== 'production') {
+      return { live: false, why: env
+        ? 'its env is ' + env + ' and the public board only reads production'
+        : 'its env is empty, and the public board only reads production' };
+    }
+    return { live: true, why: '' };
+  }
+
+  function boardBadgeHtml(r) {
+    var b = boardState(r);
+    if (b.live) {
+      return '<span class="board-badge live" title="Students can see this on /browse">' + ico('eye', 11) + ' live</span>';
+    }
+    return '<span class="board-badge hidden" title="Not on the browse page — ' + esc(b.why) + '">' +
+      ico('alert', 11) + ' hidden</span>';
+  }
+
+  /* ================= how often the engines come back, and why =================
+
+     A room's <changefreq> and <priority> are not set by hand. They come off
+     ONE score, built from how much of the page there is and how recently it
+     moved — and that score lives in assets/listing-score.js so this dashboard
+     and the listings sitemap that publishes them cannot disagree about the
+     same room (see netlify/functions/listings-sitemap.js).
+
+     WHY THE DASHBOARD SHOWS IT. Without it, an owner whose room is checked
+     yearly has no way to see that the reason is a missing photo and a rent
+     nobody has corrected since last session — the only visible "why" was
+     the order rooms appeared in. The Crawl cell answers it in one badge, the
+     details modal spells it out, and "what to fill in" is the scorer's own
+     list of missing signals, which is the same six facts the sitemap sizes a
+     room with. Fix one of them and the badge moves on the next refresh.
+
+     ONLY THE BASE TABLE CAN BE SCORED. The PII-scrubbed growth_listing_feed
+     (section 3) carries no photo, no pin and no edit stamp, so scoring a row
+     from it would report a half-filled page for a room that is complete.
+     A role that reads the feed therefore sees no score rather than a wrong
+     one. */
+  var CRAWL_WORDS = {
+    daily: 'checked daily',
+    weekly: 'checked weekly',
+    monthly: 'checked monthly',
+    yearly: 'checked yearly \u2014 the engines rarely come back'
+  };
+
+  function crawlHintOf(r) {
+    var S = window.ArzuzListingScore;
+    if (!S || !r || currentRole() !== 'admin') return null;
+    var hint = S.signals(r, Date.now());
+    var missing = S.missing(r);
+    return {
+      hint: hint,
+      missing: missing,
+      has: S.SIGNALS.length - missing.length,
+      total: S.SIGNALS.length,
+      lastEdit: S.stampOf(r)
+    };
+  }
+
+  /* One badge, with the whole answer in its title — the table is already
+     wider than its pane, so the cell stays short and the detail lives on
+     hover and in the modal. */
+  function crawlBadgeHtml(r) {
+    var c = crawlHintOf(r);
+    if (!c) return '<span class="muted-cell">\u2014</span>';
+    var title = CRAWL_WORDS[c.hint.changefreq] + ' \u00b7 ' + c.has + ' of ' + c.total +
+      ' facts' + (c.missing.length ? ' \u00b7 missing ' + c.missing.join(', ') : ' \u00b7 nothing missing');
+    var band = c.hint.changefreq === 'daily' ? 'daily'
+      : c.hint.changefreq === 'weekly' ? 'weekly' : 'rare';
+    return '<span class="crawl-badge ' + band + '" title="' + esc(title) + '">' +
+      ico('search', 11) + ' ' + esc(c.hint.changefreq) + ' \u00b7 ' + c.has + '/' + c.total + '</span>';
+  }
+
+  function boardNoteText(status, tier, env) {
+    var b = boardState({ status: status, tier: tier, env: env });
+    if (b.live) return 'Students can see this on the browse page now.';
+    return 'Not on the browse page yet — ' + b.why +
+      '. It goes live when the status is ACTIVE, the verification tier is 1 or 2, and the environment is production.';
+  }
+
+  /* The note under the tier select, in both the Add and the Edit modal,
+     so the answer is on screen BEFORE the save, not after the silence.
+
+     The ids are spelled out rather than concatenated: the selects are
+     add_status / edit_status, and `ctx + 'status'` silently produced
+     'addstatus' — an empty element, so the note described a status
+     nobody had chosen. */
+  var BOARD_NOTE = {
+    add:  { note: 'addBoardNote',  status: 'add_status',  tier: 'add_tier' },
+    edit: { note: 'editBoardNote', status: 'edit_status', tier: 'edit_tier' }
+  };
+
+  function syncBoardNote(ctx, env) {
+    var ids = BOARD_NOTE[ctx];
+    if (!ids) return;
+    var el = $(ids.note);
+    if (!el) return;
+    var st = $(ids.status), tr = $(ids.tier);
+    if (!st || !tr) return;
+    var b = boardState({ status: st.value, tier: tr.value, env: env });
+    el.className = 'fld-note ' + (b.live ? 'is-live' : 'is-hidden');
+    el.textContent = boardNoteText(st.value, tr.value, env);
+  }
+
+  /* The ONE write that puts a hidden row on the board: status active, a
+     real tier, production. Offered as a single row action because
+     "approve it" used to mean editing three fields in the right order
+     and getting one of them wrong was silent. Never offered for a
+     draft: publishing a draft is a deliberate two-step (the invite link
+     dies the moment the status leaves 'draft'). */
+  function publishToListingBoard(id) {
+    var row = findRow('listings', id);
+    if (!row) return;
+    var patch = { status: 'active', tier: Math.max(1, Number(row.tier) || 0), env: 'production' };
+    ArzuzAuth.headers().then(function (h) {
+      h['Prefer'] = 'return=representation';
+      return fetch(apiRoot() + '/rest/v1/listings?id=eq.' + id, { method: 'PATCH', headers: h, body: JSON.stringify(patch) });
+    })
+      .then(function (r) {
+        if (r.status === 401 || r.status === 403) { onAuthError(new Error('Publish rejected')); throw new Error('Your session has expired.'); }
+        if (!r.ok) throw apiErr(r);
+        return r.json();
+      })
+      .then(function (updated) {
+        if (updated && updated[0]) Object.assign(row, updated[0]);
+        else Object.assign(row, patch);
+        renderRoute();
+        if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('Published — this listing is on the browse page now.', 'success');
+      })
+      .catch(function (err) { alert('Could not publish it: ' + err.message); });
+  }
+  /* exposed the way openEditModal is, so dev/admin-boot-test.js can drive
+     the one write that puts a hidden listing on the public board */
+  window.publishToListingBoard = publishToListingBoard;
+
+  /* THE OFFICER'S WRITE IS A FUNCTION, NOT A PATCH.
+
+     supabase-verification-rpc.sql withdrew the row-wide UPDATE policy
+     this table used to carry for the verification role, so an officer's
+     PATCH of /rest/v1/listings now matches zero rows and changes
+     nothing. What it may write is public.listing_verify(), which moves
+     status, tier, verified_at and verified_by — the four columns that
+     ARE the decision — and refuses everything else by construction.
+
+     The price is the reason. Approving a listing used to mean holding an
+     UPDATE on the row, so the officer who went to look at a room could
+     also change what it costs; the write was recorded, which made it
+     survivable, not correct (LAUNCH-READINESS.md risk 2).
+
+     Note what this does NOT do: env is not one of the four, so approving
+     a listing that is not a production row leaves it off the board. That
+     is the admin's Publish, deliberately — an officer's decision is the
+     verification record, not the deployment. */
+  function verifyListingRow(id) {
+    var row = findRow('listings', id);
+    var tier = Math.max(1, Number(row && row.tier) || 0);
+    ArzuzAuth.headers().then(function (h) {
+      return fetch(apiRoot() + '/rest/v1/rpc/listing_verify', {
+        method: 'POST', headers: h,
+        body: JSON.stringify({ p_id: id, p_status: 'active', p_tier: tier })
+      });
+    })
+      .then(function (r) {
+        if (r.status === 401 || r.status === 403) {
+          onAuthError(new Error('Approve rejected'));
+          throw new Error('Your session has expired, or this login may not verify a listing.');
+        }
+        if (!r.ok) throw apiErr(r);
+        return r.json();
+      })
+      .then(function (out) {
+        if (row) Object.assign(row, (out && out.id) ? out : { status: 'active', tier: tier });
+        renderRoute();
+        if (ArzuzSubmit && ArzuzSubmit.showToast) {
+          ArzuzSubmit.showToast('Approved — status and tier are set, and who verified it is on the record.', 'success');
+        }
+      })
+      .catch(function (err) { alert('Could not approve it: ' + err.message); });
+  }
+  /* exposed the way publishToListingBoard is, so the boot suite can drive
+     the officer's one write instead of only its button */
+  window.verifyListingRow = verifyListingRow;
+
+  /* ============================================================
+     THE VERIFICATION SHIFT  — LAUNCH-READINESS.md §8.2, stage 2
+
+     Approving a listing was always the easy half. The hard half is that
+     a listing live at tier 0 is owed a VISIT, and nothing said so: at
+     twenty-five listings a week that lives in somebody's head, and at
+     seventy-five the room goes live unvisited, the deadline passes on a
+     Tuesday nobody noticed, and the first person to find out is the
+     student standing in the room.
+
+     So the shift is a panel above the listings table: every live tier-0
+     listing, late ones first, with who holds it and how long it has
+     waited. TAKE puts this login's account on it and starts its 48 hours;
+     RELEASE gives it back; Approve is the same call the table's own
+     button makes.
+
+     Both new writes are FUNCTIONS, not PATCHes, for exactly the reason
+     the approve above is: the verification role holds no row-wide UPDATE
+     on listings (supabase-verification-rpc.sql), so `assigned_to` is not
+     the officer's to write — public.listing_take() / listing_release()
+     move it, and taken_at with it, and nothing else. A price is not a
+     thing an officer's claim can change.
+
+     This panel decides nothing about what is LATE. The deadlines and the
+     ordering are assets/verification-queue.js, which the hourly chaser
+     loads too, so the page and the message cannot disagree about whether
+     a listing is overdue. */
+  function verifyQueueCard() { return document.getElementById('verifyQueueCard'); }
+
+  function queueRowHtml(r) {
+    var aging = r.aging;
+    var late = !!(aging && aging.overdue);
+    var held = !!(aging && aging.stage === 'visit');
+    return '<div class="verify-row' + (late ? ' late' : '') + '">' +
+      '<div class="verify-head">' +
+      '<b>' + esc(r.ref || shortId(r.id)) + '</b>' +
+      '<span class="verify-area">' + esc(r.area || 'area unknown') + '</span>' +
+      '</div>' +
+      '<div class="verify-age">' + esc(ArzuzVerify.label(aging)) +
+      (late && aging.who === 'officer' ? ' — our officer has not been back' : '') +
+      (Number(r.scout_reports) > 0 ? ' · ' + esc(String(r.scout_reports)) + ' scout report(s) on file' : '') +
+      '</div>' +
+      '<div class="cell-actions">' +
+      (held
+        ? '<button type="button" class="act-btn" data-act="vrelease" data-table="listings" data-id="' + esc(r.id) + '">' + ico('refresh', 13) + ' Release</button>'
+        : '<button type="button" class="act-btn" data-act="vtake" data-table="listings" data-id="' + esc(r.id) + '">' + ico('check', 13) + ' Take</button>') +
+      '<button type="button" class="act-btn act-approve" data-act="verify" data-table="listings" data-id="' + esc(r.id) + '">' + ico('check', 13) + ' Approve</button>' +
+      '</div></div>';
+  }
+
+  function renderVerifyQueue() {
+    var card = verifyQueueCard();
+    if (!card) return;
+    /* Only the two logins the RPC admits. Drawing the panel for anyone
+       else would be a control that teaches the dashboard lies — the same
+       rule the listings stage selector follows. */
+    var role = currentRole();
+    if (role !== 'verification' && role !== 'admin') { card.style.display = 'none'; return; }
+    card.style.display = '';
+
+    var body = document.getElementById('verifyQueueBody');
+    var counts = document.getElementById('verifyQueueCounts');
+    if (!body) return;
+    if (typeof ArzuzVerify === 'undefined') {
+      body.innerHTML = '<div class="verify-empty">The queue clock did not load, so this panel cannot say what is late.</div>';
+      return;
+    }
+    body.innerHTML = '<div class="verify-empty">Reading the queue…</div>';
+
+    ArzuzAuth.headers().then(function (h) {
+      return fetch(apiRoot() + '/rest/v1/rpc/verification_queue', {
+        method: 'POST', headers: h, body: '{}'
+      });
+    })
+      .then(function (r) {
+        /* A login outside the shift is not an error worth a red panel:
+           the function refuses it by design, and this panel is then not
+           that login's business. */
+        if (r.status === 401 || r.status === 403) return [];
+        if (!r.ok) throw apiErr(r);
+        return r.json();
+      })
+      .then(function (rows) {
+        var list = toList(rows);
+        if (!list.length) {
+          if (counts) counts.textContent = 'nothing owed a visit';
+          body.innerHTML = '<div class="verify-empty">Every live listing on this board has been visited and decided. ' +
+            'A new one appears here the moment it goes live at tier 0.</div>';
+          return;
+        }
+        var queue = ArzuzVerify.queueOf(list);
+        if (counts) {
+          counts.textContent = queue.total + ' owed a visit' +
+            (queue.late
+              ? ' · ' + queue.late + ' late (' + queue.owed_by_us + ' nobody has taken, ' +
+                queue.owed_by_officers + ' held by us)'
+              : ' · none late');
+        }
+        body.innerHTML = queue.rows.map(queueRowHtml).join('');
+      })
+      .catch(function (err) {
+        body.innerHTML = '<div class="verify-empty">The queue could not be read: ' + esc(err.message || err) + '</div>';
+      });
+  }
+
+  /* TAKE AND RELEASE, through the two column-scoped functions. */
+  function verifyQueueWrite(method, id) {
+    var payload = method === 'listing_take'
+      ? { p_id: id }
+      : { p_id: id, p_note: 'released from the dashboard' };
+    ArzuzAuth.headers().then(function (h) {
+      return fetch(apiRoot() + '/rest/v1/rpc/' + method, {
+        method: 'POST', headers: h, body: JSON.stringify(payload)
+      });
+    })
+      .then(function (r) {
+        if (r.ok) return r.json();
+        /* A REFUSAL IS NOT A FAULT, and the difference is the whole point of
+           what these two functions raise. Their sentences are written FOR the
+           officer — "that listing has already been decided", "<name> already
+           has that listing. Ask them to release it", "that listing is not
+           held by anybody" — and the classifier answers a 400 with "that is
+           our side, not yours", which is false (nothing is broken) and
+           useless (there is nobody to message). So the function's own words
+           win, with the RPC's name stripped.
+
+           The discriminator is the PREFIX of the message, not the SQLSTATE.
+           The raises carry 22023 and 42501, not P0001, and 42501 is also what
+           Postgres answers for a missing grant — so a code test would either
+           miss the refusals or swallow a real permission problem. A message
+           that starts with `listing_take:` / `listing_release:` can only be
+           one of these raises; "permission denied for function listing_take"
+           does not start that way and keeps the classifier's answer.
+
+           It also has to be checked BEFORE the 401/403 branch, because
+           PostgREST answers a 42501 with 403 — and a 403 here would otherwise
+           be read as a dead session, signing out an officer for the crime of
+           pressing Release on somebody else's listing. */
+        return r.text().then(function (txt) {
+          var err = apiErr(r, txt);
+          var own = String(err.platform || '').match(/^listing_(?:take|release): (.+)$/);
+          if (own) {
+            err.message = own[1];
+            err.refusal = true;
+            throw err;
+          }
+          if (r.status === 401 || r.status === 403) {
+            onAuthError(new Error(method));
+            throw new Error('Your session has expired, or this login may not work the queue.');
+          }
+          throw err;
+        });
+      })
+      .then(function () {
+        renderVerifyQueue();
+        if (ArzuzSubmit && ArzuzSubmit.showToast) {
+          ArzuzSubmit.showToast(method === 'listing_take'
+            ? 'Taken — the listing is on your name, and the visit is owed within ' +
+              ArzuzVerify.POLICY.visit_hours + 'h.'
+            : 'Released — it is back in the queue for anybody to take.', 'success');
+        }
+      })
+      .catch(function (err) { alert('Could not ' + (method === 'listing_take' ? 'take' : 'release') + ' it: ' + err.message); });
+  }
+
+  /* exposed for dev/admin-boot-test.js, which drives the shift the way it
+     drives the officer's approve */
+  window.renderVerifyQueue = renderVerifyQueue;
+  window.verifyQueueWrite = verifyQueueWrite;
 
   function amenitiesTags(list, max) {
     var arr = toList(list);
@@ -227,7 +661,7 @@
   function onAuthError(err) {
     ArzuzAuth.clear();
     showGate('Your session has expired. Please sign in again.');
-    if (window.console) console.warn('[Arzuz Admin]', err && err.message);
+    if (window.console) console.warn('[Arzuz Admin]', err && (err.detail || err.message));
   }
 
   function checkAuth() {
@@ -284,6 +718,9 @@
     bookings: { title: 'Booking Requests', icon: 'calendar', label: 'Bookings' },
     tickets: { title: 'Support Desk', icon: 'headset', label: 'Support Desk' },
     roommate: { title: 'Roommate Matching', icon: 'users', label: 'Roommates' },
+    care: { title: 'Arzuz Care', icon: 'tag', label: 'Arzuz Care' },
+    finance: { title: 'Finance — the books', icon: 'coin', label: 'Finance' },
+    claims: { title: 'Repair Claims — the queue', icon: 'shield', label: 'Repair Claims' },
     growth: { title: 'Growth', icon: 'trending', label: 'Growth' },
     strategy: { title: 'Strategy', icon: 'book', label: 'Strategy' },
     settings: { title: 'Settings', icon: 'gear', label: 'Settings' }
@@ -295,13 +732,36 @@
   /* Sections hidden per role. The marketing login is prioritised for
      marketing: it lands on Growth and never sees the data tables or
      settings. Admin (the default) sees everything. */
+  /* Sections hidden per role. This is a COURTESY, not the enforcement:
+     supabase-team-roles.sql decides what each login can reach, and a
+     hash typed into the address bar is gated a second time inside the
+     router below. Marketing and finance land on a smaller dashboard
+     because that is all their token can read, not because the others
+     are hidden from them. */
   var ROLE_SECTIONS = {
     admin: null, // no restrictions
-    marketing: ['overview', 'demand_records', 'listings', 'scout_submissions', 'bookings', 'tickets', 'roommate', 'settings'],
+    marketing: ['overview', 'demand_records', 'listings', 'scout_submissions', 'bookings', 'tickets', 'roommate', 'care', 'finance', 'claims', 'settings'],
     /* support lands on the Support Desk and works bookings + demands;
        listings are visible but read-only (actions hidden in the
-       renderers). No scouts, roommates, growth, strategy or settings. */
-    support: ['scout_submissions', 'roommate', 'growth', 'strategy', 'settings']
+       renderers). No scouts, roommates, growth, strategy or settings.
+
+       FINANCE LEFT THIS LIST when the books moved to their own role
+       (supabase-finance.sql section 4): the panel is hidden because the
+       rows are gone, and a nav item pointing at an empty panel is a
+       worse answer than no nav item. Care and Claims stay — recording a
+       call-out and answering "where is my repair" IS the desk's job. */
+    support: ['scout_submissions', 'roommate', 'growth', 'strategy', 'settings', 'finance'],
+
+    /* verification reads a demand and a scout report, and may approve a
+       listing — that IS the whole role. No bookings, no tickets, no
+       roommates, no money, and nothing in Settings: it does not manage
+       the team. */
+    verification: ['bookings', 'tickets', 'roommate', 'care', 'finance', 'claims', 'growth', 'strategy', 'settings'],
+
+    /* the money. Overview plus the books, and no waitlist table at all -
+       the policies give it zero rows on every one of them, so showing it
+       a demand list would be showing it an empty screen. */
+    finance: ['demand_records', 'listings', 'scout_submissions', 'bookings', 'tickets', 'roommate', 'care', 'claims', 'growth', 'strategy', 'settings']
   };
 
   function sectionsFor(role) {
@@ -380,7 +840,10 @@
 
     if (sec === 'overview') renderOverview();
     if (sec === 'roommate') renderRoommatePanel();
-    if (sec === 'tickets') renderSupportDesk();
+    if (sec === 'care') renderCarePanel();
+    if (sec === 'finance') renderFinancePanel();
+    if (sec === 'claims') renderClaimsPanel();
+    if (sec === 'tickets') { renderSupportDesk(); renderStatusHistory(); }
     if (sec === 'settings') renderTeamRoster();
     if (sec === 'growth' && window.ArzuzStrategy) {
       /* NOTE: scoped to .section-view — the sidebar nav buttons also carry
@@ -409,6 +872,11 @@
       var sf = $('statusFilter'); if (sf) { sf.value = 'all'; sf.dataset.for = ''; }
       var fa = $('filterAsk'); if (fa) fa.classList.remove('on');
       renderTable();
+      /* the shift is drawn beside the table it is about, from the queue
+         function rather than from the loaded rows: what this panel must
+         show is what the DATABASE considers owed a visit, and the rows a
+         page holds can be minutes old */
+      renderVerifyQueue();
     }
   }
 
@@ -421,7 +889,72 @@
     });
   });
 
-  /* ================= 2b. Sidebar: collapsible on desktop,
+  /* ================= 2b. Shared touch-drag engine =================
+
+     The drawer, the bottom sheets and the lightboxes are all thrown the
+     same way, and the physics used to be copied into each one:
+
+       · a slop gate that first decides which axis the finger means, so a
+         vertical scroll and a sideways swipe never fight over a gesture,
+       · a TICK-window velocity sample, so a stale sample cannot drag the
+         average towards a speed the finger is no longer doing,
+       · Apple's exponential momentum projection (WWDC 2018, "Designing
+         Fluid Interfaces"), so a flick keeps travelling after release,
+       · a click seal, so a throw that lands on a button cannot press it.
+
+     Those four live here once. A surface now supplies only its own
+     geometry (canStart / allow), its own paint (onDrag) and its own
+     release policy (onEnd) — see the drawer (2c), the sheets (2d) and
+     the lightboxes (2e). ES5, no deps. */
+
+  /* The physics itself now lives in assets/swipe-gesture.js, loaded
+     before this file by admin.html, so it can be driven by a Node
+     harness with synthetic pointer events (`npm run test:gesture`).
+     The four rules in it are the four that are invisible in a
+     screenshot and tedious to reproduce by hand: the slop gate, the
+     TICK-window velocity sample, pointer ownership, and the click seal.
+
+     The wrapper is what keeps the three call sites below unchanged —
+     `new SwipeGesture(opts)` returning an object is still `new`, and a
+     missing module degrades to a surface that simply does not drag,
+     with one warning, rather than a TypeError that would take the whole
+     dashboard's boot with it. */
+  var SwipeEngine = (typeof ArzuzSwipeGesture !== 'undefined') ? ArzuzSwipeGesture : null;
+  var warnedNoEngine = false;
+  function SwipeGesture(opts) {
+    if (!SwipeEngine) {
+      if (!warnedNoEngine) {
+        warnedNoEngine = true;
+        console.warn('[admin] assets/swipe-gesture.js did not load — the drawer, ' +
+          'bottom-sheet and lightbox gestures are unavailable on this page.');
+      }
+      return;
+    }
+    return new SwipeEngine(opts);
+  }
+
+  /* The three RELEASE POLICIES — where a throw lands, when a sheet is
+     dismissed, what a momentum coast may carry — now live in
+     assets/release-policy.js, loaded before this file, so they can be
+     swept in Node (`npm run test:policy`) across hundreds of geometries
+     and velocities with no DOM and no dashboard boot.
+
+     What stays here is the STATE: which gesture is live, where the finger
+     has taken the surface, and what each surface does with the answer
+     (openDrawer, slideAway, dismiss). A missing module degrades exactly
+     the way a missing engine does below — the drag gestures are not
+     registered, with one warning, rather than a TypeError thrown from
+     inside a pointermove. */
+  var Policy = (typeof ArzuzReleasePolicy !== 'undefined') ? ArzuzReleasePolicy : null;
+  var warnedNoPolicy = false;
+  function warnNoPolicy() {
+    if (warnedNoPolicy) return;
+    warnedNoPolicy = true;
+    console.warn('[admin] assets/release-policy.js did not load — the drawer, ' +
+      'bottom-sheet and lightbox drag gestures are unavailable on this page.');
+  }
+
+  /* ================= 2c. Sidebar: collapsible on desktop,
      slide-in drawer on mobile (hamburger, scrim, Escape) ================= */
 
   (function initSidebar() {
@@ -494,138 +1027,68 @@
        Interfaces"). ES5, no deps: the release snaps to the nearest
        resting state and lets the existing CSS transition carry it. */
 
-    var DOW = 0, DIX = 0, DIY = 0, DRAGGING = false, MOVED = false,
-        OPEN0 = false, CUR = 0, VT = [];
-    var RATIO = 0.18, OPEN_MIN = 0.5, FLICK = 280, TICK = 90, SLOP = 8;
+    var DOW = 0, OPEN0 = false, CUR = 0;
 
     function drawerWidth() {
       var r = side.getBoundingClientRect();
-      return (r && r.width) ? r.width : Math.min(window.innerWidth * 0.82, 288);
-    }
-
-    /* a flick keeps going: v (px/s) decays exponentially */
-    function project(v) {
-      var rate = 0.998;
-      return (v / 1000) * rate / (1 - rate);
-    }
-
-    function trackVelocity(x, t) {
-      VT.push({ x: x, t: t });
-      while (VT.length > 2 && t - VT[0].t > TICK) VT.shift();
-    }
-
-    function velocity() {
-      if (VT.length < 2) return 0;
-      var a = VT[0], b = VT[VT.length - 1], dt = (b.t - a.t) / 1000;
-      return dt ? (b.x - a.x) / dt : 0;
+      return Policy.drawerWidth(r && r.width, window.innerWidth);
     }
 
     /* paint(raw): raw is where the finger put the drawer (px, 0 =
        fully open, -width = fully shut). Past either resting edge
-       the door drags against its hinge — overscroll-style. */
+       the door drags against its hinge — overscroll-style. Which edge
+       gives, and by how much, is the policy's own arithmetic: see
+       drawerPaint() in assets/release-policy.js. */
     function paint(raw) {
       CUR = raw;
-      var p;
-      if (raw > 0) p = raw * RATIO;
-      else if (raw < -DOW) p = -DOW + (raw + DOW) * RATIO;
-      else p = raw;
-      side.style.setProperty('--side-x', p + 'px');
+      var v = Policy.drawerPaint(raw, DOW);
+      side.style.setProperty('--side-x', v.x + 'px');
       /* the edge grip rides the drawer's leading edge (see .side-grip) */
-      body.style.setProperty('--side-edge', Math.max(0, DOW + p) + 'px');
-      if (scrim) scrim.style.opacity = (Math.max(0, Math.min(1, 1 + p / DOW)) * 0.62).toFixed(3);
+      body.style.setProperty('--side-edge', v.edge + 'px');
+      if (scrim) scrim.style.opacity = v.scrim;
     }
 
-    function logicalFrom(cur) {
-      if (cur > 0) return cur / RATIO;
-      if (cur < -DOW) return -DOW + (cur + DOW) / RATIO;
-      return cur;
-    }
+    if (!Policy) { warnNoPolicy(); return; }
 
-    /* flick or far-enough drag: where does the drawer land? */
-    function decide(v) {
-      var logical = logicalFrom(CUR);
-      var proj = logical + Math.max(-1.2 * DOW, Math.min(0.4 * DOW, project(v)));
-      if (Math.abs(v) > FLICK) return v > 0;
-      return proj >= -DOW * OPEN_MIN;
-    }
-
-    function hasTouch(e) {
-      return !!(e.pointerType === 'touch' || e.pointerType === 'pen');
-    }
-
-    /* a horizontal drag that ends inside the drawer must not fire
-       the button it landed on */
-    function sealClicks() {
-      var catchIt = function (e) { e.preventDefault(); e.stopPropagation(); };
-      document.addEventListener('click', catchIt, true);
-      side.addEventListener('click', catchIt, true);
-      setTimeout(function () {
-        document.removeEventListener('click', catchIt, true);
-        side.removeEventListener('click', catchIt, true);
-      }, 300);
-    }
-
-    function onDown(e) {
-      if (DRAGGING || isDesktop() || !hasTouch(e) || e.button) return;
-      var inDrawer = !!(e.target && e.target.closest && e.target.closest('.admin-side'));
-      var onScrim = !!(e.target && e.target.closest && e.target.closest('.side-scrim'));
-      OPEN0 = body.classList.contains('side-open') && side.classList.contains('open');
-      if (!OPEN0 && e.clientX > 28) return;           /* edge zone only */
-      if (OPEN0 && !inDrawer && !onScrim) return;     /* swipe the drawer or its scrim */
-      DOW = drawerWidth();
-      DIX = e.clientX;
-      DIY = e.clientY;
-      DRAGGING = true;
-      MOVED = false;
-      VT.length = 0;
-      trackVelocity(DIX, e.timeStamp || Date.now());
-    }
-
-    function onMove(e) {
-      if (!DRAGGING) return;
-      var dx = e.clientX - DIX, dy = e.clientY - DIY;
-      if (!MOVED) {
-        if (Math.abs(dx) < SLOP && Math.abs(dy) < SLOP) return;
-        if (Math.abs(dy) > Math.abs(dx)) {           /* vertical scroll wins */
-          DRAGGING = false;
-          return;
+    new SwipeGesture({
+      axis: 'x',
+      canStart: function (e) {
+        if (isDesktop()) return false;
+        OPEN0 = body.classList.contains('side-open') && side.classList.contains('open');
+        /* a modal owns the screen while it is up: opening the drawer
+           behind it would leave two overlays fighting over one gesture */
+        if (!OPEN0 && document.querySelector('.modal-overlay.open, .lightbox.open')) return false;
+        var inDrawer = !!(e.target && e.target.closest && e.target.closest('.admin-side'));
+        var onScrim = !!(e.target && e.target.closest && e.target.closest('.side-scrim'));
+        if (!OPEN0 && e.clientX > 28) return false;     /* edge zone only */
+        if (OPEN0 && !inDrawer && !onScrim) return false;  /* the drawer or its scrim */
+        return true;
+      },
+      allow: function () { return true; },              /* both directions are a pull */
+      onBegin: function () {
+        DOW = drawerWidth();
+        body.classList.add('side-dragging');            /* kills the transition */
+      },
+      onDrag: function (d) { paint(OPEN0 ? d : d - DOW); },
+      onEnd: function (v, d, proj) {
+        var shouldOpen = Policy.policyFor('drawer').release(v, CUR, proj, DOW);
+        /* hand off to the CSS transition from exactly where the finger
+           left the drawer — removing the drag class and the inline px
+           var IS the seam; the transition starts at the live value */
+        body.classList.remove('side-dragging');
+        side.style.removeProperty('--side-x');
+        body.style.removeProperty('--side-edge');
+        if (scrim) scrim.style.opacity = '';
+        CUR = 0;
+        if (shouldOpen) {
+          if (!OPEN0) openDrawer();
+        } else if (OPEN0) {
+          closeDrawer();
+        } else if (scrim) {
+          scrim.classList.remove('show');
         }
-        MOVED = true;
-        body.classList.add('side-dragging');          /* kills the transition */
       }
-      trackVelocity(e.clientX, e.timeStamp || Date.now());
-      paint(OPEN0 ? dx : dx - DOW);
-      e.preventDefault();                             /* we own this gesture */
-    }
-
-    function onUp(e) {
-      if (!DRAGGING) return;
-      var wasOpen = OPEN0, wasMoved = MOVED, v = velocity();
-      DRAGGING = false;
-      if (!wasMoved) return;                          /* plain tap: click proceeds */
-      sealClicks();
-      var shouldOpen = decide(v);
-      /* hand off to the CSS transition from exactly where the finger
-         left the drawer — removing the drag class and the inline px
-         var IS the seam; the transition starts at the live value */
-      body.classList.remove('side-dragging');
-      side.style.removeProperty('--side-x');
-      body.style.removeProperty('--side-edge');
-      if (scrim) scrim.style.opacity = '';
-      CUR = 0;
-      if (shouldOpen) {
-        if (!wasOpen) openDrawer();
-      } else if (wasOpen) {
-        closeDrawer();
-      } else if (scrim) {
-        scrim.classList.remove('show');
-      }
-    }
-
-    document.addEventListener('pointerdown', onDown, true);
-    document.addEventListener('pointermove', onMove);
-    document.addEventListener('pointerup', onUp, true);
-    document.addEventListener('pointercancel', onUp, true);
+    });
 
     /* crossing the 860px boundary resets the mobile drawer and the
        desktop collapse so both states start clean on the other side */
@@ -641,7 +1104,7 @@
     syncBtn();
   })();
 
-  /* ================= 2c. Bottom sheets: swipe down to dismiss.
+  /* ================= 2d. Bottom sheets: swipe down to dismiss.
 
      On mobile the modals present as bottom sheets. Grabbing the sheet
      header and pulling down throws it away: 1:1 tracking, resistance
@@ -655,41 +1118,9 @@
     var mq = (typeof window.matchMedia === 'function') ? window.matchMedia('(min-width: 861px)') : null;
     function isDesktop() { return mq ? mq.matches : true; }
 
-    var RATIO = 0.4, OPEN_MIN = 0.3, FAR = 90, FLICK = 280, TICK = 90, SLOP = 8;
+    if (!Policy) { warnNoPolicy(); return; }
 
-    var OV = null, BOX = null, Y0 = 0, X0 = 0, DRAGGING = false, MOVED = false, VT = [];
-
-    function hasTouch(e) {
-      return !!(e.pointerType === 'touch' || e.pointerType === 'pen');
-    }
-    function stamp(e) { return e.timeStamp || Date.now(); }
-
-    /* a flick keeps going: v (px/s) decays exponentially */
-    function project(v) {
-      var rate = 0.998;
-      return (v / 1000) * rate / (1 - rate);
-    }
-    function track(y, t) {
-      VT.push({ y: y, t: t });
-      while (VT.length > 2 && t - VT[0].t > TICK) VT.shift();
-    }
-    function velocity() {
-      if (VT.length < 2) return 0;
-      var a = VT[0], b = VT[VT.length - 1], dt = (b.t - a.t) / 1000;
-      return dt ? (b.y - a.y) / dt : 0;
-    }
-
-    /* a throw that ends over a control must not press it — but our own
-       programmatic clicks (the composer's Cancel, below) are not trusted
-       events and must still land, or the discard prompt would be swallowed */
-    function sealClicks() {
-      var catchIt = function (e) {
-        if (!e.isTrusted) return;
-        e.preventDefault(); e.stopPropagation();
-      };
-      document.addEventListener('click', catchIt, true);
-      setTimeout(function () { document.removeEventListener('click', catchIt, true); }, 300);
-    }
+    var OV = null, BOX = null;
 
     function clearVars(ov, box) {
       if (box) box.style.removeProperty('--sheet-y');
@@ -713,75 +1144,161 @@
     /* hand the sheet to the CSS transition from the live finger position,
        then close once it is off-screen */
     function slideAway(ov, box) {
+      var token = ov.__openToken;
       var h = box.offsetHeight || 1;
       box.style.setProperty('--sheet-y', (h + 40) + 'px');
       ov.style.setProperty('--sheet-o', '0');
       setTimeout(function () {
+        /* reopened while the throw was in flight: that open wins */
+        if (ov.__openToken !== token) { clearVars(ov, box); return; }
         if (closeVia(ov)) setTimeout(function () { clearVars(ov, box); }, 340);
         else clearVars(ov, box);          /* stayed open — put it back in place */
       }, 210);
     }
 
-    function onDown(e) {
-      if (DRAGGING || isDesktop() || !hasTouch(e) || e.button) return;
-      var t = e.target;
-      if (!t || !t.closest) return;
-      var head = t.closest('.modal-head');
-      if (!head) return;                  /* the header is the grab zone */
-      var box = head.closest('.modal-box');
-      var ov = (box && box.closest) ? box.closest('.modal-overlay') : null;
-      if (!box || !ov || !ov.classList.contains('open')) return;
-      OV = ov; BOX = box;
-      Y0 = e.clientY; X0 = e.clientX;
-      DRAGGING = true; MOVED = false;
-      VT.length = 0;
-      track(Y0, stamp(e));
-    }
-
-    function onMove(e) {
-      if (!DRAGGING) return;
-      var dy = e.clientY - Y0, dx = e.clientX - X0;
-      if (!MOVED) {
-        if (Math.abs(dx) < SLOP && Math.abs(dy) < SLOP) return;
-        if (Math.abs(dx) > Math.abs(dy) || dy <= 0) {   /* sideways or upward: not a dismiss */
-          DRAGGING = false; OV = null; BOX = null;
-          return;
+    new SwipeGesture({
+      axis: 'y',
+      canStart: function (e) {
+        if (isDesktop()) return false;
+        var t = e.target;
+        if (!t || !t.closest) return false;
+        var head = t.closest('.modal-head');
+        if (!head) return false;                        /* the header is the grab zone */
+        var box = head.closest('.modal-box');
+        var ov = (box && box.closest) ? box.closest('.modal-overlay') : null;
+        if (!box || !ov || !ov.classList.contains('open')) return false;
+        OV = ov; BOX = box;
+        return true;
+      },
+      allow: function (d) { return d > 0; },            /* upward is not a dismiss */
+      onBegin: function () {
+        /* a grab outranks the open animation: when popIn is still in
+           flight its transform would override the one painted below, so
+           cancel it and let the finger own the frame */
+        if (BOX.getAnimations) BOX.getAnimations().forEach(function (a) { a.cancel(); });
+        body.classList.add('sheet-dragging');
+      },
+      onAbort: function () { OV = null; BOX = null; },
+      onDrag: function (dy) {
+        var h = BOX.offsetHeight || 1;
+        var p = Policy.surfacePaint(dy);                /* resistance when lifted */
+        BOX.style.setProperty('--sheet-y', p + 'px');
+        OV.style.setProperty('--sheet-o', Math.max(0.06, Math.min(1, 1 - dy / (h * 1.4))).toFixed(3));
+      },
+      onEnd: function (v, dy, proj) {
+        var ov = OV, box = BOX;
+        OV = null; BOX = null;
+        if (!ov || !box) return;
+        body.classList.remove('sheet-dragging');
+        var h = box.offsetHeight || 1;
+        /* a flick wins outright; otherwise where the finger left the sheet,
+           plus the coast it is carrying, has to clear the policy's own line
+           for this height — see surfaceRelease() in
+           assets/release-policy.js */
+        if (Policy.policyFor('sheet').release(v, dy, proj, h)) {
+          slideAway(ov, box);
+        } else {
+          box.style.setProperty('--sheet-y', '0px');    /* snap back */
+          ov.style.setProperty('--sheet-o', '1');
+          setTimeout(function () { clearVars(ov, box); }, 260);
         }
-        MOVED = true;
-        body.classList.add('sheet-dragging');           /* kills the transition */
       }
-      track(e.clientY, stamp(e));
-      var h = BOX.offsetHeight || 1;
-      var p = dy > 0 ? dy : dy * RATIO;                 /* resistance when lifted */
-      BOX.style.setProperty('--sheet-y', p + 'px');
-      OV.style.setProperty('--sheet-o', Math.max(0.06, Math.min(1, 1 - dy / (h * 1.4))).toFixed(3));
-      if (e.cancelable) e.preventDefault();             /* we own this gesture */
+    });
+  })();
+
+  /* ================= 2e. Lightboxes: swipe down to dismiss =================
+
+     The same throw as the sheets, on the two full-screen viewers. The
+     photo lightbox has nothing else to drag, so the whole surface is the
+     grab zone; the video card hands over its title row and leaves the
+     player's own controls alone. The video one must leave through
+     closeVideoLightbox(): a bare hide() would strand ArzuzVideo's player,
+     still polling a detached iframe. */
+
+  (function initLightboxGestures() {
+    var body = document.body;
+    var mq = (typeof window.matchMedia === 'function') ? window.matchMedia('(min-width: 861px)') : null;
+    function isDesktop() { return mq ? mq.matches : true; }
+
+    if (!Policy) { warnNoPolicy(); return; }
+
+    var OV = null, TARGET = null;
+
+    function clearVars(ov, target) {
+      if (target) target.style.removeProperty('--lb-y');
+      if (ov) ov.style.removeProperty('--lb-o');
     }
 
-    function onUp(e) {
-      if (!DRAGGING) return;
-      var ov = OV, box = BOX, moved = MOVED, v = velocity();
-      DRAGGING = false; MOVED = false; OV = null; BOX = null;
-      if (!moved || !ov || !box) return;                /* plain tap: click proceeds */
-      body.classList.remove('sheet-dragging');
-      sealClicks();
-      var h = box.offsetHeight || 1;
-      var dy = (e && typeof e.clientY === 'number') ? e.clientY - Y0 : 0;
-      if (dy < 0) dy = dy * RATIO;
-      var proj = dy + Math.max(0, Math.min(h, project(v)));
-      if (v > FLICK || proj >= Math.max(FAR, h * OPEN_MIN)) {
-        slideAway(ov, box);
-      } else {
-        box.style.setProperty('--sheet-y', '0px');      /* snap back */
-        ov.style.setProperty('--sheet-o', '1');
-        setTimeout(function () { clearVars(ov, box); }, 260);
-      }
+    /* the video lightbox owns a live player, so dismissing it has to run
+       the teardown rather than just hide the overlay */
+    function dismiss(ov) {
+      if (ov.id === 'videoLightbox') closeVideoLightbox();
+      else hide(ov);
     }
 
-    document.addEventListener('pointerdown', onDown, true);
-    document.addEventListener('pointermove', onMove);
-    document.addEventListener('pointerup', onUp, true);
-    document.addEventListener('pointercancel', onUp, true);
+    /* hand the viewer to the CSS transition from the live finger
+       position, then dismiss once it is off-screen */
+    function slideAway(ov, target) {
+      var token = ov.__openToken;
+      var h = target.offsetHeight || 1;
+      target.style.setProperty('--lb-y', (h + 60) + 'px');
+      ov.style.setProperty('--lb-o', '0');
+      setTimeout(function () {
+        if (ov.__openToken !== token) { clearVars(ov, target); return; }  /* reopened mid-throw */
+        dismiss(ov);
+        setTimeout(function () { clearVars(ov, target); }, 340);
+      }, 210);
+    }
+
+    new SwipeGesture({
+      axis: 'y',
+      canStart: function (e) {
+        if (isDesktop()) return false;
+        var t = e.target;
+        if (!t || !t.closest) return false;
+        var ov = t.closest('.lightbox');
+        if (!ov || !ov.classList.contains('open')) return false;
+        /* the player keeps its own drags (the scrub bar); only the title
+           row is a grab zone, the same rule the sheets use */
+        if (t.closest('video')) return false;
+        var target;
+        if (ov.id === 'videoLightbox') {
+          if (!t.closest('.lb-head')) return false;
+          target = ov.querySelector('.lb-frame');
+        } else {
+          target = ov.querySelector('.lb-inner');
+        }
+        if (!target) return false;
+        OV = ov; TARGET = target;
+        return true;
+      },
+      allow: function (d) { return d > 0; },            /* upward is not a dismiss */
+      onBegin: function () {
+        if (TARGET.getAnimations) TARGET.getAnimations().forEach(function (a) { a.cancel(); });
+        body.classList.add('lb-dragging');
+      },
+      onAbort: function () { OV = null; TARGET = null; },
+      onDrag: function (dy) {
+        var h = TARGET.offsetHeight || 1;
+        var p = Policy.surfacePaint(dy);                /* resistance when lifted */
+        TARGET.style.setProperty('--lb-y', p + 'px');
+        OV.style.setProperty('--lb-o', Math.max(0.06, Math.min(1, 1 - dy / (h * 1.4))).toFixed(3));
+      },
+      onEnd: function (v, dy, proj) {
+        var ov = OV, target = TARGET;
+        OV = null; TARGET = null;
+        if (!ov || !target) return;
+        body.classList.remove('lb-dragging');
+        var h = target.offsetHeight || 1;
+        if (Policy.policyFor('lightbox').release(v, dy, proj, h)) {
+          slideAway(ov, target);
+        } else {
+          target.style.setProperty('--lb-y', '0px');    /* snap back */
+          ov.style.setProperty('--lb-o', '1');
+          setTimeout(function () { clearVars(ov, target); }, 260);
+        }
+      }
+    });
   })();
 
   /* ================= 3. Data fetch ================= */
@@ -805,6 +1322,40 @@
     return currentRole() === 'admin' ? tbl : (FEED_VIEWS[tbl] || tbl);
   }
 
+  /* The three reads behind the Roommate panel's questionnaire block,
+     in one promise.
+
+     env=eq.production is asked for at the source rather than filtered
+     afterwards: test rows live in the same table, and a pool count that
+     quietly includes them is a number nobody should act on.
+
+     Every failure path resolves to [] instead of throwing. A missing
+     supabase-roommate.sql is the expected state on a fresh database, and
+     it should look like an empty pool with a note — not like a dashboard
+     that broke. */
+  function fetchRoommatePool(h) {
+    function get(path) {
+      return fetch(apiRoot() + '/rest/v1/' + path, { headers: h })
+        .then(function (r) { return r.ok ? r.json() : []; })
+        .catch(function () { return []; });
+    }
+    return Promise.all([
+      get('roommate_engine_summary?select=*'),
+      get('roommate_profiles?select=*&env=eq.production&order=created_at.desc&limit=200'),
+      get('roommate_mutual_pairs?select=*&order=matched_at.desc'),
+      /* The consent trail. Also env-scoped and capped: this is a feed to
+         read, not an export — the table itself is the record. */
+      get('roommate_events?select=*&env=eq.production&order=created_at.desc&limit=40')
+    ]).then(function (out) {
+      return {
+        engine: (out[0] && out[0][0]) || null,
+        profiles: out[1] || [],
+        pairs: out[2] || [],
+        trail: out[3] || []
+      };
+    });
+  }
+
   function fetchData() {
     if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) return;
     state.feedsMissing = false;
@@ -813,7 +1364,10 @@
       var promises = TABLES.map(function (tbl) {
         var url = apiRoot() + '/rest/v1/' + relFor(tbl) + '?select=*&order=created_at.desc';
         return fetch(url, { headers: h }).then(function (r) {
-          if (r.status === 401 || r.status === 403) throw Object.assign(new Error('Not authorised (HTTP ' + r.status + ')'), { auth: true });
+          /* The reason is kept as well as the status: onAuthError shows the
+             gate and logs this line, and "401" alone would not say which
+             read was refused. */
+          if (r.status === 401 || r.status === 403) throw apiErr(r, 'Not authorised', { auth: true });
           if (!r.ok && role !== 'admin') state.feedsMissing = true;
           return r.ok ? r.json() : [];
         });
@@ -836,6 +1390,22 @@
         .then(function (r) { return r.ok ? r.json() : []; })
         .catch(function () { return []; }));
 
+      /* The questionnaire pool — admin only, on purpose.
+
+         supabase-roommate.sql scopes those two tables with
+         public.arzuz_role(): a support or marketing login is answered
+         with an empty list, so asking would cost three requests per
+         refresh and return nothing. (Empty, not 403 — PostgREST filters
+         rows rather than refusing, and fetchData treats a 403 as a dead
+         session and signs the user out.) */
+      promises.push(role === 'admin' ? fetchRoommatePool(h) : Promise.resolve(null));
+
+      /* Arzuz Care — admin and support, because support is who records
+         the visit. Marketing is left out for the same reason it is left
+         out of the roommate pool: a plan is a phone number plus a bill,
+         and its policy gives marketing nothing to read anyway. */
+      promises.push((role === 'admin' || role === 'support') ? fetchCare(h) : Promise.resolve(null));
+
       return Promise.all(promises).then(function (results) {
         state.data.demand_records = results[0] || [];
         state.data.listings = results[1] || [];
@@ -844,11 +1414,13 @@
         state.minors = results[4] || [];
         state.roommateSummary = (results[5] && results[5][0]) ? results[5][0] : null;
         state.data.support_tickets = results[6] || [];
+        state.roommatePool = results[7] || { engine: null, profiles: [], pairs: [], trail: [] };
+        state.care = results[8] || { plans: [] };
         renderRoute();
       });
     }).catch(function (err) {
       if (err && err.auth) onAuthError(err);
-      else if (window.console) console.warn('[Arzuz Admin] fetch failed:', err && err.message);
+      else if (window.console) console.warn('[Arzuz Admin] fetch failed:', err && (err.detail || err.message));
     });
   }
 
@@ -1031,6 +1603,7 @@
     if (!metricEl || !panel) return;
     var rs = state.roommateSummary;
     var waiting = roommateDemands();
+    var engine = (state.roommatePool || {}).engine;
 
     metricEl.innerHTML =
       '<h3>' + ico('users', 18) + ' Roommate matching — the one number</h3>' +
@@ -1038,6 +1611,24 @@
       '<div class="metrics-grid" style="margin-top:14px">' +
         '<div class="metric-card"><div class="metric-lbl">Matched in 14 days</div><div class="metric-num">' + (rs ? esc(String(rs.pct_matched_within_14d)) + '%' : '—') + '</div><div class="metric-sub">' + (rs ? esc(rs.matched_within_14d + ' of ' + rs.roommate_demands_total + ' roommate requests') : 'Run supabase-media-booking.sql to enable this metric') + '</div></div>' +
         '<div class="metric-card"><div class="metric-lbl">Waiting now</div><div class="metric-num">' + waiting.length + '</div><div class="metric-sub">Open roommate requests to pair</div></div>' +
+        /* The questionnaire engine's own numbers, next to the demand-based
+           ones above rather than replacing them: the metric above counts
+           requests the team took down by hand, these count students who
+           matched themselves. The two will disagree for a long time, and
+           watching that gap close is the point. */
+        (engine
+          ? '<div class="metric-card"><div class="metric-lbl">Questionnaires in</div><div class="metric-num">' + engine.profiles_total + '</div>' +
+            '<div class="metric-sub">' + engine.profiles_open + ' still open \u00B7 ' + engine.mutual_pairs + ' mutual ' + (engine.mutual_pairs === 1 ? 'match' : 'matches') + '</div></div>' +
+            '<div class="metric-card"><div class="metric-lbl">Questionnaire 14-day Match</div><div class="metric-num">' + engine.pct_matched_within_14d + '%</div>' +
+            '<div class="metric-sub">' + engine.matched_within_14d + ' of ' + engine.profiles_total + ' matched within 14 days</div></div>'
+          : '') +
+      '</div>' +
+      /* The daily digest is the one thing in this section that happens when
+         nobody is looking, so it is also the one thing that cannot be read
+         off the screen. This composes it on demand — from the server, with
+         the real window and the real staleness rule — and sends nothing. */
+      '<div class="mate-actions" style="margin-top:12px">' +
+        '<button type="button" class="btn-inline" id="btnDigestPreview">' + ico('calendar', 13) + ' Preview the daily digest</button>' +
       '</div>';
 
     var html = '';
@@ -1102,8 +1693,1218 @@
           '</div></div>';
       });
     }
+    html += renderPoolHtml();
     panel.innerHTML = html;
   }
+
+  /* ================= 4c. The questionnaire pool =================
+     The matching engine the public /roommates page writes into.
+
+     The block above pairs students the team registered by hand, from
+     demand records. This one shows the profiles students filled in
+     themselves, and the pairs that BOTH of them already accepted in the
+     browser — double opt-in, enforced in
+     netlify/functions/roommate-match.js.
+
+     Read-only on purpose. A mutual match is two students' decision, and
+     the pair is what unlocked their contact details; a "pair" button
+     here would let a dashboard click overrule consent, so there is not
+     one. The team's job at this point is to send the introduction. */
+
+  function renderPoolHtml() {
+    var pool = state.roommatePool || {};
+    var engine = pool.engine;
+    /* env=eq.production is asked for at fetch time; this is the belt to
+       that braces, for a row the query could not exclude. */
+    var profiles = (pool.profiles || []).filter(function (r) { return !isTestRow(r); });
+    var pairs = pool.pairs || [];
+    var waiting = profiles.filter(function (r) { return str(r.status).toLowerCase() === 'open'; });
+
+    var html = '<h3 style="margin:26px 0 10px;font-size:15px">' + ico('users', 16) +
+      ' The questionnaire pool</h3>' +
+      '<p class="sub">Students who answered the two-sided questionnaire on /roommates themselves. ' +
+      'Their deal-breakers have already been applied to every pair they were shown, so what is left here ' +
+      'is everyone still waiting.</p>';
+
+    /* Empty and a missing migration look identical from here, so say both. */
+    if (!engine && !profiles.length) {
+      return html + '<div class="ops-row"><span class="ic">' + ico('alert', 15) + '</span><span class="tx">' +
+        '<b>Nothing to show yet</b><span>If supabase-roommate.sql has not been run in Supabase, run it — ' +
+        'the questionnaire tables do not exist until you do. Otherwise the pool is genuinely empty.</span>' +
+        '</span></div>';
+    }
+
+    /* ---- already matched both ways: send the introductions ---- */
+    if (pairs.length) {
+      html += '<h4 style="margin:18px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;opacity:.7">' +
+        'Matched both ways \u2014 send the intros</h4>';
+      pairs.forEach(function (m) {
+        var waA = waLink(m.a_phone), waB = waLink(m.b_phone);
+        /* Each student gets the OTHER one's name in the greeting — the
+           same intro the demand-based block above writes, so the team
+           sends one consistent message whichever route made the match. */
+        var introA = 'Hi ' + (m.a_name || 'there') + '! Arzuz here. You and ' + (m.b_name || 'your match') +
+          ' both said yes, so you are matched as roommates. Want to agree the split on WhatsApp?';
+        var introB = 'Hi ' + (m.b_name || 'there') + '! Arzuz here. You and ' + (m.a_name || 'your match') +
+          ' both said yes, so you are matched as roommates. Want to agree the split on WhatsApp?';
+        html += '<div class="mate-card">' +
+          '<div class="mate-head"><b>' + esc(m.a_name || 'Student') + ' \u2194 ' + esc(m.b_name || 'Student') + '</b>' +
+          '<span>matched ' + esc(fmtDate(m.matched_at)) + '</span></div>' +
+          '<div class="mate-meta">' +
+            (m.a_area ? '<span>' + ico('pin', 13) + ' ' + esc(m.a_area) + '</span>' : '') +
+            (m.a_budget ? '<span>' + ico('tag', 13) + ' ' + esc(ngn(m.a_budget)) + '</span>' : '') +
+            (m.b_area ? '<span>' + ico('pin', 13) + ' ' + esc(m.b_area) + '</span>' : '') +
+            (m.b_budget ? '<span>' + ico('tag', 13) + ' ' + esc(ngn(m.b_budget)) + '</span>' : '') +
+          '</div>' +
+          '<div class="mate-actions">' +
+            (waA ? '<a class="wa-btn" href="' + waA + '?text=' + encodeURIComponent(introA) + '" target="_blank" rel="noopener">Intro \u2192 ' + esc(m.a_name || 'student A') + '</a>' : '') +
+            (waB ? '<a class="wa-btn" style="margin-left:8px" href="' + waB + '?text=' + encodeURIComponent(introB) + '" target="_blank" rel="noopener">Intro \u2192 ' + esc(m.b_name || 'student B') + '</a>' : '') +
+            /* One dossier per side of the pair — the complaint about a
+               match comes from one of the two, not from the pair. */
+            '<button type="button" class="btn-inline" style="margin-left:8px" data-act="dossier" data-id="' + esc(m.a_id) + '">Dossier \u2192 ' + esc(m.a_name || 'student A') + '</button>' +
+            '<button type="button" class="btn-inline" style="margin-left:8px" data-act="dossier" data-id="' + esc(m.b_id) + '">Dossier \u2192 ' + esc(m.b_name || 'student B') + '</button>' +
+          '</div></div>';
+      });
+    }
+
+    /* ---- still waiting ---- */
+    html += '<h4 style="margin:18px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;opacity:.7">' +
+      'Waiting in the pool (' + waiting.length + ')</h4>';
+    if (!waiting.length) {
+      html += '<div class="ops-row"><span class="ic">' + ico('check', 15) + '</span><span class="tx">' +
+        '<b>Everyone in the pool has matched</b><span>A new questionnaire answer appears here the moment ' +
+        'a student finishes it on /roommates.</span></span></div>';
+    }
+    waiting.forEach(function (r) {
+      var name = pick(r, 'first_name', ['name']) || 'Student';
+      var wa = waLink(pick(r, 'phone', ['phone']));
+      var dbs = toList(r.dealbreakers);
+      var chips = '';
+      if (r.sleep) chips += '<span>' + ico('moon', 13) + ' ' + esc(r.sleep) + '</span>';
+      if (r.cleanliness) chips += '<span>' + ico('check', 13) + ' cleans ' + esc(str(r.cleanliness).toLowerCase()) + '</span>';
+      if (r.guests) chips += '<span>' + ico('users', 13) + ' ' + esc(r.guests) + '</span>';
+      if (r.smoking) chips += '<span>' + ico('alert', 13) + ' ' + esc(r.smoking) + '</span>';
+      if (r.noise) chips += '<span>' + ico('moon', 13) + ' ' + esc(r.noise) + '</span>';
+      if (r.split_ok) chips += '<span>' + ico('tag', 13) + ' ' + esc(r.split_ok) + '</span>';
+
+      html += '<div class="mate-card">' +
+        '<div class="mate-head"><b>' + esc(name) + '</b>' +
+        '<span>' + esc(pick(r, 'area', ['area']) || 'No area given') +
+        (r.budget_ngn ? ' \u00B7 ' + esc(ngn(r.budget_ngn)) + ' a session' : '') + '</span></div>' +
+        '<div class="mate-meta">' + chips +
+          '<span>' + ico('calendar', 13) + ' ' + esc(ageLabel(r.created_at)) + ' ago</span>' +
+          '<button type="button" class="btn-inline" data-act="dossier" data-id="' + esc(r.id) + '">' + ico('users', 13) + ' Dossier</button>' +
+          (wa ? '<a class="wa-btn" href="' + wa + '" target="_blank" rel="noopener">WhatsApp</a>' : '') +
+        '</div>' +
+        /* The ticked deal-breakers, shown because they are the reason
+           this student is seeing a small pool and the team is about to
+           be asked why. */
+        (dbs.length
+          ? '<div class="mate-meta" style="margin-top:6px;color:var(--aerr)"><span>' + ico('alert', 13) +
+            ' Deal-breakers: ' + esc(dbs.join(', ')) + '</span></div>'
+          : '') +
+        '</div>';
+    });
+
+    /* ---- withdrawn: out of the pool, still on the record ----
+       A closed profile is in neither list above, and it is the case most
+       likely to produce a phone call — someone who asked us to stop and
+       has not been removed from a page they can see. Keeping them reachable
+       is the point of the trail: the record outlives the listing. */
+    var closed = profiles.filter(function (r) { return str(r.status).toLowerCase() === 'closed'; });
+    if (closed.length) {
+      html += '<h4 style="margin:18px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;opacity:.7">' +
+        'Withdrawn (' + closed.length + ')</h4>' +
+        '<p class="sub">Out of everyone else\u2019s matches, and never off the record. ' +
+        'Their dossier is still reachable in one click.</p>';
+      closed.forEach(function (r) {
+        html += '<div class="mate-cand"><div>' +
+          '<b>' + esc(pick(r, 'first_name', ['name']) || 'Student') + '</b>' +
+          '<span>' + esc(str(r.notes) || 'withdrew') + ' \u00b7 answered ' + esc(ageLabel(r.created_at)) + ' ago</span>' +
+          '</div><button type="button" class="btn-inline" data-act="dossier" data-id="' + esc(r.id) + '">' +
+          ico('users', 13) + ' Dossier</button></div>';
+      });
+    }
+
+    html += stallHtml();
+
+    return html + consentTrailHtml();
+  }
+
+  /* ================= 4d. The consent trail =================
+     roommate_events — the append-only log roommate-match.js writes.
+
+     It exists because roommate_interests holds only the LATEST decision
+     per pair: a student who says yes and then changes their mind leaves
+     one row saying 'pass'. "Who agreed to this, and when" is the
+     question a disputed unlock actually asks, and this is the record
+     that can answer it — the names are snapshotted at the time, so a
+     line still reads years later even if the profile is deleted.
+
+     Read-only, and more strictly so than the pool above: the database
+     grants no client role INSERT, UPDATE or DELETE on this table, so a
+     button here could not work even if one were drawn. */
+
+  function consentLineHtml(e) {
+    /* actor_name / subject_name are the stored name (the same value the
+       profile's first_name column holds), escaped here because they are
+       student-typed text going into innerHTML. */
+    var actor = esc(e.actor_name || 'Student');
+    var subject = esc(e.subject_name || 'a student');
+    var tag = 'tag-draft';
+    var line = esc(e.event);
+
+    /* Plain text, no inner markup: .mate-cand renders its <b> as a block,
+       so a nested <b> would break the sentence across lines. The whole
+       sentence is the title line, the subtitle carries the time. */
+    if (e.event === 'created') {
+      tag = 'tag-viewed';    line = actor + ' joined the pool';
+    } else if (e.event === 'accept') {
+      tag = 'tag-open';      line = actor + ' said yes to ' + subject;
+    } else if (e.event === 'pass') {
+      tag = 'tag-cancelled'; line = actor + ' passed on ' + subject;
+    } else if (e.event === 'withdrawn') {
+      tag = 'tag-inactive';  line = actor + ' withdrew';
+    } else if (e.event === 'matched') {
+      tag = 'tag-matched';   line = 'Both said yes \u2014 ' + actor + ' \u2194 ' + subject;
+    } else if (e.event === 'viewed') {
+      /* Written by the engine the first time a matched student is shown
+         their match's number. It is on this record on purpose: "was my
+         number ever put in front of them, and when" is a question the
+         company is expected to answer. */
+      tag = 'tag-viewed';    line = actor + ' opened their matches and was shown ' + subject + '\u2019s number';
+    }
+
+    return '<div class="mate-cand"><div>' +
+      '<b>' + line + '</b>' +
+      '<span>' + (e.event === 'matched' ? 'contact unlocked for both \u00b7 ' : '') +
+      esc(ageLabel(e.created_at)) + ' ago</span></div>' +
+      /* The raw event name, not a prettier synonym: a line here can be
+         searched for verbatim in roommate_events. */
+      '<span class="tag-status ' + tag + '">' + esc(e.event) + '</span></div>';
+  }
+
+  function consentTrailHtml() {
+    var trail = (state.roommatePool || {}).trail || [];
+    var html = '<h4 style="margin:18px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;opacity:.7">' +
+      'Consent trail (' + trail.length + ')</h4>' +
+      '<p class="sub">Every answer a student has given, newest first, with their name as it was at the time. ' +
+      'Append-only: the database gives no login the right to change or delete a line, so this is what a ' +
+      'disputed match gets read back against.</p>';
+
+    if (!trail.length) {
+      return html + '<div class="ops-row"><span class="ic">' + ico('check', 15) + '</span><span class="tx">' +
+        '<b>No consent events yet</b><span>One appears the moment a student answers the questionnaire ' +
+        'on /roommates. If supabase-roommate.sql has not been run, the table does not exist yet.</span>' +
+        '</span></div>';
+    }
+
+    html += '<div style="display:flex;flex-direction:column;gap:8px">';
+    trail.forEach(function (e) { html += consentLineHtml(e); });
+    return html + '</div>';
+  }
+
+  /* ================= 4i. Arzuz Care — the ₦20,000 session ====
+     care.html is the specification: ₦20,000 for the session, four
+     call-outs, parts under ₦3,000 included, refundable before the
+     session starts. This panel is how the team OPERATES that:
+
+       - it READS care_plans_live, a view, never the ledger
+       - every button POSTs to /api/care-credit, which holds the
+         service key and appends the ledger row
+       - it cannot set a balance by hand, and that is not a
+         limitation to work around: supabase-care.sql gives no
+         client role an INSERT on either table, so a panel that
+         could write one would be a panel that could invent a
+         call-out the student never had.
+
+     A refusal is shown where it happened, in the row's own drawer,
+     rather than as a toast that scrolls away — "no call-outs left"
+     is a fact about that student, not a notification. */
+
+  function fetchCare(h) {
+    return fetch(apiRoot() + '/rest/v1/care_plans_live?select=*&env=eq.production&order=created_at.desc&limit=200', { headers: h })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .catch(function () { return []; })
+      .then(function (rows) { return { plans: rows || [] }; });
+  }
+
+  function carePlans() {
+    return ((state.care || {}).plans || []).filter(function (r) { return !isTestRow(r); });
+  }
+
+  /* What care.html publishes, kept here so the drawer can quote the same
+     ceiling the function enforces (PARTS_INCLUDED_NGN in care-credit.js). */
+  var PARTS_INCLUDED_NGN = 3000;
+  /* The other two published numbers, quoted here for the same reason:
+     the panel states the promise the function enforces. All three
+     files are pinned together by the drift check in dev/sql-proof.mjs,
+     so a change to one that is not made to the others fails a suite
+     rather than quietly disagreeing with care.html. */
+  var CALL_OUTS_INCLUDED = 4;
+  var SESSION_FEE_NGN = 20000;
+
+  function careBalanceChip(p) {
+    var left = Number(p.balance) || 0;
+    var total = Number(p.granted) || 0;
+    var cls = left > 0 ? 'tag-open' : 'tag-cancelled';
+    var label = p.status === 'refunded' ? 'refunded — 0 of ' + total + ' left'
+      : p.status === 'ended' ? 'session ended — ' + (Number(p.call_outs) || 0) + ' of ' + total + ' used'
+      : left + ' of ' + total + ' call-outs left';
+    return '<span class="tag-status ' + cls + '">' + esc(label) + '</span>';
+  }
+
+  function careRowHtml(p) {
+    var name = p.first_name || 'Student';
+    var wa = waLink(p.phone);
+    var open = state.careSpend && state.careSpend.plan === p.id;
+    var canSpend = (Number(p.balance) || 0) > 0 && p.status === 'active';
+    var canRefund = p.status === 'active' && (Number(p.call_outs) || 0) === 0;
+
+    var html = '<div class="mate-cand"><div>' +
+      '<b>' + esc(name) + '</b>' +
+      '<span>' + esc(p.session || '—') + ' · ' + esc(ngn(p.amount_ngn || 0)) + ' · ' + esc(p.status || 'active') +
+      (p.area ? ' · ' + esc(p.area) : '') +
+      (p.property ? ' · ' + esc(p.property) : '') +
+      ' · <span style="font-family:var(--mono)">' + esc(String(p.phone || 'no phone')) + '</span></span></div>' +
+      '<div class="mate-actions">' + careBalanceChip(p) +
+      (wa ? '<a class="wa-btn" style="margin-left:8px" href="' + wa + '" target="_blank" rel="noopener">WhatsApp</a>' : '') +
+      '<button type="button" class="btn-inline" style="margin-left:8px" data-care="spend-open" data-plan="' + esc(p.id) + '"' +
+      (canSpend ? '' : ' disabled title="No call-outs left on this plan"') + '>Record a call-out</button>' +
+      '<button type="button" class="btn-inline" style="margin-left:8px" data-care="refund" data-plan="' + esc(p.id) + '"' +
+      (canRefund ? '' : ' disabled title="Not refundable: the session has used a call-out, or is no longer active"') +
+      '>Refund</button>' +
+      '<button type="button" class="btn-inline" style="margin-left:8px" data-care="expire" data-plan="' + esc(p.id) + '"' +
+      (p.status === 'active' ? '' : ' disabled') + '>End session</button>' +
+      '</div>';
+
+    /* The drawer: who did the work, what the parts cost. Two fields,
+       because a call-out with no worker recorded is a credit taken
+       for nothing anybody can name later. */
+    if (open) {
+      html += '<div class="care-drawer" style="margin-top:10px">' +
+        '<div class="edit-fld"><label>Who did the work</label>' +
+        '<input type="text" id="careWorker" placeholder="e.g. Compound caretaker, or a name" value="' + esc(state.careSpend.worker || '') + '"></div>' +
+        '<div class="edit-fld"><label>Parts cost (₦, 0 if none)</label>' +
+        '<input type="text" id="careParts" inputmode="numeric" placeholder="0" value="' + esc(state.careSpend.parts || '') + '"></div>' +
+        '<div class="edit-fld"><label>What was it</label>' +
+        '<input type="text" id="careReason" placeholder="e.g. blocked kitchen sink" value="' + esc(state.careSpend.reason || '') + '"></div>' +
+        '<div style="display:flex;gap:8px;align-items:center;margin-top:6px">' +
+        '<button type="button" class="btn-inline" data-care="spend-confirm" data-plan="' + esc(p.id) + '">Record it — 1 credit</button>' +
+        '<button type="button" class="btn-inline" data-care="spend-cancel">Cancel</button>' +
+        '<span class="sub" id="careDrawerNote">Parts over ' + esc(ngn(PARTS_INCLUDED_NGN)) + ' are quoted to the student first — the ledger notes it either way.</span>' +
+        '</div></div>';
+    }
+
+    return html + '</div>';
+  }
+
+  /* ------------------------------------------------------------
+     Opening a plan from the dashboard
+
+     The one Care action that creates money rather than recording
+     work, and therefore the one that is gated rather than just
+     logged:
+
+       - it is offered to the roles the FUNCTION accepts (admin and
+         support). Marketing never reaches this section, and the
+         function refuses it anyway — the panel's gate is a courtesy,
+         the server's gate is the rule.
+
+       - it needs a student: a name and a phone a worker can ring.
+         The number is normalised server-side before it is stored,
+         which is what makes the one-active-plan-per-student index
+         actually hold — two spellings of one number are one student.
+
+       - every field the operator fills ends up on the ledger row,
+         with their login against it, so "who opened this, and why"
+         is answered by the record rather than by anyone's memory.
+
+       - the raw link comes back ONCE. This panel shows it, offers to
+         copy it, and says plainly that it cannot be shown again —
+         only its hash is stored, which is the whole point.
+     ------------------------------------------------------------ */
+
+  function careCanGrant() {
+    var r = currentRole();
+    return r === 'admin' || r === 'support';
+  }
+
+  /* The dashboard is the only place that knows the site's own origin,
+     so the link is assembled here from the path the function sent. */
+  function careLinkFor(grant) {
+    var path = (grant && grant.link_path) || ('/my-care?t=' + ((grant && grant.token) || ''));
+    var origin = (window.location && window.location.origin) || '';
+    return origin + path;
+  }
+
+  function careGrantFld(label, id, placeholder, value, hint) {
+    return '<div class="edit-fld" style="flex:1 1 160px;min-width:140px">' +
+      '<label for="' + id + '">' + esc(label) + '</label>' +
+      '<input type="text" id="' + id + '" placeholder="' + esc(placeholder || '') + '" value="' + esc(value || '') + '">' +
+      (hint ? '<span class="sub">' + esc(hint) + '</span>' : '') +
+      '</div>';
+  }
+
+  function careGrantNote(msg) {
+    var el = $('careGrantNote');
+    if (el) el.textContent = msg || '';
+  }
+
+  function careGrantBlockHtml() {
+    if (!careCanGrant()) return '';
+    var g = state.careGrant;
+
+    if (!g) {
+      return '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 14px">' +
+        '<button type="button" class="btn-inline" data-care="grant-open">Open a Care plan</button>' +
+        '<span class="sub">One session for one student: ' + esc(CALL_OUTS_INCLUDED) + ' call-outs and the ' +
+        'published ' + esc(ngn(SESSION_FEE_NGN)) + '. The ledger records who opened it and why.</span></div>';
+    }
+
+    if (g.done) {
+      var link = careLinkFor(g.done);
+      var first = String(g.done.student_name || 'the student').split(' ')[0];
+      var wa = waLink(g.done.phone,
+        'Hi ' + first + '! Your Arzuz Care for ' + g.done.session + ' is set up — ' + g.done.credits +
+        ' call-outs, ' + g.done.amount_ngn + ' naira paid. Your own page is here (keep the link to yourself — ' +
+        'it is the key to your Care): ' + link);
+      return '<div class="care-drawer" style="margin-bottom:14px">' +
+        '<div class="edit-fld"><label>Plan opened — send this link to ' + esc(g.done.student_name) + '</label>' +
+        '<input type="text" id="careGrantLink" readonly value="' + esc(link) + '">' +
+        '<span class="sub">Shown once, and it cannot be shown again: only its hash is stored, which is exactly ' +
+        'why a stolen database is not a stolen Care account. ' + esc(g.done.credits) + ' call-outs are on the ' +
+        'ledger for ' + esc(g.done.session) + '.</span></div>' +
+        '<div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">' +
+        '<button type="button" class="btn-inline" data-care="grant-copy">Copy the link</button>' +
+        (wa ? '<a class="wa-btn" href="' + esc(wa) + '" target="_blank" rel="noopener">WhatsApp it</a>' : '') +
+        '<button type="button" class="btn-inline" data-care="grant-done">Done</button>' +
+        '<span class="sub" id="careGrantNote">Next step: record a call-out from that student\u2019s row when a ' +
+        'worker has been.</span></div></div>';
+    }
+
+    return '<div class="care-drawer" style="margin-bottom:14px">' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+        careGrantFld('Student\u2019s name', 'careGrantName', 'e.g. Ada Okonkwo', g.name) +
+        careGrantFld('Phone (a worker will ring it)', 'careGrantPhone', '0803 111 2233', g.phone) +
+        careGrantFld('Area / property (optional)', 'careGrantArea', 'e.g. Malete · Sunrise Lodge', g.area) +
+        careGrantFld('Room (optional)', 'careGrantRoom', 'e.g. A1', g.room) +
+      '</div>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">' +
+        careGrantFld('Session', 'careGrantSession', '2026/2027', g.session) +
+        careGrantFld('Call-outs', 'careGrantCredits', String(CALL_OUTS_INCLUDED), g.credits,
+          'One credit is one call-out') +
+        careGrantFld('Fee (\u20a6 paid)', 'careGrantAmount', String(SESSION_FEE_NGN), g.amount,
+          'Default is the published fee') +
+      '</div>' +
+      '<div class="edit-fld" style="margin-top:10px">' +
+        '<label for="careGrantReason">Why this plan exists — it goes on the ledger</label>' +
+        '<input type="text" id="careGrantReason" placeholder="e.g. inspection was wrong — Care is free this session (terms \u00a77)" value="' + esc(g.reason) + '">' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">' +
+        '<button type="button" class="btn-inline" id="careGrantSubmit" data-care="grant-submit">Open it — ' +
+        esc(g.credits || CALL_OUTS_INCLUDED) + ' credits</button>' +
+        '<button type="button" class="btn-inline" data-care="grant-cancel">Cancel</button>' +
+        '<span class="sub" id="careGrantNote">The fee is recorded, not charged here — take the payment the ' +
+        'way it arrives, then open the plan.</span>' +
+      '</div></div>';
+  }
+
+  function careGrantOpen() {
+    state.careGrant = {
+      name: '', phone: '', area: '', room: '',
+      session: (cfg && cfg.SESSION) || '2026/2027',
+      credits: String(CALL_OUTS_INCLUDED),
+      amount: String(SESSION_FEE_NGN),
+      reason: ''
+    };
+    renderCarePanel();
+    var n = $('careGrantName');
+    if (n) n.focus();
+  }
+
+  function careGrantClose() {
+    state.careGrant = null;
+    renderCarePanel();
+  }
+
+  function careGrantRead() {
+    var val = function (id) { var el = $(id); return el ? String(el.value || '').trim() : ''; };
+    var g = state.careGrant || {};
+    g.name = val('careGrantName');
+    g.phone = val('careGrantPhone');
+    g.area = val('careGrantArea');
+    g.room = val('careGrantRoom');
+    g.session = val('careGrantSession') || g.session;
+    g.credits = val('careGrantCredits') || g.credits;
+    g.amount = val('careGrantAmount') || g.amount;
+    g.reason = val('careGrantReason');
+    state.careGrant = g;
+    return g;
+  }
+
+  function careGrantSubmit() {
+    var g = careGrantRead();
+    /* The server checks all of this again — this is only so the person
+       typing is told before a round trip. */
+    if (String(g.name).length < 2) {
+      careGrantNote('A plan needs a student: type their name.');
+      return;
+    }
+    if (String(g.phone).replace(/[^0-9]/g, '').length < 10) {
+      careGrantNote('A plan needs a number a worker can ring — 0803 111 2233 or +2348031112233.');
+      return;
+    }
+    var credits = Number(String(g.credits).replace(/[^0-9]/g, '')) || CALL_OUTS_INCLUDED;
+    var amount = Number(String(g.amount).replace(/[^0-9]/g, '')) || SESSION_FEE_NGN;
+    var payload = {
+      action: 'grant',
+      payload: { name: g.name, phone: g.phone },
+      session: g.session,
+      credits: credits,
+      amount_ngn: amount,
+      source: 'admin.html'
+    };
+    if (g.area) payload.payload.area = g.area;
+    if (g.room) payload.payload.room = g.room;
+    if (g.reason) payload.reason = g.reason;
+
+    var btn = $('careGrantSubmit');
+    if (btn) { btn.disabled = true; btn.textContent = 'Opening…'; }
+
+    carePost(payload).then(function (body) {
+      state.careGrant = { done: body };
+      renderCarePanel();
+      if (ArzuzSubmit && ArzuzSubmit.showToast) {
+        ArzuzSubmit.showToast('Plan opened — ' + body.credits + ' call-outs for ' +
+          (body.student_name || 'the student') + '. Send them the link.', 'success');
+      }
+      return careRefresh();
+    }).catch(function (err) {
+      /* The refusal stays in the drawer, beside the fields it is
+         about — a duplicate plan is a fact about this student. */
+      careGrantNote(err.message);
+      var b = $('careGrantSubmit');
+      if (b) { b.disabled = false; b.textContent = 'Open it — ' + credits + ' credits'; }
+    });
+  }
+
+  function careGrantCopy() {
+    var el = $('careGrantLink');
+    if (!el) return;
+    var ok = function () {
+      if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('Link copied.', 'success');
+    };
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(el.value).then(ok, function () { el.select(); });
+    } else if (el.select) {
+      el.select();
+    }
+  }
+
+  function renderCarePanel() {
+    var metricEl = $('careMetric'), panel = $('carePanel');
+    if (!metricEl || !panel) return;
+
+    var plans = carePlans();
+    var active = plans.filter(function (p) { return p.status === 'active'; });
+    var left = active.reduce(function (n, p) { return n + (Number(p.balance) || 0); }, 0);
+    var used = plans.reduce(function (n, p) { return n + (Number(p.call_outs) || 0); }, 0);
+
+    metricEl.innerHTML =
+      '<h3 style="margin:0 0 10px;font-size:15px">' + ico('tag', 16) + ' Arzuz Care — credit balance</h3>' +
+      '<p class="sub">One credit is one call-out, and a ₦20,000 session is four of them. The balance below is the ' +
+      'sum of an append-only ledger: nothing here can edit a credit out of existence, and every button posts to the ' +
+      'server that writes it.</p>' +
+      '<div class="details-kv-grid">' +
+        kv('Call-outs left', '<b>' + left + '</b>') +
+        kv('Call-outs used', String(used)) +
+        kv('Active plans', active.length + ' of ' + plans.length) +
+      '</div>';
+
+    var html = '<h3 style="margin:26px 0 10px;font-size:15px">' + ico('users', 16) + ' Care plans</h3>';
+    html += careGrantBlockHtml();
+
+    if (!plans.length) {
+      html += '<div class="ops-row"><span class="ic">' + ico('alert', 15) + '</span><span class="tx">' +
+        '<b>No Care plans yet</b><span>A plan appears here as soon as one is opened: use ' +
+        (careCanGrant() ? 'Open a Care plan above' : 'the button the admin login has') +
+        '. Every plan is created by netlify/functions/care-credit.js, which is the only writer of the ledger. ' +
+        'If supabase-care.sql has not been run in Supabase, the tables do not exist until you do \u2014 think ' +
+        'twice before creating them: the apply is additive and safe, but it is a schema change.</span>' +
+        '</span></div>';
+      panel.innerHTML = html;
+      return;
+    }
+
+    plans.forEach(function (p) { html += careRowHtml(p); });
+
+    html += '<p class="sub">Refunding returns what is left of the fee and is only offered before a session has used ' +
+      'a call-out — that is the promise care.html makes. Ending a session voids whatever is unused, which is how ' +
+      'credits expire: they belong to one session and nothing rolls over.</p>';
+
+    panel.innerHTML = html;
+  }
+
+  /* One POST, then a re-read: the balance shown is always the one the
+     database just computed, never a number this file did arithmetic
+     on. */
+  function carePost(payload) {
+    return ArzuzAuth.headers().then(function (h) {
+      return fetch('/api/care-credit', {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, h),
+        body: JSON.stringify(payload),
+      });
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (body) {
+        /* Only a 401 is a dead session. A 409 is the ledger refusing
+           the change, which is information, not a logout. */
+        if (r.status === 401) {
+          onAuthError(Object.assign(new Error('Care refused'), { status: 401 }));
+          throw apiErr(r, body);
+        }
+        if (!r.ok) throw apiErr(r, body);
+        return body;
+      });
+    });
+  }
+
+  function careRefresh() {
+    return ArzuzAuth.headers().then(fetchCare).then(function (care) {
+      state.care = care;
+      renderCarePanel();
+    }).catch(function () { /* the panel keeps the last good read */ });
+  }
+
+  function careNote(msg) {
+    var el = $('careDrawerNote');
+    if (el) el.textContent = msg;
+  }
+
+  function careAct(act, planId) {
+    var payload = { action: act, plan_id: planId };
+    if (act === 'spend') {
+      var workerEl = $('careWorker'), partsEl = $('careParts'), reasonEl = $('careReason');
+      var worker = workerEl ? workerEl.value.trim() : '';
+      var partsRaw = partsEl ? partsEl.value.trim() : '';
+      var reason = reasonEl ? reasonEl.value.trim() : '';
+      if (!worker) { careNote('Say who did the work — a credit with no name against it cannot be explained later.'); return; }
+      var parts = partsRaw === '' ? 0 : Number(partsRaw.replace(/[^0-9]/g, ''));
+      if (!isFinite(parts)) { careNote('Parts must be a number. Use 0 if there were none.'); return; }
+      payload.worker = worker;
+      payload.parts_ngn = parts;
+      if (reason) payload.reason = reason;
+    }
+
+    carePost(payload).then(function (body) {
+      state.careSpend = null;
+      var says = act === 'spend' ? 'Call-out recorded — ' + body.balance + ' left'
+        : act === 'refund' ? 'Refunded — ' + (body.voided || 0) + ' credits voided'
+        : 'Session ended — ' + (body.voided || 0) + ' credits voided';
+      if (body.parts_over_ceiling) says += '. Parts are over the included ceiling — quote the student.';
+      if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast(says, 'success');
+      return careRefresh();
+    }).catch(function (err) {
+      /* Shown in the drawer, where the person is looking, and left there
+         until they do something about it. */
+      if (state.careSpend) careNote(err.message);
+      else if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast(esc(err.message), 'error');
+    });
+  }
+
+  /* The three things a button can do, as named functions rather than as
+     branches inside one delegated handler — because the boot harness
+     cannot dispatch a document-level event (a real browser can, and the
+     delegation below is how the buttons reach these). Exposing them
+     means the test drives the SAME function the click would, instead of
+     a second copy that could drift. */
+  function careOpenSpend(planId) {
+    state.careSpend = { plan: planId, worker: '', parts: '', reason: '' };
+    renderCarePanel();
+    var w = $('careWorker');
+    if (w) w.focus();
+  }
+
+  function careCloseSpend() {
+    state.careSpend = null;
+    renderCarePanel();
+  }
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-care]') : null;
+    if (!b || b.disabled) return;
+    var act = b.getAttribute('data-care');
+    var plan = b.getAttribute('data-plan');
+    if (act === 'spend-open') return careOpenSpend(plan);
+    if (act === 'spend-cancel') return careCloseSpend();
+    if (act === 'grant-open') return careGrantOpen();
+    if (act === 'grant-cancel' || act === 'grant-done') return careGrantClose();
+    if (act === 'grant-submit') return careGrantSubmit();
+    if (act === 'grant-copy') return careGrantCopy();
+    if (act === 'spend-confirm' || act === 'refund' || act === 'expire') {
+      careAct(act === 'spend-confirm' ? 'spend' : act, plan);
+    }
+  });
+
+  window.arzuzCareRender = renderCarePanel;
+  window.arzuzCareFrame = function (plans) { state.care = { plans: plans }; renderCarePanel(); };
+  window.arzuzCareOpenSpend = careOpenSpend;
+  window.arzuzCareAct = careAct;
+  window.arzuzCareState = function () { return state.careSpend; };
+  /* The grant drawer, exposed for the same reason careAct is: the boot
+     harness cannot dispatch a document-level event, so it must drive
+     the SAME function a click would rather than a copy of it. */
+  window.arzuzCareGrant = {
+    open: careGrantOpen,
+    close: careGrantClose,
+    submit: careGrantSubmit,
+    copy: careGrantCopy,
+    can: careCanGrant,
+    state: function () { return state.careGrant; }
+  };
+
+  /* ================= 4e. The student dossier =================
+     One student, everything the database holds about them: the answers
+     they gave, every decision in either direction, their matches, and
+     their whole consent trail.
+
+     It exists because the feed above cannot answer a phone call on its
+     own. "Did you show my number to anyone?" is a question about ONE
+     student, and answering it by scrolling a 40-line feed for their name
+     is how a team gets a dispute wrong — the feed is also capped, so an
+     older event may not be on screen at all.
+
+     The two reads below are therefore asked for by id, not read out of
+     the panel's state, and the trail is NOT capped the way the feed is.
+     Neither query is filtered by env: the trail is an audit log, and a
+     student who arrived in a test run still has a history.
+
+     Read-only, like everything else in this section. There is nothing
+     here that can change a decision. */
+
+  var dossierToken = 0;   /* a later click must beat an earlier slow fetch */
+
+  /* id → name, from everything already loaded. The pool alone is not
+     enough: a matched student has left the open pool, so the pairs and
+     the feed are the only places their name still appears. */
+  function dossierNames() {
+    var map = {};
+    (state.roommatePool.profiles || []).forEach(function (p) {
+      map[p.id] = pick(p, 'first_name', ['name']) || 'Student';
+    });
+    (state.roommatePool.pairs || []).forEach(function (m) {
+      map[m.a_id] = m.a_name; map[m.b_id] = m.b_name;
+    });
+    (state.roommatePool.trail || []).forEach(function (e) {
+      if (e.actor_ref && e.actor_name) map[e.actor_ref] = e.actor_name;
+      if (e.subject_ref && e.subject_name) map[e.subject_ref] = e.subject_name;
+    });
+    return map;
+  }
+
+  /* The questionnaire is rendered from the SHARED vocabulary
+     (assets/roommate-score.js) rather than a list typed out here: the
+     question labels are the ones the student actually saw, and a
+     question added to the form shows up in the dossier for free. */
+  function answersGrid(payload, group) {
+    var A = window.ArzuzMatch;
+    if (!A) return '<p class="sub">Questionnaire vocabulary not loaded.</p>';
+    var defs = group === 'wants' ? A.WANTS : A.PROFILE;
+    var html = '';
+    Object.keys(defs).forEach(function (k) {
+      var def = defs[k];
+      var v = payload[k];
+      if (v === undefined || v === null || v === '') return;
+      if (def.kind === 'multi') {
+        var list = A.list(v);
+        if (!list.length) return;
+        html += kv(def.short || def.label, esc(list.join(', ')));
+        return;
+      }
+      html += kv(def.short || def.label, esc(k === 'budget' ? ngn(v) : v));
+    });
+    return html ? '<div class="details-kv-grid">' + html + '</div>' : '<p class="sub">Nothing answered.</p>';
+  }
+
+  function decisionRow(who, verb, whom, when, decision) {
+    return '<div class="mate-cand"><div><b>' + esc(who) + ' ' + verb + ' ' + esc(whom) + '</b>' +
+      '<span>' + esc(fmtDate(when)) + '</span></div>' +
+      '<span class="tag-status ' + (decision === 'accept' ? 'tag-open' : 'tag-cancelled') + '">' +
+      esc(decision) + '</span></div>';
+  }
+
+  function dossierSection(title, body, sub) {
+    return '<h4 style="margin:18px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;opacity:.7">' +
+      esc(title) + '</h4>' + (sub ? '<p class="sub">' + sub + '</p>' : '') + body;
+  }
+
+  var NOTE_ROW = function (msg) {
+    return '<div class="ops-row"><span class="ic">' + ico('check', 15) + '</span><span class="tx">' +
+      '<span>' + msg + '</span></span></div>';
+  };
+
+  function dossierHtml(profile, interests, events) {
+    var p = profile.payload || {};
+    var id = profile.id;
+    var name = pick(profile, 'first_name', ['name']) || 'Student';
+    var names = dossierNames();
+    var phone = pick(profile, 'phone', ['phone']);
+    var wa = waLink(phone);
+
+    var mine = interests.filter(function (i) { return i.from_ref === id; });
+    var theirs = interests.filter(function (i) { return i.to_ref === id; });
+    var pairs = (state.roommatePool.pairs || []).filter(function (m) {
+      return m.a_id === id || m.b_id === id;
+    });
+
+    /* ---- who they are ---- */
+    var html = '<div class="details-kv-grid">';
+    html += kv('Student', '<b>' + esc(name) + '</b>');
+    html += kv('Status', statusTag(profile.status));
+    html += kv('WhatsApp', esc(phone || '\u2014') +
+      (wa ? ' <a class="wa-btn" href="' + wa + '" target="_blank" rel="noopener">Message</a>' : ''));
+    html += kv('Area', esc(p.area || '\u2014'));
+    html += kv('Budget', p.budget ? esc(ngn(p.budget)) + ' a session' : '\u2014');
+    html += kv('Answered', esc(fmtDate(profile.created_at)) + ' (' + esc(ageLabel(profile.created_at)) + ' ago)');
+    html += kv('Session', esc(profile.session || '\u2014') + ' \u00b7 ' + esc(profile.env || 'production'));
+    html += kv('Source', esc(profile.source || '\u2014'));
+    html += kv('Profile ID', '<span style="font-family:var(--mono);font-size:12px">' + esc(id) + '</span>', true);
+    html += '</div>';
+
+    /* ---- the two halves of the questionnaire, in the student's words ---- */
+    html += dossierSection('Part A \u2014 about them', answersGrid(p, 'profile'));
+    html += dossierSection('Part B \u2014 what they asked for', answersGrid(p, 'wants'),
+      'Their own deal-breakers are absolute: a pair matching one is never shown, at any percentage.');
+
+    /* ---- every decision, both directions ---- */
+    var rows = '';
+    mine.forEach(function (i) {
+      rows += decisionRow(name, i.decision === 'accept' ? 'said yes to' : 'passed on',
+        names[i.to_ref] || 'another student', i.created_at, i.decision);
+    });
+    theirs.forEach(function (i) {
+      rows += decisionRow(names[i.from_ref] || 'Another student',
+        i.decision === 'accept' ? 'said yes to' : 'passed on', name, i.created_at, i.decision);
+    });
+    html += dossierSection('Decisions (' + interests.length + ')',
+      rows ? '<div style="display:flex;flex-direction:column;gap:8px">' + rows + '</div>'
+           : NOTE_ROW('No decisions yet \u2014 this student has neither accepted nor passed on anyone.'),
+      'Both directions are listed separately, because that is what a double opt-in is.');
+
+    /* ---- who they are matched with ---- */
+    var matchRows = '';
+    pairs.forEach(function (m) {
+      var otherIsA = m.a_id !== id;
+      var otherName = otherIsA ? m.a_name : m.b_name;
+      matchRows += '<div class="mate-cand"><div><b>Matched with ' + esc(otherName || 'a student') + '</b>' +
+        '<span>both said yes \u00b7 ' + esc(fmtDate(m.matched_at)) + ' \u00b7 contact details unlocked for both</span></div>' +
+        '<button type="button" class="btn-inline" data-act="dossier" data-id="' + esc(otherIsA ? m.a_id : m.b_id) + '">' +
+        'Dossier \u2192 ' + esc(otherName || 'student') + '</button></div>';
+    });
+    html += dossierSection('Matched (' + pairs.length + ')',
+      matchRows ? '<div style="display:flex;flex-direction:column;gap:8px">' + matchRows + '</div>'
+                : NOTE_ROW('Not matched with anyone yet.'));
+
+    /* ---- their whole consent trail ---- */
+    html += dossierSection('Consent trail (' + events.length + ')',
+      events.length ? '<div style="display:flex;flex-direction:column;gap:8px">' + events.map(consentLineHtml).join('') + '</div>'
+                    : NOTE_ROW('No events on record for this student.'),
+      'Append-only, and unfiltered \u2014 unlike the feed above, this is every event they are named in.');
+
+    return html;
+  }
+
+  window.openDossier = function (id) {
+    var profile = (state.roommatePool.profiles || []).find(function (r) { return r.id === id; });
+    if (!profile) return;
+    var token = ++dossierToken;
+
+    $('dossierTitle').textContent = pick(profile, 'first_name', ['name']) || 'Student Dossier';
+    $('dossierContent').innerHTML = '<p class="sub">Loading this student\u2019s decisions and consent trail\u2026</p>';
+    show($('dossierModal'));
+
+    ArzuzAuth.headers().then(function (h) {
+      function get(path) {
+        return fetch(apiRoot() + '/rest/v1/' + path, { headers: h })
+          .then(function (r) { return r.ok ? r.json() : []; })
+          .catch(function () { return []; });
+      }
+      /* or= is the only way to ask "either side" in one request. */
+      var key = '(from_ref.eq.' + id + ',to_ref.eq.' + id + ')';
+      var keyEv = '(actor_ref.eq.' + id + ',subject_ref.eq.' + id + ')';
+      return Promise.all([
+        get('roommate_interests?select=*&or=' + key + '&order=created_at.desc&limit=200'),
+        get('roommate_events?select=*&or=' + keyEv + '&order=created_at.desc&limit=200')
+      ]);
+    }).then(function (out) {
+      if (token !== dossierToken) return;   /* an older click, overtaken */
+      /* Kept so the export below writes the SAME record that is on
+         screen, down to the same two reads. The token guard above is
+         what keeps it honest: a slow earlier fetch cannot replace this
+         with another student's history. */
+      state.dossier = { profile: profile, interests: out[0] || [], events: out[1] || [] };
+      $('dossierContent').innerHTML = dossierHtml(profile, state.dossier.interests, state.dossier.events);
+    }).catch(function (err) {
+      if (token !== dossierToken) return;
+      state.dossier = null;
+      $('dossierContent').innerHTML = '<p class="sub">Could not load this dossier: ' + esc(err && err.message) + '</p>';
+    });
+  };
+
+  /* ================= 4f. The dossier as a file =================
+     The print sheet answers "read me this over the phone". This answers
+     the other half: hand the record to someone who is not standing at
+     the dashboard.
+
+     JSON rather than CSV, and deliberately: CSV cannot hold the two
+     halves of the questionnaire without flattening them into columns
+     that mean nothing, and an archive that loses which question an
+     answer belonged to is not an archive. The envelope also carries who
+     it is about, when it was exported and the append-only note, so the
+     file explains itself to whoever opens it years from now.
+
+     What it does NOT contain is as deliberate. It is built from the same
+     profile / interests / events the screen rendered — not from panel
+     state — so another student's payload, or a student who merely
+     appears in the feed above, cannot reach it. */
+  function dossierSlug(name) {
+    return String(name || 'student').toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'student';
+  }
+
+  function dossierExport(profile, interests, events, now) {
+    var p = profile.payload || {};
+    var id = profile.id;
+    var name = pick(profile, 'first_name', ['name']) || 'Student';
+    var names = dossierNames();
+    var at = now || new Date();
+
+    var doc = {
+      record: 'arzuz roommate consent record',
+      format: 1,
+      exported_at: at.toISOString(),
+      note: 'Append-only. The database grants no login INSERT, UPDATE or DELETE on the consent trail, ' +
+        'so nothing in this file can be changed or removed after the fact — and the names below are the ' +
+        'ones stored at the time, which is why they survive a deleted profile.',
+      student: {
+        id: id,
+        name: name,
+        phone: pick(profile, 'phone', ['phone']) || null,
+        area: p.area || null,
+        budget: p.budget || null,
+        status: profile.status || null,
+        session: profile.session || null,
+        env: profile.env || null,
+        source: profile.source || null,
+        answered_at: profile.created_at || null,
+        answers: p,
+        dealbreakers: toList(p.dealbreakers)
+      },
+      /* Both directions as separate rows, because that is what a double
+         opt-in is — and the other student's name is the snapshot from
+         the record, not a fresh lookup that a deleted profile would
+         break. */
+      decisions: (interests || []).map(function (i) {
+        var mine = i.from_ref === id;
+        return {
+          from: mine ? name : (names[i.from_ref] || 'another student'),
+          from_id: i.from_ref,
+          to: mine ? (names[i.to_ref] || 'another student') : name,
+          to_id: i.to_ref,
+          decision: i.decision,
+          at: i.created_at
+        };
+      }),
+      matches: ((state.roommatePool || {}).pairs || []).filter(function (m) {
+        return m.a_id === id || m.b_id === id;
+      }).map(function (m) {
+        var otherIsA = m.a_id !== id;
+        return {
+          with_id: otherIsA ? m.a_id : m.b_id,
+          with_name: otherIsA ? m.a_name : m.b_name,
+          matched_at: m.matched_at
+        };
+      }),
+      events: (events || []).map(function (e) {
+        return {
+          id: e.id,
+          event: e.event,
+          at: e.created_at,
+          actor_id: e.actor_ref,
+          actor_name: e.actor_name,
+          subject_id: e.subject_ref,
+          subject_name: e.subject_name,
+          env: e.env,
+          session: e.session
+        };
+      })
+    };
+
+    return {
+      filename: 'arzuz-consent-' + dossierSlug(name) + '-' + at.toISOString().slice(0, 10) + '.json',
+      text: JSON.stringify(doc, null, 2)
+    };
+  }
+
+  /* Exposed because the boot harness builds the file through the very
+     function the button calls — a second copy in the test would be
+     testing the test. */
+  window.arzuzDossierExport = dossierExport;
+
+  $('btnExportDossier').addEventListener('click', function () {
+    var d = state.dossier;
+    if (!d) return;
+    var out = dossierExport(d.profile, d.interests, d.events, new Date());
+    var blob = new Blob([out.text], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = out.filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    if (ArzuzSubmit && ArzuzSubmit.showToast) {
+      ArzuzSubmit.showToast('Consent record exported as ' + out.filename, 'success');
+    }
+  });
+
+  /* ================= 4g. Why matches stall =================
+     The panel says who is waiting. It does not say WHY nobody has been
+     matched with them, and the two honest answers are different:
+     the pool has nobody suitable, or the students have not chosen each
+     other. Only the first one is the team's problem.
+
+     "Nobody suitable" is computed with the SHARED scorer
+     (window.ArzuzMatch.eligible — the same call the server makes before
+     it shows a card), so this cannot drift from what the engine
+     actually does: a student named here is one the engine would not put
+     in front of anyone either. */
+  var COHORT_WAIT_MAX = 40;   /* pairwise cost, and say so when it bites */
+
+  function medianDays(deltas) {
+    if (!deltas.length) return null;
+    var s = deltas.slice().sort(function (a, b) { return a - b; });
+    var mid = Math.floor(s.length / 2);
+    var v = s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+    return Math.round(v * 10) / 10;
+  }
+
+  function daysBetween(fromIso, toIso) {
+    var a = Date.parse(fromIso), b = Date.parse(toIso);
+    if (!isFinite(a) || !isFinite(b) || b < a) return null;
+    return (b - a) / 864e5;
+  }
+
+  function budgetBandOf(row) {
+    var n = Number(pick(row, 'budget_ngn', ['budget']));
+    if (!isFinite(n) || n <= 0) return null;
+    if (n < 80000) return 'under \u20a680k';
+    if (n < 150000) return '\u20a680\u2013150k';
+    if (n < 300000) return '\u20a6150\u2013300k';
+    return '\u20a6300k+';
+  }
+
+  /* One row per group: how many are in it, how many matched, and how
+     long the matched ones waited. The median rather than the mean
+     because one student who answered in October and matched in January
+     should not move the headline. */
+  function cohortRows(profiles, pairs, keyOf) {
+    var matchedAt = {};
+    (pairs || []).forEach(function (m) {
+      [m.a_id, m.b_id].forEach(function (pid) {
+        if (!pid) return;
+        if (!matchedAt[pid] || String(m.matched_at) < String(matchedAt[pid])) matchedAt[pid] = m.matched_at;
+      });
+    });
+
+    var groups = {};
+    profiles.forEach(function (r) {
+      var key = keyOf(r);
+      if (key === null || key === undefined || key === '') return;
+      if (!groups[key]) groups[key] = { label: key, total: 0, matched: 0, deltas: [] };
+      var g = groups[key];
+      g.total += 1;
+      if (matchedAt[r.id]) {
+        g.matched += 1;
+        var d = daysBetween(r.created_at, matchedAt[r.id]);
+        if (d !== null) g.deltas.push(d);
+      }
+    });
+
+    return Object.keys(groups).map(function (k) {
+      var g = groups[k];
+      g.rate = g.total ? Math.round((g.matched / g.total) * 100) : 0;
+      g.median_days = medianDays(g.deltas);
+      return g;
+    }).sort(function (a, b) { return (b.total - a.total) || a.label.localeCompare(b.label); });
+  }
+
+  function cohortLineHtml(g) {
+    return '<div class="mate-cand"><div>' +
+      '<b>' + esc(g.label) + '</b>' +
+      '<span>' + g.total + (g.total === 1 ? ' student' : ' students') + ' \u00b7 ' +
+      g.matched + ' matched \u00b7 ' + g.rate + '%' +
+      (g.median_days !== null ? ' \u00b7 typically ' + g.median_days + ' ' + (g.median_days === 1 ? 'day' : 'days') + ' to match' : '') +
+      '</span></div></div>';
+  }
+
+  /* Why one waiting student has nobody: the engine's own verdict, counted
+     by reason so the line says which wall they hit rather than just how
+     tall it is. */
+  function noPartnerReason(A, me, others) {
+    var counts = { gender: 0, dealbreaker: 0, thin: 0 };
+    others.forEach(function (x) {
+      var r = A.score(me.payload || {}, x.payload || {});
+      if (r.pass && !r.dealbreaker) return;
+      if (r.dealbreaker) counts.dealbreaker += 1;
+      else if (/gender/i.test(String(r.reason || ''))) counts.gender += 1;
+      else counts.thin += 1;
+    });
+    var bits = [];
+    if (counts.gender) bits.push(counts.gender + ' by gender');
+    if (counts.dealbreaker) bits.push(counts.dealbreaker + (counts.dealbreaker === 1 ? ' by a deal-breaker' : ' by deal-breakers'));
+    if (counts.thin) bits.push(counts.thin + ' with too little in common to call');
+    return {
+      total: others.length,
+      bits: bits,
+      /* The biggest wall first — it is usually the gender rule or one
+         deal-breaker, and naming it is the whole point of the block. */
+      dominant: counts.gender >= counts.dealbreaker && counts.gender >= counts.thin ? 'gender'
+        : (counts.dealbreaker >= counts.thin ? 'dealbreaker' : 'thin')
+    };
+  }
+
+  function stallHtml() {
+    var A = window.ArzuzMatch;
+    var pool = state.roommatePool || {};
+    var profiles = (pool.profiles || []).filter(function (r) { return !isTestRow(r); });
+    var waiting = profiles.filter(function (r) { return str(r.status).toLowerCase() === 'open'; });
+    var html = '<h4 style="margin:18px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;opacity:.7">' +
+      'Why they are still waiting</h4>';
+
+    if (!A) {
+      return html + '<p class="sub">The matching vocabulary is not loaded, so this cannot be worked out.</p>';
+    }
+    if (!waiting.length) {
+      return html + NOTE_ROW('Nobody is waiting, so there is nothing to explain.');
+    }
+
+    /* The two cohorts the plan actually asks about, plus the wall. */
+    var byArea = cohortRows(profiles, pool.pairs, function (r) { return pick(r, 'area', ['area']) || 'No area given'; });
+    var byBudget = cohortRows(profiles, pool.pairs, budgetBandOf);
+
+    html += '<p class="sub">Every row below is computed from the ' + profiles.length +
+      ' profiles this panel loaded — the same rows the pool above is built from, and the pool read is ' +
+      'capped, so read it as a picture of the pool rather than an audit of it.</p>';
+
+    html += '<div class="mate-meta" style="margin-bottom:4px"><span>By area</span></div>';
+    html += byArea.map(cohortLineHtml).join('');
+    html += '<div class="mate-meta" style="margin:10px 0 4px"><span>By budget</span></div>';
+    html += byBudget.length ? byBudget.map(cohortLineHtml).join('')
+      : NOTE_ROW('No waiting student has given a budget.');
+
+    /* --- the wall --- */
+    var considered = waiting.slice(0, COHORT_WAIT_MAX);
+    var queue = [];
+    considered.forEach(function (me) {
+      var others = waiting.filter(function (x) { return x.id !== me.id; });
+      var compatible = 0;
+      others.forEach(function (x) { if (A.eligible(me.payload || {}, x.payload || {})) compatible += 1; });
+      if (compatible === 0) queue.push({ row: me, why: noPartnerReason(A, me, others) });
+    });
+
+    html += '<div class="mate-meta" style="margin:12px 0 4px"><span>Nobody suitable in the pool (' + queue.length + ')</span></div>';
+    if (!queue.length) {
+      html += NOTE_ROW('Every waiting student has at least one compatible partner in the pool — what is left is their own decision, not the pool.');
+    } else {
+      queue.forEach(function (q) {
+        html += '<div class="mate-cand"><div>' +
+          '<b>' + esc(pick(q.row, 'first_name', ['name']) || 'Student') + '</b>' +
+          '<span>' + (q.why.total ? 'all ' + q.why.total + ' other waiting ' + (q.why.total === 1 ? 'student is' : 'students are') + ' filtered out' : 'the only student waiting') +
+          (q.why.bits.length ? ' — ' + esc(q.why.bits.join(', ')) : '') + '</span></div>' +
+          '<button type="button" class="btn-inline" data-act="dossier" data-id="' + esc(q.row.id) + '">' + ico('users', 13) + ' Dossier</button>' +
+          '</div>';
+      });
+      html += '<p class="sub">None of these is a bug to fix: the gender rule and a ticked deal-breaker are ' +
+        'students\u2019 own choices. The reason to show it is that a thin pool and a student who cannot be ' +
+        'matched are different problems, and only one of them is solved by finding more rooms.</p>';
+    }
+
+    if (waiting.length > COHORT_WAIT_MAX) {
+      html += '<p class="sub">Only the first ' + COHORT_WAIT_MAX + ' waiting students were checked one against ' +
+        'another (' + waiting.length + ' are waiting) — past that the check is slower than the page it is on.</p>';
+    }
+    return html;
+  }
+
+  /* ================= 4h. Previewing the daily digest =================
+     netlify/functions/roommate-digest.js sends one message at 06:00 and
+     nobody can watch that happen. This asks the server to compose the
+     very same message — same function, not a copy — and shows it.
+
+     Shown as TEXT, tags and all, rather than as rendered HTML. The text
+     is Telegram's HTML dialect with student-typed values escaped
+     server-side; rendering it here would put that escaping between us
+     and innerHTML for the sake of bold text nobody needs in a preview,
+     and "exactly what the message contains" is the more useful thing to
+     read anyway. */
+  window.openDigestPreview = function () {
+    var box = $('digestPreviewText'), note = $('digestPreviewNote');
+    if (!box) return;
+    box.textContent = 'Composing\u2026';
+    if (note) note.textContent = 'Reading the same tables the 06:00 job reads. Nothing is sent.';
+    show($('digestModal'));
+
+    ArzuzAuth.headers().then(function (h) {
+      h['Content-Type'] = 'application/json';
+      /* Root-relative, like /api/team and /strategy-docs: Netlify functions
+         live on this site's origin, not on the Supabase project. */
+      return fetch('/api/roommate-digest-preview', { method: 'POST', headers: h, body: '{}' });
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (body) {
+        /* 401 is a dead session and the dashboard signs out for it \u2014 one
+           convention, one handler. 403 is NOT: the session is fine and the
+           role simply may not read this. Passing a 403 to onAuthError would
+           log a signed-in colleague out because they opened the wrong
+           screen, so it is shown here and nothing else. (The REST reads in
+           fetchData can treat both alike because PostgREST answers 403 only
+           for a missing grant, which IS a broken login \u2014 a difference
+           worth keeping straight.) */
+        if (r.status === 401) {
+          onAuthError(Object.assign(new Error('Digest preview refused'), { status: r.status }));
+          throw apiErr(r, body);
+        }
+        if (!r.ok) throw apiErr(r, body);
+        return body;
+      });
+    }).then(function (body) {
+      box.textContent = body.text;
+      if (!note) return;
+      var c = body.counts || {};
+      note.textContent = (body.would_send
+        ? 'The 06:00 job would send this now.'
+        : 'Nothing needs attention \u2014 the 06:00 job would stay silent. This is what it WOULD say if it did not.') +
+        ' Window: last ' + body.window_hours + ' hours \u00b7 ' + body.quiet_pairs + ' stalled ' +
+        (body.quiet_pairs === 1 ? 'match' : 'matches') + ' \u00b7 ' + (c.created || 0) + ' questionnaires, ' +
+        (c.matched || 0) + ' matches \u00b7 your role: ' + (body.role || '\u2014') + '.';
+    }).catch(function (err) {
+      /* The note said "reading the tables" a moment ago; leaving it there
+         while the box says the read failed is a contradiction on screen. */
+      if (note) note.textContent = 'The digest could not be composed. Nothing was sent.';
+      box.textContent = 'Could not compose the digest: ' + (err && err.message);
+    });
+  };
+
+  $('btnCloseDigest').addEventListener('click', function () { hide($('digestModal')); });
+
+  /* The trigger lives in the panel HTML, so it is wired by delegation —
+     the same reason every dossier button is. */
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('#btnDigestPreview') : null;
+    if (b) openDigestPreview();
+  });
 
   function pairRoommates(aId, bId, btn) {
     var a = (state.data.demand_records || []).find(function (r) { return r.id === aId; });
@@ -1126,7 +2927,7 @@
         });
       }).then(function (r) {
         if (r.status === 401 || r.status === 403) { onAuthError(new Error('Match rejected')); throw new Error('Your session has expired.'); }
-        if (!r.ok) throw new Error('HTTP ' + r.status);
+        if (!r.ok) throw apiErr(r);
         return r.json();
       }).then(function (updated) {
         Object.assign(row, { status: 'matched', payload: payload });
@@ -1170,6 +2971,101 @@
     }).join('');
   }
 
+  /* ================= 4b. The waitlist pipeline =================
+
+     `follow_up_status` is a DIFFERENT column from `status` on purpose.
+     status is the record's state, and every view, filter, report and
+     growth feed in this dashboard is keyed on it (open / matched /
+     active / expired). The pipeline is where a PERSON has got to with
+     the PERSON: new, contacted, interested, matched, closed. Merging
+     them would have meant rewriting every one of those readers on the
+     week of launch; supabase-waitlist-launch.sql reconciles the two in
+     its backfill and enforces these five words with a CHECK constraint,
+     so a value that is not here is refused by Postgres rather than
+     quietly becoming a sixth stage nobody queries for. */
+  var PIPELINE_STAGES = ['new', 'contacted', 'interested', 'matched', 'closed'];
+  var PIPELINE_TABLES = ['demand_records', 'listings'];
+
+  function pipelineOf(r) {
+    var s = str(r.follow_up_status).toLowerCase();
+    return PIPELINE_STAGES.indexOf(s) !== -1 ? s : 'new';
+  }
+
+  function pipelineTagHtml(r) {
+    var s = pipelineOf(r);
+    var who = str(r.assigned_to);
+    return '<span class="pipeline-tag pipeline-' + s + '" title="' +
+      esc(who ? 'Assigned to ' + who : 'Nobody has claimed this one yet') + '">' +
+      esc(s.toUpperCase()) + (who ? ' \u00b7 ' + esc(who.split('@')[0]) : '') + '</span>';
+  }
+
+  /* THE CONTROL IS OFFERED ONLY WHERE THE DATABASE WILL ACCEPT THE
+     WRITE. admin, support and verification may update a demand. On a
+     listing only an ADMIN may write the row at all: verification's
+     write is the approve below, which calls public.listing_verify() and
+     moves four columns, so a stage selector on this table would be a
+     select that answers 42501 — which is worse than no select, because
+     it teaches whoever uses it that the dashboard lies. */
+  function canWorkPipeline(table) {
+    var role = currentRole();
+    if (role === 'admin') return true;
+    if (table === 'demand_records') return role === 'support' || role === 'verification';
+    if (table === 'listings') return false;   // the RPC, or nothing — never a PATCH
+    return false;
+  }
+
+  function pipelineSelectHtml(table, r) {
+    if (PIPELINE_TABLES.indexOf(table) === -1 || !canWorkPipeline(table)) return '';
+    var cur = pipelineOf(r);
+    return '<select class="pipeline-select" data-act="pipeline" data-table="' + table +
+      '" data-id="' + esc(r.id) + '" title="Move this one along the list">' +
+      PIPELINE_STAGES.map(function (s) {
+        return '<option value="' + s + '"' + (s === cur ? ' selected' : '') + '>' + s.toUpperCase() + '</option>';
+      }).join('') + '</select>';
+  }
+
+  /* The reference, in the table, because it is the string the person has
+     in the WhatsApp message they sent us. Looking a record up by it is
+     the one lookup support will actually need. */
+  function refBadgeHtml(r) {
+    var ref = str(r.ref);
+    return ref
+      ? '<span class="ref-badge" title="Read this out to find them on WhatsApp">' + esc(ref) + '</span>'
+      : '';
+  }
+
+  /* The write. Modelled on patchDraftRow below: same auth headers, same
+     error handling, same refresh. `assigned_to` is the SIGNED-IN
+     ACCOUNT, never a name typed into a box — "who is working this" is a
+     question the audit trail answers from the token, and a text field
+     answers a different one. */
+  function patchWaitlistRow(table, id, patch, doneMsg) {
+    ArzuzAuth.headers().then(function (h) {
+      h['Prefer'] = 'return=representation';
+      return fetch(apiRoot() + '/rest/v1/' + table + '?id=eq.' + id, {
+        method: 'PATCH', headers: h, body: JSON.stringify(patch)
+      });
+    })
+      .then(function (r) {
+        if (r.status === 401 || r.status === 403) {
+          onAuthError(new Error('Waitlist update rejected'));
+          throw new Error('Your session has expired, or this login may not change a waitlist record.');
+        }
+        if (!r.ok) throw apiErr(r);
+        return r.json();
+      })
+      .then(function (updated) {
+        var row = findRow(table, id);
+        if (row && updated && updated[0]) Object.assign(row, updated[0]);
+        renderRoute();
+        if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast(doneMsg, 'success');
+      })
+      .catch(function (err) {
+        if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast(err.message, 'error');
+        else alert(err.message);
+      });
+  }
+
   function visibleRows() {
     var table = sectionTable(state.currentSection);
     var rows = state.data[table] || [];
@@ -1193,11 +3089,24 @@
     var role = currentRole();
     var isAdmin = role === 'admin';
     var isSupport = role === 'support';
+    var isVerifier = role === 'verification';
     var html = '';
     if (wa) html += '<a class="wa-btn" href="' + wa + '" target="_blank" rel="noopener">WA</a>';
     html += actBtn('view', table, r.id, ico('eye', 13) + ' View');
-    /* support sees listings read-only — no edit there; never delete */
-    if (!(isSupport && table === 'listings')) html += actBtn('edit', table, r.id, ico('pencil', 13) + ' Edit');
+    /* support sees listings read-only, and so does verification — the
+       officer's write is the approve below, not an edit of the row it
+       decides about. Never delete for either. */
+    if (!((isSupport || isVerifier) && table === 'listings')) html += actBtn('edit', table, r.id, ico('pencil', 13) + ' Edit');
+    /* THE OFFICER'S ONE WRITE, and offered only where the RPC would accept
+       it. Not on a draft — publishing one is the deliberate two-step, since
+       the invite link dies the moment the status leaves 'draft' — and not
+       on a row that is already live, because the decision has been made. */
+    if (isVerifier && table === 'listings' && !boardState(r).live && str(r.status).toLowerCase() !== 'draft') {
+      html += actBtn('verify', table, r.id, ico('check', 13) + ' Approve');
+    }
+    if (isAdmin && table === 'listings' && !boardState(r).live && str(r.status).toLowerCase() !== 'draft') {
+      html += actBtn('publish', table, r.id, ico('check', 13) + ' Publish');
+    }
     if (isAdmin && table === 'listings' && str(r.status).toLowerCase() === 'draft') {
       if (r.draft_token) {
         html += '<button type="button" class="act-btn" data-act="draft-share" data-table="listings" data-id="' + esc(r.id) + '">' + ico('link', 13) + ' Share</button>';
@@ -1227,7 +3136,7 @@
     var html = '';
 
     if (table === 'demand_records') {
-      head.innerHTML = '<th>Date</th><th>Status</th><th>Name</th><th>Room Type</th><th>Budget</th><th>Distance</th><th>Timing</th><th>Contact</th><th>Actions</th>';
+      head.innerHTML = '<th>Date</th><th>Status</th><th>Pipeline</th><th>Name</th><th>Room Type</th><th>Budget</th><th>Distance</th><th>Timing</th><th>Contact</th><th>Actions</th>';
       html = rows.map(function (r) {
         var p = payloadOf(r);
         var name = esc(pick(r, 'first_name', ['first'])) + (p.last ? ' ' + esc(p.last) : '');
@@ -1236,6 +3145,7 @@
         return '<tr>' +
           '<td>' + esc(fmtDate(r.created_at)) + '</td>' +
           '<td>' + statusTag(r.status) + '</td>' +
+          '<td>' + pipelineTagHtml(r) + pipelineSelectHtml('demand_records', r) + '</td>' +
           '<td><b>' + (name || '—') + '</b>' + (isMinor ? '<span class="no-ask-flag" title="Under 18 — check guardian">minor</span>' : '') + '</td>' +
           '<td>' + esc(pick(r, 'room_type', ['type']) || '—') + '</td>' +
           '<td>' + esc(pick(r, 'budget_band', ['budget']) || '—') + '</td>' +
@@ -1251,13 +3161,21 @@
         return '<div class="row-card">' +
           '<div class="rc-top"><div class="rc-head"><b>' + esc(pick(r, 'first_name', ['first']) || 'Student') + '</b>' +
           '<div class="rc-sub"><span>' + esc(fmtDate(r.created_at)) + '</span><span>' + esc(pick(r, 'room_type', ['type']) || '—') + '</span></div></div></div>' +
-          '<div class="rc-tags">' + statusTag(r.status) + (isMinor ? '<span class="no-ask-flag">minor</span>' : '') + '</div>' +
-          '<div class="rc-sub" style="margin-top:6px">Budget: ' + esc(pick(r, 'budget_band', ['budget']) || '—') + ' · ' + esc(pick(r, 'distance', ['dist']) || '—') + '</div>' +
+          '<div class="rc-tags">' + statusTag(r.status) + pipelineTagHtml(r) + (isMinor ? '<span class="no-ask-flag">minor</span>' : '') + '</div>' +
+          pipelineSelectHtml('demand_records', r) +
+          '<div class="rc-sub" style="margin-top:6px">Budget: ' + esc(pick(r, 'budget_band', ['budget']) || '—') + ' · ' + esc(pick(r, 'distance', ['dist']) || '—') + refBadgeHtml(r) + '</div>' +
           '<div class="rc-actions">' + rowActionsHtml(table, r) + '</div></div>';
       }).join('');
 
     } else if (table === 'listings') {
-      head.innerHTML = '<th>Date</th><th>Status</th><th>Apt ID</th><th>Photo</th><th>Property</th><th>Amenities</th><th>Type</th><th>Area</th><th>Opening Ask</th><th>Price</th><th>Location</th><th>Actions</th>';
+      /* "Browse board" sits next to Status on purpose: the two together are
+         the whole answer (draft + hidden, live, pending + hidden), and the
+         table is wider than its pane, so the right-hand columns are the
+         ones you have to scroll to reach. */
+      /* Crawl sits next to Browse board on purpose: both answer a
+         visibility question about the same room — whether students can
+         see it, and how often the engines come back to re-read it. */
+      head.innerHTML = '<th>Date</th><th>Status</th><th>Browse board</th><th>Crawl</th><th>Apt ID</th><th>Photo</th><th>Property</th><th>Amenities</th><th>Type</th><th>Area</th><th>Opening Ask</th><th>Price</th><th>Location</th><th>Actions</th>';
       html = rows.map(function (r) {
         var p = payloadOf(r);
         var photoUrl = pick(r, 'photo_url', ['photo']);
@@ -1267,15 +3185,17 @@
           : '<span class="no-ask-flag" title="Fill this in from your field notes">missing</span>';
         return '<tr>' +
           '<td>' + esc(fmtDate(r.created_at)) + '</td>' +
-          '<td>' + statusTag(r.status) + draftBadgeHtml(r) + '</td>' +
+          '<td>' + statusTag(r.status) + draftBadgeHtml(r) + pipelineTagHtml(r) + pipelineSelectHtml('listings', r) + '</td>' +
+          '<td>' + boardBadgeHtml(r) + '</td>' +
+          '<td>' + crawlBadgeHtml(r) + '</td>' +
           '<td><span class="apt-badge-id">' + esc(aptId) + '</span></td>' +
           '<td>' + (photoUrl
             ? '<img class="admin-photo-thumb" src="' + esc(photoUrl) + '" alt="Property" data-act="photo" data-url="' + esc(photoUrl) + '">'
             : '<span class="muted-cell">No photo</span>') + mediaCountHtml(p) + '</td>' +
-          '<td><b>' + esc(pick(r, 'property_name', ['prop_name']) || '—') + '</b></td>' +
+          '<td><b class="cell-clamp">' + esc(pick(r, 'property_name', ['prop_name']) || '—') + '</b></td>' +
           '<td><div style="max-width:170px;display:flex;flex-wrap:wrap;gap:2px">' + amenitiesTags(p.ut || p.utilities, 3) + '</div></td>' +
           '<td>' + esc(pick(r, 'property_type', ['ty']) || '—') + '</td>' +
-          '<td>' + esc(pick(r, 'area', ['ar']) || '—') + '</td>' +
+          '<td><span class="cell-clamp">' + esc(pick(r, 'area', ['ar']) || '—') + '</span></td>' +
           '<td>' + askCell + '</td>' +
           '<td><b>' + ngn(pick(r, 'listed_price_ngn', ['rent'])) + '</b></td>' +
           '<td>' + mapLink(r) + '</td>' +
@@ -1292,7 +3212,7 @@
           '<div class="rc-head"><b>' + esc(pick(r, 'property_name', ['prop_name']) || 'Unnamed') + '</b>' +
           '<div class="rc-sub"><span class="apt-badge-id">' + esc(aptId) + '</span><span>' + esc(pick(r, 'area', ['ar']) || '—') + '</span><span>' + esc(pick(r, 'property_type', ['ty']) || '—') + '</span></div></div></div>' +
           '<div class="rc-price">' + ngn(pick(r, 'listed_price_ngn', ['rent'])) + '</div>' +
-          '<div class="rc-tags">' + statusTag(r.status) + draftBadgeHtml(r) +
+          '<div class="rc-tags">' + statusTag(r.status) + pipelineTagHtml(r) + boardBadgeHtml(r) + crawlBadgeHtml(r) + draftBadgeHtml(r) +
           (r.opening_ask_ngn == null ? '<span class="no-ask-flag">no opening ask</span>' : '') + '</div>' +
           '<div class="rc-actions">' + rowActionsHtml(table, r) + '</div></div>';
       }).join('');
@@ -1393,7 +3313,7 @@
       booking_requests: 'No booking requests yet.',
       support_tickets: 'No support tickets yet — reports from the listing page arrive here automatically.'
     }[table];
-    var colspan = { demand_records: 9, listings: 12, scout_submissions: 9, booking_requests: 8, support_tickets: 8 }[table];
+    var colspan = { demand_records: 9, listings: 14, scout_submissions: 9, booking_requests: 8, support_tickets: 8 }[table];
     if (!rows.length) {
       html = '<tr><td class="table-empty" colspan="' + colspan + '"><div class="big">' + ico('clipboard', 26) + '</div>' +
         (state.search || state.statusFilter !== 'all' || state.needsAskOnly
@@ -1432,9 +3352,41 @@
     else if (act === 'draft-copy') copyDraftLink(table, id);
     else if (act === 'draft-share') { var ds = findRow(table, id); if (ds) openShareModal(ds, false); }
     else if (act === 'draft-wa') { var dr = findRow(table, id); if (dr) openShareModal(dr, false); }
+    else if (act === 'dossier') openDossier(id);
     else if (act === 'draft-rotate') rotateDraftLink(table, id);
     else if (act === 'draft-revoke') revokeDraftLink(table, id);
     else if (act === 'draft-approve') openEditModal(table, id);   // admin sets tier + status deliberately
+    else if (act === 'publish') publishToListingBoard(id);
+    else if (act === 'verify') verifyListingRow(id);
+    /* The shift's two moves. Same delegate as everything else: a row-
+       scoped listener would have to be re-attached on every re-render,
+       which is how handlers pile up on the same button. */
+    else if (act === 'vtake') verifyQueueWrite('listing_take', id);
+    else if (act === 'vrelease') verifyQueueWrite('listing_release', id);
+  });
+
+  /* 5d. Delegated changes — the pipeline selector.
+
+     A `change` listener rather than a `click` one, and one listener for
+     the whole document rather than one per row: the table re-renders on
+     every keystroke in the search box, and a row-scoped listener would
+     have to be re-attached each time (which is how handlers pile up on
+     the same button). */
+  document.addEventListener('change', function (e) {
+    var sel = (e.target && e.target.dataset && e.target.dataset.act === 'pipeline') ? e.target : null;
+    if (!sel) return;
+    var table = sel.dataset.table, id = sel.dataset.id;
+    var patch = { follow_up_status: sel.value };
+
+    /* Claiming it: the moment somebody moves a row off 'new' it becomes
+       theirs, unless it is already somebody's. Reassigning is the
+       Settings panel's business, not a dropdown's. */
+    var row = findRow(table, id);
+    if (row && !str(row.assigned_to) && sel.value !== 'new') {
+      patch.assigned_to = ArzuzAuth.email() || null;
+    }
+
+    patchWaitlistRow(table, id, patch, 'Moved to ' + sel.value.toUpperCase() + '.');
   });
 
   /* Toolbar wiring */
@@ -1524,22 +3476,22 @@
       /* ---------------- tab 1 — property details & pricing ---------------- */
       var specs = '';
       specs += '<div class="edit-fld"><label>Apartment ID / Code</label><input type="text" id="edit_apt_id" value="' + esc(aptId) + '" placeholder="e.g. APT-001"></div>';
-      specs += '<div class="edit-fld"><label>Property / Lodge Name <small>optional</small></label><input type="text" id="edit_prop_name" value="' + esc(pick(row, 'property_name', ['prop_name'])) + '"></div>';
+      specs += '<div class="edit-fld"><label>Property / Lodge Name <small>optional</small></label><input type="text" id="edit_prop_name" maxlength="70" value="' + esc(pick(row, 'property_name', ['prop_name'])) + '"></div>';
       specs += '<div class="edit-fld"><label>Property Type</label><select id="edit_ty">' +
         (typeof PROPERTY_TYPES !== 'undefined' ? PROPERTY_TYPES : []).map(function (t) {
           return '<option' + (pick(row, 'property_type', ['ty']) === t ? ' selected' : '') + '>' + esc(t) + '</option>';
         }).join('') + '</select></div>';
-      specs += '<div class="edit-fld"><label>Area / Street</label><input type="text" id="edit_ar" value="' + esc(pick(row, 'area', ['ar'])) + '"></div>';
-      specs += '<div class="edit-fld"><label>Rent Price (₦ / session)</label><input type="number" id="edit_rent" value="' + esc(pick(row, 'listed_price_ngn', ['rent'])) + '"></div>';
+      specs += '<div class="edit-fld"><label>Area / Street</label><input type="text" id="edit_ar" maxlength="80" value="' + esc(pick(row, 'area', ['ar'])) + '"></div>';
+      specs += '<div class="edit-fld"><label>Rent Price (₦ / session)</label><input type="number" id="edit_rent" min="0" max="99999999" step="1" maxlength="8" value="' + esc(pick(row, 'listed_price_ngn', ['rent'])) + '"></div>';
 
       /* OPENING ASK — the thesis number. Locked once set. */
       var ask = row.opening_ask_ngn;
       specs += '<div class="edit-fld full"><label>Opening Ask (₦) <small>what the landlord asked BEFORE seeing demand data</small></label>' +
         (ask != null
-          ? '<input type="number" id="edit_ask" value="' + esc(ask) + '" disabled>' +
+          ? '<input type="number" id="edit_ask" min="0" max="99999999" step="1" maxlength="8" value="' + esc(ask) + '" disabled>' +
             '<label class="ask-unlock"><input type="checkbox" id="edit_ask_unlock">' +
             '<small>Unlock &amp; override deliberately — overwriting it destroys the only real measurement Arzuz has.</small></label>'
-          : '<input type="number" id="edit_ask" value="" placeholder="e.g. 200000">') +
+          : '<input type="number" id="edit_ask" min="0" max="99999999" step="1" maxlength="8" value="" placeholder="e.g. 200000">') +
         '</div>';
 
       /* availability — vacant count or fully occupied */
@@ -1549,14 +3501,17 @@
           '<button type="button" class="seg-btn' + (availMode === 'occupied' ? ' on' : '') + '" data-seg="occupied" aria-pressed="' + (availMode === 'occupied' ? 'true' : 'false') + '">' + ico('x', 13) + ' Fully occupied</button>' +
         '</div>' +
         '<div id="editUnitsWrap"' + (availMode === 'occupied' ? ' style="display:none;"' : '') + '>' +
-          '<input type="number" id="edit_units" min="1" step="1" value="' + esc(unitsVal) + '" placeholder="How many units are vacant? e.g. 3">' +
+          '<input type="number" id="edit_units" min="0" max="999" step="1" maxlength="3" value="' + esc(unitsVal) + '" placeholder="How many units are vacant? e.g. 3">' +
+          '<div class="fld-note" id="editUnitsNote">0 means nothing is left to let — the listing is stored as <b>fully occupied</b>.</div>' +
         '</div>' +
         '<input type="hidden" id="edit_avail" value="' + esc(availMode) + '"></div>';
 
-      specs += '<div class="edit-fld"><label>Contact Person</label><input type="text" id="edit_nm" value="' + esc((str(pick(row, 'owner_name', ['nm'])) + ' ' + str(p.last)).trim()) + '"></div>';
-      specs += '<div class="edit-fld"><label>Contact Phone / WhatsApp</label><input type="tel" id="edit_ph" value="' + esc(pick(row, 'owner_phone', ['ph'])) + '"></div>';
+      specs += '<div class="edit-fld"><label>Contact Person</label><input type="text" id="edit_nm" maxlength="60" value="' + esc((str(pick(row, 'owner_name', ['nm'])) + ' ' + str(p.last)).trim()) + '"></div>';
+      specs += '<div class="edit-fld"><label>Contact Phone / WhatsApp</label><input type="tel" id="edit_ph" maxlength="24" value="' + esc(pick(row, 'owner_phone', ['ph'])) + '"></div>';
       specs += '<div class="edit-fld"><label>Contact Role</label><select id="edit_role">' + roleOptionsHtml(curRole) + '</select></div>';
       specs += '<div class="edit-fld"><label>Verification Tier</label><select id="edit_tier">' + tierOptionsHtml(row.tier) + '</select></div>';
+      /* the same answer the Add modal gives: is this on the browse page? */
+      specs += '<div class="edit-fld full"><div class="fld-note" id="editBoardNote" aria-live="polite"></div></div>';
 
       specs += '<div class="edit-fld full"><label>Amenities &amp; Utilities <small>type to search — Enter adds a new one</small></label>' +
         '<div class="tag-field" id="editAmenityField">' +
@@ -1565,7 +3520,7 @@
           '<div class="tag-suggest" id="editAmenitySuggest" role="listbox" aria-label="Amenity suggestions"></div>' +
         '</div></div>';
 
-      specs += '<div class="edit-fld full"><label>Description &amp; Features</label><textarea id="edit_desc" rows="2" placeholder="Running water, prepaid meter…">' + esc(p.desc || p.description || '') + '</textarea></div>';
+      specs += '<div class="edit-fld full"><label>Description &amp; Features</label><textarea id="edit_desc" rows="2" maxlength="2000" placeholder="Running water, prepaid meter…">' + esc(p.desc || p.description || '') + '</textarea></div>';
       specs += '<div class="edit-fld full"><label class="ck-line"><input type="checkbox" id="edit_split_ok"' +
         ((p.split_ok === true || p.split_ok === 'yes') ? ' checked' : '') +
         '> <span>Landlord consents to this room being shared by two tenants who split the cost <small>(enables roommate matching on the public page)</small></span></label></div>';
@@ -1603,7 +3558,7 @@
         '</div>';
 
       loc += '<div class="edit-fld full"><label>' + ico('pin', 13) + ' Access &amp; Navigation Notes <small>optional — landmark, gate colour, stairs, what to look for</small></label>' +
-        '<textarea id="edit_access_notes" rows="3" placeholder="e.g. Opposite the blue mosque, brown double gate with a small green door, first floor — stairs at the back.">' + esc(accessNotes) + '</textarea></div>';
+        '<textarea id="edit_access_notes" rows="3" maxlength="600" placeholder="e.g. Opposite the blue mosque, brown double gate with a small green door, first floor — stairs at the back.">' + esc(accessNotes) + '</textarea></div>';
 
       /* ---------------- tab 3 — media & draft sharing ---------------- */
       var media = '';
@@ -1617,7 +3572,7 @@
         '<input type="file" id="galEditVideoInput" accept="video/*" style="display:none;">' +
         '</div><div class="media-upload-status" id="galEditVideoProgress"></div>' +
         '<div class="admin-media-zone url-zone" style="margin-top:8px;"><div class="url-row">' +
-        '<input type="url" id="edit_video_manual" value="' + esc(videoUrl) + '" placeholder="…or paste a YouTube link">' +
+        '<input type="url" id="edit_video_manual" maxlength="300" value="' + esc(videoUrl) + '" placeholder="…or paste a YouTube link">' +
         '<button type="button" id="edit_video_url_add">' + ico('plus', 12) + ' Embed</button>' +
         '</div></div></div>';
 
@@ -1738,6 +3693,16 @@
 
       initGalleryManager('edit', seedMedia(p, photoUrl, videoUrl));
 
+      /* Status or tier changed: say whether the save will actually put
+         this listing in front of students, before the save. */
+      syncBoardNote('edit', row.env);
+      ['edit_status', 'edit_tier'].forEach(function (id) {
+        var el = $(id);
+        if (el && typeof el.addEventListener === 'function') {
+          el.addEventListener('change', function () { syncBoardNote('edit', row.env); });
+        }
+      });
+
       var emanual = $('edit_video_manual');
       var eadd = $('edit_video_url_add');
       function embedEditUrl() {
@@ -1812,11 +3777,13 @@
       var eMode = $('edit_avail') ? $('edit_avail').value : (str(p.avail) === 'occupied' ? 'occupied' : 'vacant');
       var eUnitsRaw = $('edit_units') ? str($('edit_units').value).trim() : '';
       var eUnits = parseInt(eUnitsRaw, 10);
-      p.avail = eMode;
-      p.units = (eMode === 'vacant' && isFinite(eUnits) && eUnits > 0) ? eUnits : (eMode === 'occupied' ? 0 : null);
-      if (eMode === 'occupied') p.rm = 'Fully occupied';
-      else if (p.units) p.rm = p.units + (p.units === 1 ? ' room available' : ' rooms available');
-      else p.rm = 'Units available';
+      /* a typed 0 is "nothing left to let" — the same rule as the Add
+         form, the landlord form and the payload clamp */
+      var eFullyLet = (eMode === 'occupied') || (eUnitsRaw !== '' && isFinite(eUnits) && eUnits === 0);
+      var eAvail = eFullyLet ? { mode: 'occupied', units: null } : { mode: 'vacant', units: (isFinite(eUnits) && eUnits > 0) ? Math.min(eUnits, MAX_UNITS) : null };
+      p.avail = eAvail.mode;
+      p.units = eAvail.units;
+      p.rm = roomsText(eAvail);
       p.rent = $('edit_rent') ? $('edit_rent').value.trim() : '';
       if ($('edit_desc')) p.desc = $('edit_desc').value.trim();
       var sel = APT_TAG.edit ? APT_TAG.edit.get() : toList(p.ut || p.utilities);
@@ -1922,7 +3889,7 @@
     })
       .then(function (r) {
         if (r.status === 401 || r.status === 403) { onAuthError(new Error('Update rejected')); throw new Error('Your session has expired.'); }
-        if (!r.ok) throw new Error('Update failed (HTTP ' + r.status + ')');
+        if (!r.ok) throw apiErr(r);
         return r.json();
       })
       .then(function (updated) {
@@ -2220,11 +4187,22 @@
 
   /* ---- availability ---- */
 
+  var MAX_UNITS = 999;
+
+  /* Zero is an answer, not an empty box.
+
+     `parseInt('0')` used to fail a `> 0` test here, so a landlord with
+     nothing left to let was stored as mode 'vacant' with a null count
+     and the row read "Units available" — a fully-let lodge advertising
+     rooms that do not exist, on the page students browse. Zero now
+     means fully occupied, exactly as the landlord form and the SQL
+     payload clamp treat it. */
   function availabilityState() {
     var mode = addSegAvail ? addSegAvail.get() : 'vacant';
     var raw = $('add_units') ? str($('add_units').value).trim() : '';
     var n = parseInt(raw, 10);
-    return { mode: mode, units: (isFinite(n) && n > 0) ? n : null };
+    if (raw !== '' && isFinite(n) && n === 0) return { mode: 'occupied', units: null, zero: true };
+    return { mode: mode, units: (isFinite(n) && n > 0) ? Math.min(n, MAX_UNITS) : null, zero: false };
   }
 
   function roomsText(st) {
@@ -2283,11 +4261,20 @@
     resetComposer();
     $('add_apt_id').value = nextAptId();
     if (addSegAvail) syncAvailabilityUi();
+    syncBoardNote('add', cfg.ENV || 'production');
     if (addTabs) addTabs('specs');
     show(addModal);
   }
 
   $('btnOpenAddApt').addEventListener('click', openAddApt);
+
+  /* The browse-board answer, live under the tier select. */
+  ['add_status', 'add_tier'].forEach(function (id) {
+    var el = $(id);
+    if (el && typeof el.addEventListener === 'function') {
+      el.addEventListener('change', function () { syncBoardNote('add', cfg.ENV || 'production'); });
+    }
+  });
 
   $('btnCancelAddApt').addEventListener('click', function () {
     if (!addDirty) { hide(addModal); destroyAdminMap(); return; }
@@ -2444,12 +4431,12 @@
             method: 'POST', headers: headers, body: JSON.stringify(slim)
           }).then(function (r2) {
             if (r2.status === 401 || r2.status === 403) { onAuthError(new Error('Insert rejected')); throw new Error('Your session has expired.'); }
-            if (!r2.ok) throw new Error('Insert failed (HTTP ' + r2.status + ')');
+            if (!r2.ok) throw apiErr(r2);
             return r2.json();
           });
         }
         if (r.status === 401 || r.status === 403) { onAuthError(new Error('Insert rejected')); throw new Error('Your session has expired.'); }
-        throw new Error('Insert failed (HTTP ' + r.status + ')');
+        throw apiErr(r);
       });
     });
   }
@@ -2569,7 +4556,7 @@
 
   function draftLink(row) {
     var base = location.origin + location.pathname.replace(/[^\/]*$/, '');
-    return base + 'complete-listing.html?ref=' + row.draft_token;
+    return base + 'complete-listing?ref=' + row.draft_token;
   }
 
   function draftPermission(row) { return str(row && row.draft_permission) === 'view' ? 'view' : 'edit'; }
@@ -2698,12 +4685,12 @@
               return fetch(apiRoot() + '/rest/v1/listings?id=eq.' + id, { method: 'PATCH', headers: h, body: JSON.stringify(slim) })
                 .then(function (r2) {
                   if (r2.status === 401 || r2.status === 403) { onAuthError(new Error('Draft update rejected')); throw new Error('Your session has expired.'); }
-                  if (!r2.ok) throw new Error('HTTP ' + r2.status);
+                  if (!r2.ok) throw apiErr(r2);
                   return r2.json();
                 });
             }
             if (r.status === 401 || r.status === 403) { onAuthError(new Error('Draft update rejected')); throw new Error('Your session has expired.'); }
-            throw new Error('HTTP ' + r.status);
+            throw apiErr(r);
           });
         });
     })
@@ -2769,7 +4756,7 @@
     })
       .then(function (r) {
         if (r.status === 401 || r.status === 403) { onAuthError(new Error('Draft update rejected')); throw new Error('Your session has expired.'); }
-        if (!r.ok) throw new Error('HTTP ' + r.status);
+        if (!r.ok) throw apiErr(r);
         return r.json();
       })
       .then(function (updated) {
@@ -2816,7 +4803,19 @@
     };
     if (statusEl) { statusEl.className = 'media-upload-status uploading'; statusEl.textContent = 'Preparing the signed upload…'; }
     fetch('/api/cloudinary-sign', { method: 'POST' })
-      .then(function (r) { if (!r.ok) throw new Error('Could not get an upload signature (HTTP ' + r.status + ')'); return r.json(); })
+      .then(function (r) {
+        if (r.ok) return r.json();
+        /* The function knows WHY the upload cannot start, and its own
+           sentence is the only thing an admin can act on: "Cloudinary
+           environment variables not configured on server" is the one
+           that kills every photo silently, and "HTTP 500" says nothing.
+           Read the body and pass the reason through. */
+        return r.text().then(function (body) {
+          var detail = '';
+          try { detail = (JSON.parse(body) || {}).error || ''; } catch (e) { detail = str(body).slice(0, 160); }
+          throw apiErr(r, detail);
+        });
+      })
       .then(function (sig) {
         if (statusEl) statusEl.textContent = 'Uploading ' + kind + '…';
         var fd = new FormData();
@@ -2837,7 +4836,13 @@
         if (statusEl) { statusEl.className = 'media-upload-status success'; statusEl.textContent = 'Uploaded!'; }
         onDone(data.secure_url);
       })
-      .catch(function (err) { fail('Upload failed: ' + err.message); });
+      .catch(function (err) {
+        var msg = 'Upload failed: ' + err.message;
+        if (/cloudinary environment variables|not configured|no credentials/i.test(err.message)) {
+          msg += ' — set CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET and CLOUDINARY_CLOUD_NAME in Netlify → Site settings → Environment variables, then redeploy.';
+        }
+        fail(msg);
+      });
   }
 
   /* Videos go to YouTube (unlisted) with a live progress bar; if YouTube
@@ -2863,7 +4868,7 @@
       if (statusEl) { statusEl.className = 'media-upload-status success'; statusEl.textContent = 'Uploaded!'; }
       onDone(url);
     }).catch(function (err) {
-      if (window.console) console.warn('[Arzuz] YouTube upload unavailable, falling back to Cloudinary:', err.message);
+      if (window.console) console.warn('[Arzuz] YouTube upload unavailable, falling back to Cloudinary:', err.detail || err.message);
       uploadMediaToCloudinary(file, 'video', statusElId, onDone, onProgress, onError);
     });
   }
@@ -2951,11 +4956,16 @@
       ? (isVideo ? '<video src="' + esc(it.preview) + '" muted preload="metadata"></video>'
                  : '<img src="' + esc(it.preview) + '" alt="" loading="lazy">')
       : '<div style="aspect-ratio:4/3;background:rgba(255,255,255,.05)"></div>';
-    var label = it.status === 'failed' ? 'Failed — remove'
+    var label = it.status === 'failed' ? 'Failed'
       : it.status === 'uploading' ? (it.pct > 0 ? it.pct + '%' : 'Uploading…')
       : it.status === 'done' ? 'Uploaded'
       : 'Queued';
-    return '<div class="stage-th' + (it.status === 'failed' ? ' is-failed' : '') + (it.status === 'done' ? ' is-done' : '') + '" data-sid="' + esc(it.id) + '">' +
+    /* The reason a tile failed used to be dropped on the floor: the
+       progress line said "1 failed" and the tile said "Failed —
+       remove", so "my photos do not upload" had no answer anywhere on
+       screen. It is on the tile (title) and in the summary line now. */
+    return '<div class="stage-th' + (it.status === 'failed' ? ' is-failed' : '') + (it.status === 'done' ? ' is-done' : '') +
+      '" data-sid="' + esc(it.id) + '"' + (it.error ? ' title="' + esc(it.error) + '"' : '') + '>' +
       thumb +
       '<span class="stage-kind">' + ico(isVideo ? 'video' : 'image', 12) + '</span>' +
       '<button type="button" class="stage-x" data-stage="drop" data-ctx="' + it.ctx + '" data-sid="' + esc(it.id) + '" title="Remove">' + ico('x', 11) + '</button>' +
@@ -3012,12 +5022,27 @@
       : (kind === 'video' ? 'galEditVideoProgress' : 'galEditProgress'));
     var total = arr.length, done = 0, failed = 0;
 
+    /* A long reason is cut at a word boundary, not mid-word: the
+       unconfigured-Cloudinary sentence ends "…Environment variables,
+       t" when it is sliced at a fixed offset. */
+    function clip(msg, max) {
+      var s = String(msg);
+      if (s.length <= max) return s;
+      var cut = s.slice(0, max);
+      var sp = cut.lastIndexOf(' ');
+      return (sp > max * 0.6 ? cut.slice(0, sp) : cut) + '…';
+    }
+
     function report() {
       if (!prog) return;
       if (done + failed >= total) {
+        var firstError = null;
+        galStage(ctx).forEach(function (it) {
+          if (!firstError && it.status === 'failed' && it.error) firstError = it.error;
+        });
         prog.className = 'media-upload-status ' + (failed ? 'error' : 'success');
         prog.textContent = failed
-          ? (done + ' uploaded, ' + failed + ' failed')
+          ? (done + ' uploaded, ' + failed + ' failed' + (firstError ? ' — ' + clip(firstError, 200) : ''))
           : done + ' ' + (kind === 'video' ? (done === 1 ? 'video' : 'videos') : (done === 1 ? 'photo' : 'photos')) + ' uploaded';
       } else {
         prog.className = 'media-upload-status uploading';
@@ -3057,8 +5082,9 @@
         }, function (pct) {
           item.pct = pct;
           stageProgressTick(item);
-        }, function () {
+        }, function (msg) {
           item.status = 'failed';
+          item.error = msg || '';
           failed++;
           renderGal(ctx);
           report();
@@ -3287,9 +5313,1598 @@
       }
     });
     setEditMapMode(editMapMode ? editMapMode.get() : 'pin');
+  }  /* ================= 4j. Finance — the books, and what reconciles ====
+     The dashboard's last question is the one the brief asks first:
+     after the money moved, does what we took equal what we owe and
+     what we earned?
+
+     HOW THIS PANEL IS ALLOWED TO GET ITS NUMBERS
+
+       ONE call — POST /api/finance { action: 'report' } — and every
+       figure on the page comes out of that answer. It does NOT read
+       ledger_entries itself, does NOT query the views, and does NOT
+       hold a second opinion about a balance: the function computes,
+       the page prints. (The one sum it does perform is adding the
+       report's own per-line figures into a total, which is labelled
+       as such.)
+
+     RECONCILIATION, AND WHY IT IS SHOWN RATHER THAN ASSERTED
+
+       Every posting is a pair — a debit and a credit — so for each
+       business line:
+
+         cash in − cash out = revenue + unearned + payable
+                              − refunds − costs
+
+       That is the double-entry identity, not a policy. The panel
+       prints both sides and the RESIDUAL, and flags a line whose
+       residual is not zero: one-sided entries are exactly the mistake
+       this screen exists to catch, so smoothing them away here would
+       be the bug. A companion test drives a one-sided line through it
+       and requires the flag.
+
+     WHAT MOVES MONEY, AND WHO
+
+       Refunds and referral payouts POST back to the same function,
+       which refuses a support login. The panel hides those controls
+       from support for the same reason the Care panel does: the
+       server's gate is the rule, this is courtesy. Nothing here can
+       EDIT a ledger row — the table has no UPDATE for any client role.
+     ============================================================ */
+
+  var fin = {
+    report: null,
+    error: null,
+    busy: false,
+    notice: null,
+    noticeKind: 'bad',
+    refundRef: '',
+    refundAmount: '',
+    referralId: '',
+    referralStatus: '',
+    referralPayout: ''
+  };
+
+  /* The report is in KOBO integers, because that is what the ledger
+     stores; the screen is in naira, and this is the only place the two
+     meet. Never a float in the books, never kobo in a sentence. */
+  function naira(kobo) { return ngn((Number(kobo) || 0) / 100); }
+
+  /* The lines the brief names, in the order it names them. A line with
+     no entries is shown as zero rather than omitted: "nothing here"
+     and "we forgot to look" must not look the same. */
+  var FIN_LINES = ['care', 'verification', 'monitoring', 'marketplace', 'storage', 'housing'];
+
+  var FIN_LABEL = {
+    care: 'Arzuz Care',
+    verification: 'Verification',
+    monitoring: 'Monitoring',
+    marketplace: 'Marketplace',
+    storage: 'Storage (off)',
+    housing: 'Housing (no revenue, by design)'
+  };
+
+  var FIN_REFERRAL_LABEL = {
+    under_review: 'Under review',
+    approved: 'Approved — not yet paid',
+    payout_pending: 'Payout pending',
+    paid: 'Paid',
+    rejected: 'Rejected',
+    reversed: 'Reversed'
+  };
+
+  function financeCanMove() { return currentRole() === 'admin'; }
+
+  function financePost(payload) {
+    return ArzuzAuth.headers().then(function (h) {
+      return fetch('/api/finance', {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, h),
+        body: JSON.stringify(payload)
+      });
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (body) {
+        /* Only a dead session is a logout; a 409 or a 403 is the books
+           refusing, which is information the panel shows. */
+        if (r.status === 401) {
+          onAuthError(Object.assign(new Error('Finance refused'), { status: 401 }));
+          throw apiErr(r, body);
+        }
+        if (!r.ok) throw apiErr(r, body);
+        return body;
+      });
+    });
   }
 
-/* ================= 10. Details modal ================= */
+  /* Written into the element BESIDE the fields rather than by repainting
+     the panel: a refusal must not throw away what the operator typed. */
+  function financeNote(msg, kind) {
+    fin.notice = msg;
+    fin.noticeKind = kind || 'bad';
+    var el = $('finNoteLive') || $('finNote');
+    if (el) {
+      el.className = 'sub';
+      el.style.color = fin.noticeKind === 'good' ? 'var(--ok, #1c7c4a)' : 'var(--alert, #b3261e)';
+      el.textContent = msg;
+    }
+  }
+
+  /* The same notice, rendered: shown to whoever is looking, not only to
+     the role that could have acted — a support login that tried anyway
+     is owed the refusal, and swallowing it would leave them thinking the
+     click did nothing. */
+  function finNoteHtml() {
+    if (!fin.notice) return '';
+    return '<p class="sub" id="finNote"' + (fin.noticeKind === 'good' ? '' : ' style="color:var(--alert,#b3261e)"') +
+      '>' + esc(fin.notice) + '</p>';
+  }
+
+  function financeLoad() {
+    if (fin.busy) return Promise.resolve(null);
+    fin.busy = true;
+    return financePost({ action: 'report' }).then(function (body) {
+      fin.report = body;
+      fin.error = null;
+      renderFinancePanel();
+      return body;
+    }).catch(function (err) {
+      /* The function's own sentence, not a guess: a 503 that means
+         "the tables are not there yet" reads differently from a 403. */
+      fin.error = err.message;
+      renderFinancePanel();
+      return null;
+    }).then(function (out) { fin.busy = false; return out; });
+  }
+
+  /* Zeroed, so a line the ledger has never seen still prints as zeroes
+     rather than as blanks the reader has to interpret. */
+  function finLine(lines, key) {
+    var z = { cash_in_kobo: 0, cash_out_kobo: 0, revenue_kobo: 0, unearned_added_kobo: 0, unearned_released_kobo: 0, unearned_kobo: 0, refunds_kobo: 0, costs_kobo: 0, payable_kobo: 0, contribution_margin_kobo: 0 };
+    return Object.assign(z, (lines && lines[key]) || {});
+  }
+
+  /* cash in − cash out, against what the same rows say we owe, earned,
+     refunded and spent. Both sides are the report's figures. */
+  function finCash(x) { return (Number(x.cash_in_kobo) || 0) - (Number(x.cash_out_kobo) || 0); }
+  function finClaim(x) {
+    return (Number(x.revenue_kobo) || 0) + (Number(x.unearned_kobo) || 0) + (Number(x.payable_kobo) || 0)
+      - (Number(x.refunds_kobo) || 0) - (Number(x.costs_kobo) || 0);
+  }
+
+  function finRow(label, valueHtml) {
+    return '<tr><td>' + label + '</td><td style="text-align:right;font-family:var(--mono)">' + valueHtml + '</td></tr>';
+  }
+
+  function renderFinancePanel() {
+    var head = $('finHead'), linesEl = $('finLines'), reconEl = $('finRecon');
+    var refundsEl = $('finRefunds'), refsEl = $('finReferrals');
+    if (!head || !linesEl || !reconEl || !refundsEl || !refsEl) return;
+
+    if (fin.error) {
+      head.innerHTML = '<h3>' + ico('coin', 16) + ' Finance</h3>' +
+        '<p class="sub">' + esc(fin.error) + '</p>';
+      linesEl.innerHTML = reconEl.innerHTML = refundsEl.innerHTML = refsEl.innerHTML = '';
+      return;
+    }
+    if (!fin.report) {
+      head.innerHTML = '<h3>' + ico('coin', 16) + ' Finance</h3><p class="sub">Reading the books\u2026</p>';
+      financeLoad();
+      return;
+    }
+
+    var rep = fin.report;
+    var housing = rep.housing || {};
+
+    /* --- the headline: the lines added up, labelled as a total of the
+       report's own figures rather than a second opinion --- */
+    var total = FIN_LINES.reduce(function (acc, key) {
+      var x = finLine(rep.lines, key);
+      ['cash_in_kobo', 'cash_out_kobo', 'revenue_kobo', 'refunds_kobo', 'costs_kobo', 'payable_kobo', 'unearned_kobo', 'contribution_margin_kobo'].forEach(function (k) {
+        acc[k] = (acc[k] || 0) + (Number(x[k]) || 0);
+      });
+      return acc;
+    }, {});
+
+    head.innerHTML = '<h3>' + ico('coin', 16) + ' Finance \u2014 the books, from the ledger</h3>' +
+      '<p class="sub">Every figure here came back from <b>/api/finance action:report</b>, which sums an append-only ' +
+      'ledger. Nothing on this screen can edit a number \u2014 a wrong posting is corrected by posting its reverse, ' +
+      'which is why the reconciliation below is worth reading rather than trusting.</p>' +
+      '<div class="details-kv-grid">' +
+        kv('Cash in (all lines)', '<b>' + esc(naira(total.cash_in_kobo)) + '</b>') +
+        kv('Cash out (refunds)', esc(naira(total.cash_out_kobo))) +
+        kv('Revenue recognised', esc(naira(total.revenue_kobo))) +
+        kv('Unearned (owed as cover)', esc(naira(total.unearned_kobo))) +
+        kv('Refunds', esc(naira(total.refunds_kobo))) +
+        kv('Repair costs', esc(naira(total.costs_kobo))) +
+        kv('Provider payable', esc(naira(total.payable_kobo))) +
+        kv('Contribution margin', '<b>' + esc(naira(total.contribution_margin_kobo)) + '</b>') +
+      '</div>' +
+      '<p class="sub">Housing carries no revenue by design: listing fee ' + esc(naira(housing.listing_fee_kobo)) +
+      ', rent commission ' + esc(Number(housing.rent_commission_bps) || 0) + ' bps, revenue ' +
+      esc(naira(housing.revenue_kobo)) + '. Storage is ' + (rep.storage_enabled ? 'ON' : 'off') +
+      ', so a storage order is refused rather than quietly priced.</p>' +
+      '<p class="sub">Orders the provider accepted, by line and state: ' +
+      (Object.keys(rep.orders || {}).length
+        ? Object.keys(rep.orders).sort().map(function (k) {
+          return '<b>' + esc(k.replace(':', ' \u00b7 ')) + '</b> ' + esc(rep.orders[k]);
+        }).join(' \u00b7 ')
+        : 'none yet') +
+      '.</p>';
+
+    /* --- the lines --- */
+    var rows = FIN_LINES.map(function (key) {
+      var x = finLine(rep.lines, key);
+      var label = FIN_LABEL[key] || key;
+      var isHousing = key === 'housing';
+      return '<tr>' +
+        '<td><b>' + esc(label) + '</b>' + (isHousing ? '<div class="sub" style="font-size:12px">rent and deposits are never ours</div>' : '') + '</td>' +
+        '<td style="text-align:right;font-family:var(--mono)">' + esc(naira(x.cash_in_kobo)) + '</td>' +
+        '<td style="text-align:right;font-family:var(--mono)">' + esc(naira(x.cash_out_kobo)) + '</td>' +
+        '<td style="text-align:right;font-family:var(--mono)">' + esc(naira(x.unearned_kobo)) + '</td>' +
+        '<td style="text-align:right;font-family:var(--mono)">' + esc(naira(x.revenue_kobo)) + '</td>' +
+        '<td style="text-align:right;font-family:var(--mono)">' + esc(naira(x.refunds_kobo)) + '</td>' +
+        '<td style="text-align:right;font-family:var(--mono)">' + esc(naira(x.costs_kobo)) + '</td>' +
+        '<td style="text-align:right;font-family:var(--mono)">' + esc(naira(x.payable_kobo)) + '</td>' +
+        '<td style="text-align:right;font-family:var(--mono)">' + esc(naira(x.contribution_margin_kobo)) + '</td>' +
+        '</tr>';
+    }).join('');
+
+    linesEl.innerHTML = '<h3>' + ico('trending', 16) + ' Business lines</h3>' +
+      '<p class="sub">Cash actually taken and returned, then what the same rows say about the obligation, the ' +
+      'revenue and the cost. Contribution margin is revenue less repair costs \u2014 the report\u2019s figure, not one ' +
+      'worked out here.</p>' +
+      '<div class="table-wrap"><table><thead><tr>' +
+      ['Line', 'Cash in', 'Cash out', 'Unearned', 'Revenue', 'Refunds', 'Costs', 'Payable', 'Margin']
+        .map(function (h, i) { return '<th' + (i ? ' style="text-align:right"' : '') + '>' + esc(h) + '</th>'; }).join('') +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+
+    /* --- the reconciliation --- */
+    var bad = [];
+    var reconRows = FIN_LINES.map(function (key) {
+      var x = finLine(rep.lines, key);
+      var cash = finCash(x);
+      var claim = finClaim(x);
+      var residual = cash - claim;
+      if (residual !== 0) bad.push((FIN_LABEL[key] || key) + ' ' + naira(residual));
+      return '<tr>' +
+        '<td><b>' + esc(FIN_LABEL[key] || key) + '</b></td>' +
+        '<td style="text-align:right;font-family:var(--mono)">' + esc(naira(cash)) + '</td>' +
+        '<td style="text-align:right;font-family:var(--mono)">' + esc(naira(claim)) + '</td>' +
+        '<td style="text-align:right;font-family:var(--mono)">' + (residual === 0
+          ? '<span class="tag-status tag-open">balanced</span>'
+          : '<span class="tag-status tag-cancelled">off by ' + esc(naira(Math.abs(residual))) + '</span>') + '</td>' +
+        '</tr>';
+    }).join('');
+
+    reconEl.innerHTML = '<h3>' + ico('shield', 16) + ' Reconciliation \u2014 from the same rows</h3>' +
+      '<p class="sub">Every posting is a pair of entries, so per line: <b>cash in \u2212 cash out</b> must equal ' +
+      '<b>revenue + unearned + payable \u2212 refunds \u2212 costs</b>. This is arithmetic on the ledger, not a policy ' +
+      '\u2014 a line that does not balance has an entry on one side only, which is the mistake this screen exists to ' +
+      'catch. It is shown, never smoothed.</p>' +
+      '<div class="table-wrap"><table><thead><tr><th>Line</th>' +
+      '<th style="text-align:right">Cash in \u2212 out</th><th style="text-align:right">Owed + earned \u2212 returned</th>' +
+      '<th style="text-align:right">Check</th></tr></thead><tbody>' + reconRows + '</tbody></table></div>' +
+      (bad.length
+        ? '<div class="ops-row"><span class="ic">' + ico('alert', 15) + '</span><span class="tx"><b>' +
+          bad.length + ' line(s) do not balance</b><span>' + esc(bad.join(' \u00b7 ')) +
+          ' \u2014 find the one-sided entry in ledger_entries before trusting any figure above.</span></span></div>'
+        : '<p class="sub">Every line balances. Cash taken equals what the books say we owe, earned, refunded and ' +
+          'spent \u2014 which is what "the ledger is the record" is supposed to mean.</p>');
+
+    /* --- refunds --- */
+    var canMove = financeCanMove();
+    refundsEl.innerHTML = '<h3>' + ico('refresh', 16) + ' Refunds</h3>' +
+      '<p class="sub">A refund is a payment reference and an amount. The function asks the provider first, then ' +
+      'posts the reversal pair \u2014 cash back out, the obligation released \u2014 so the books move with the money ' +
+      'and the reconciliation above still balances afterwards.</p>' +
+      (canMove
+        ? '<div class="edit-fld"><label>Payment reference</label>' +
+          '<input type="text" id="finRefundRef" maxlength="80" placeholder="e.g. AZ-P-\u2026" value="' + esc(fin.refundRef) + '"></div>' +
+          '<div class="edit-fld"><label>Amount in \u20a6 (blank = the whole order)</label>' +
+          '<input type="text" id="finRefundAmount" inputmode="numeric" placeholder="e.g. 20000" value="' + esc(fin.refundAmount) + '"></div>' +
+          '<div style="display:flex;gap:8px;align-items:center;margin-top:6px">' +
+          '<button type="button" class="btn-inline" data-fin="refund">Refund it</button>' +
+          '<span class="sub" id="finNoteLive"></span></div>'
+        : '<p class="sub">Only the admin login may refund. Support can read every figure here, and the function ' +
+          'refuses a refund from any other role.</p>') +
+      finNoteHtml();
+
+    /* --- referral payouts --- */
+    var refs = rep.referrals || [];
+    var refRows = refs.length
+      ? refs.map(function (r) {
+        return '<tr><td><b>' + esc(FIN_REFERRAL_LABEL[r.status] || r.status) + '</b></td>' +
+          '<td style="text-align:right;font-family:var(--mono)">' + esc(r.claims) + '</td>' +
+          '<td style="text-align:right;font-family:var(--mono)">' + esc(naira(r.reward_kobo)) + '</td>' +
+          '<td style="font-family:var(--mono);font-size:12px">' + esc(r.first_at ? fmtDate(r.first_at) : '') + '</td></tr>';
+      }).join('')
+      : '<tr><td colspan="4" class="sub">No referral has been recorded yet \u2014 a code that nobody has used ' +
+        'does not appear here.</td></tr>';
+
+    /* The state list is the FUNCTION'S list (REFERRAL_STATES), quoted
+       rather than invented: a status the server does not know would be
+       refused, and offering it would be a control that cannot work. */
+    var states = ['under_review', 'approved', 'payout_pending', 'paid', 'rejected', 'reversed'];
+    refsEl.innerHTML = '<h3>' + ico('users', 16) + ' Referral payouts</h3>' +
+      '<p class="sub">One reward per qualifying payment, one qualification per referred customer, and never a ' +
+      'self-referral \u2014 the database enforces all three. A reward is only ever <b>paid</b> with the provider\u2019s ' +
+      'own payout reference, so this box is where that reference is recorded.</p>' +
+      '<div class="table-wrap"><table><thead><tr><th>State</th><th style="text-align:right">Claims</th>' +
+      '<th style="text-align:right">Rewards</th><th>First</th></tr></thead><tbody>' + refRows + '</tbody></table></div>' +
+      (canMove
+        ? '<div class="edit-fld"><label>Referral id (from the referrals table)</label>' +
+          '<input type="text" id="finRefId" maxlength="80" placeholder="e.g. 8f1c\u2026" value="' + esc(fin.referralId) + '"></div>' +
+          '<div class="edit-fld"><label>Move it to</label>' +
+          '<select id="finRefStatus">' +
+          ['<option value="">\u2014 pick a state \u2014</option>'].concat(states.map(function (s) {
+            return '<option value="' + esc(s) + '"' + (fin.referralStatus === s ? ' selected' : '') + '>' +
+              esc(FIN_REFERRAL_LABEL[s] || s) + '</option>';
+          })).join('') + '</select></div>' +
+          '<div class="edit-fld"><label>Provider payout reference (required for \u201cpaid\u201d)</label>' +
+          '<input type="text" id="finRefPayout" maxlength="80" placeholder="e.g. TRF-\u2026" value="' + esc(fin.referralPayout) + '"></div>' +
+          '<div style="display:flex;gap:8px;align-items:center;margin-top:6px">' +
+          '<button type="button" class="btn-inline" data-fin="referral">Record it</button>' +
+          '<span class="sub" id="finRefNote">' + (fin.noticeKind === 'good' && fin.notice ? esc(fin.notice) : '') + '</span></div>'
+        : '<p class="sub">Support reads the pipeline; only the admin login may move a payout.</p>');
+  }
+
+  /* One POST, then a re-read: every figure on screen is the one the
+     function just computed, never one this file adjusted. */
+  function financeRefund() {
+    var refEl = $('finRefundRef'), amtEl = $('finRefundAmount');
+    fin.refundRef = refEl ? String(refEl.value || '').trim() : '';
+    fin.refundAmount = amtEl ? String(amtEl.value || '').trim() : '';
+    if (!fin.refundRef) return financeNote('A refund needs the payment reference.');
+
+    var payload = { action: 'refund', reference: fin.refundRef };
+    if (fin.refundAmount) {
+      var nairaAmount = Number(fin.refundAmount.replace(/[^0-9.]/g, ''));
+      if (!isFinite(nairaAmount) || nairaAmount <= 0) {
+        return financeNote('The amount has to be a number of naira, or blank for the whole order.');
+      }
+      payload.amount_kobo = Math.round(nairaAmount * 100);
+    }
+
+    var btn = document.querySelector('[data-fin="refund"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Refunding\u2026'; }
+
+    return financePost(payload).then(function (body) {
+      fin.notice = 'Refunded ' + naira(body.refunded_kobo) + ' on ' + (body.reference || fin.refundRef) +
+        (body.provider_refund_ref ? ' \u2014 provider ref ' + body.provider_refund_ref : '') + '.';
+      fin.noticeKind = 'good';
+      fin.refundRef = '';
+      fin.refundAmount = '';
+      if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('Refund posted.', 'success');
+      return financeLoad();
+    }).catch(function (err) {
+      fin.notice = err.message;
+      fin.noticeKind = 'bad';
+      renderFinancePanel();
+      return null;
+    });
+  }
+
+  function financeReferral() {
+    var idEl = $('finRefId'), stEl = $('finRefStatus'), pyEl = $('finRefPayout');
+    fin.referralId = idEl ? String(idEl.value || '').trim() : '';
+    fin.referralStatus = stEl ? String(stEl.value || '').trim() : '';
+    fin.referralPayout = pyEl ? String(pyEl.value || '').trim() : '';
+    if (!fin.referralId) return financeNote('A payout needs the referral id it belongs to.');
+    if (!fin.referralStatus) return financeNote('Pick the state to move it to.');
+    if (fin.referralStatus === 'paid' && !fin.referralPayout) {
+      return financeNote('A reward cannot be marked paid without the provider\u2019s payout reference.');
+    }
+
+    var payload = { action: 'referral_decide', id: fin.referralId, status: fin.referralStatus };
+    if (fin.referralPayout) payload.payout_provider_ref = fin.referralPayout;
+
+    return financePost(payload).then(function () {
+      fin.notice = 'Referral moved to ' + (FIN_REFERRAL_LABEL[fin.referralStatus] || fin.referralStatus) + '.';
+      fin.noticeKind = 'good';
+      fin.referralId = '';
+      fin.referralStatus = '';
+      fin.referralPayout = '';
+      if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('Referral updated.', 'success');
+      return financeLoad();
+    }).catch(function (err) {
+      fin.notice = err.message;
+      fin.noticeKind = 'bad';
+      renderFinancePanel();
+      return null;
+    });
+  }
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-fin]') : null;
+    if (!b || b.disabled) return;
+    var act = b.getAttribute('data-fin');
+    if (act === 'refund') return financeRefund();
+    if (act === 'referral') return financeReferral();
+  });
+
+  /* Exposed for the boot harness, which cannot dispatch a document click:
+     it drives the same functions a click would rather than a copy. */
+  window.arzuzFinanceRender = renderFinancePanel;
+  window.arzuzFinanceFrame = function (report) { fin.report = report; fin.error = null; renderFinancePanel(); };
+  window.arzuzFinanceFail = function (message) { fin.report = null; fin.error = message; renderFinancePanel(); };
+  window.arzuzFinance = {
+    load: financeLoad,
+    refund: financeRefund,
+    referral: financeReferral,
+    state: function () { return fin; }
+  };
+
+  /* ================= 4k. Repair claims — the queue, and who may move ====
+
+     WHAT THIS SCREEN IS FOR
+
+       "Up to four call-outs" is a promise; a claim is one job asked for
+       against it. What actually has to be answerable is what happened
+       between the student asking and the job being done: who decided it
+       was covered, on what grounds, which worker went, what it cost and
+       whether the customer agreed. That is a QUEUE, and this is it.
+
+     HOW THIS PANEL IS ALLOWED TO GET ITS NUMBERS
+
+       ONE call — POST /api/claims { action: 'queue' } — and every row,
+       every count and every status on the page comes out of that
+       answer. It does NOT read repair_claims itself and does NOT invent
+       a status: the function returns the rows and its status
+       vocabulary, and the buttons under a claim are keyed to that
+       claim's OWN status word.
+
+     WHAT THIS PAGE IS NOT ALLOWED TO DO
+
+       It cannot approve, cannot spend a call-out, cannot type a cost
+       into the books and cannot close anything. Every control POSTs
+       back to the function, which re-checks the login's role and the
+       claim's real state before it writes. Support is offered no
+       decision, no cost and no resolution, because the function refuses
+       those from a support login — the server's gate is the rule and
+       this is courtesy — and when a control is missing the panel says
+       which rule is why rather than leaving a support login to guess.
+
+     THE CALL-OUT, AND WHY THIS SCREEN CANNOT SPEND TWO
+
+       Approving calls claim_reserve_callout(), which locks the pass and
+       reads the credit ledger's own sum in the same transaction. Two
+       admins approving the last call-out at the same moment: one gets
+       it, the other is told the pass has nothing left. That sentence is
+       rendered as the function sent it and the claim is left where the
+       function left it — under review — never retried into a success.
+     ============================================================ */
+
+  var clq = {
+    queue: null,       /* the one answer everything below is rendered from */
+    error: null,
+    busy: false,
+    limit: 50,
+    status: '',        /* the queue filter, in the SERVER's vocabulary */
+    lateOnly: false,   /* and a look-at-what-is-late filter over the page sent */
+    selected: null,    /* the claim being worked, by id */
+    notice: null,
+    noticeKind: 'bad',
+    /* The action forms, held as the operator typed them: a refusal must
+       never throw away their words. */
+    decision: 'covered',
+    reason: '',
+    estimate: '',
+    worker: '',
+    workerPhone: '',
+    workerEmail: '',
+    note: '',
+    actual: '',
+    parts: '',
+    evidence: '',
+    outcome: 'completed',
+    resolution: ''
+  };
+
+  /* The status vocabulary, QUOTED from supabase-claims.sql's CHECK, so a
+     status the schema does not have cannot be rendered as one here. */
+  var CLAIM_STATUS = ['draft', 'submitted', 'under_review', 'approved', 'assigned',
+    'in_progress', 'awaiting_customer', 'completed', 'rejected', 'cancelled', 'disputed'];
+
+  var CLAIM_STATUS_LABEL = {
+    draft: 'Draft',
+    submitted: 'Filed',
+    under_review: 'Under review',
+    approved: 'Covered, no worker yet',
+    assigned: 'With a worker',
+    in_progress: 'Work started',
+    awaiting_customer: 'Waiting on the customer',
+    completed: 'Completed',
+    rejected: 'Not covered',
+    cancelled: 'Withdrawn',
+    disputed: 'Disputed'
+  };
+
+  /* A dispute is not a refusal: the work happened and the customer says
+     it is wrong, so it wears the alert colour rather than a grey. */
+  var CLAIM_STATUS_TAG = {
+    draft: 'tag-draft',
+    submitted: 'tag-pending',
+    under_review: 'tag-pending',
+    approved: 'tag-open',
+    assigned: 'tag-matched',
+    in_progress: 'tag-in_progress',
+    awaiting_customer: 'tag-awaiting_customer',
+    completed: 'tag-completed',
+    rejected: 'tag-cancelled',
+    cancelled: 'tag-cancelled',
+    disputed: 'tag-disputed'
+  };
+
+  /* What this page will OFFER, per status. A transcription of the
+     function's own rules — decide only while a decision is still open,
+     work only once a worker is on it, resolve only an open dispute —
+     written as data so a status that gains a rule is one line here
+     instead of a condition buried in the renderer. */
+  var CLAIM_ACTS = {
+    draft: ['decide'],
+    submitted: ['decide'],
+    under_review: ['decide'],
+    approved: ['assign'],
+    assigned: ['assign', 'progress', 'report_work'],
+    in_progress: ['assign', 'report_work'],
+    awaiting_customer: [],
+    completed: [],
+    rejected: [],
+    cancelled: [],
+    disputed: ['resolve']
+  };
+
+  /* The three the function refuses from a support login. Kept here so
+     the panel can print which rule is why a control is missing. */
+  var CLAIM_ADMIN_ONLY = ['decide', 'report_work', 'resolve'];
+
+  var CLAIM_ACT_LABEL = {
+    decide: 'decide coverage',
+    assign: 'name a worker',
+    progress: 'mark the work started',
+    report_work: 'record the cost',
+    resolve: 'close a dispute'
+  };
+
+  function claimsCanDecide() { return currentRole() === 'admin'; }
+
+  function claimsPost(payload) {
+    return ArzuzAuth.headers().then(function (h) {
+      return fetch('/api/claims', {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, h),
+        body: JSON.stringify(payload)
+      });
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (body) {
+        /* Only a dead session is a logout. A 409 is the queue refusing
+           and a 403 is the role gate — both are information this screen
+           exists to show. */
+        if (r.status === 401) {
+          onAuthError(Object.assign(new Error('Claims refused'), { status: 401 }));
+          throw apiErr(r, body);
+        }
+        if (!r.ok) throw apiErr(r, body);
+        return body;
+      });
+    });
+  }
+
+  /* Written beside the fields rather than by repainting the panel: a
+     refusal must not throw away what the operator typed. */
+  function claimsNote(msg, kind) {
+    clq.notice = msg;
+    clq.noticeKind = kind || 'bad';
+    var el = $('claimNoteLive') || $('claimNote');
+    if (el) {
+      el.className = 'sub';
+      el.style.color = clq.noticeKind === 'good' ? 'var(--ok, #1c7c4a)' : 'var(--alert, #b3261e)';
+      el.textContent = msg;
+    }
+  }
+
+  function clqNoteHtml() {
+    if (!clq.notice) return '';
+    return '<p class="sub" id="claimNote"' +
+      (clq.noticeKind === 'good' ? '' : ' style="color:var(--alert,#b3261e)"') + '>' + esc(clq.notice) + '</p>';
+  }
+
+  function claimsLoad() {
+    if (clq.busy) return Promise.resolve(null);
+    clq.busy = true;
+    var payload = { action: 'queue', limit: clq.limit };
+    if (clq.status) payload.status = clq.status;
+    return claimsPost(payload).then(function (body) {
+      clq.queue = body;
+      clq.error = null;
+      renderClaimsPanel();
+      return body;
+    }).catch(function (err) {
+      /* The function's own sentence: a 503 that means "claims are not
+         switched on for this site yet" reads nothing like a 403. */
+      clq.error = err.message;
+      renderClaimsPanel();
+      return null;
+    }).then(function (out) { clq.busy = false; return out; });
+  }
+
+  function claimById(id) {
+    var rows = (clq.queue && clq.queue.claims) || [];
+    return rows.filter(function (r) { return r.id === id; })[0] || null;
+  }
+
+  function claimTag(status) {
+    return '<span class="tag-status ' + esc(CLAIM_STATUS_TAG[status] || 'tag-draft') + '">' +
+      esc(CLAIM_STATUS_LABEL[status] || status) + '</span>';
+  }
+
+  /* The first claim that still has something for us to do, else the
+     newest row. Opening on a claim nobody can act on would make the
+     screen look like it has no controls. */
+  /* Which claim the work panel opens on: the top of the queue THAT THIS
+     LOGIN CAN MOVE. The queue is ordered late-first, and the most late
+     claim is often one only the admin may touch (a dispute awaiting a
+     decision) — opening support on a claim with no button for them is a
+     dead end dressed as a priority. So the first row with an action
+     THIS role may take wins, then the first with any action at all, and
+     only then the top of the queue. */
+  function claimDefault(rows) {
+    var yours = function (r) {
+      return (CLAIM_ACTS[r.status] || []).filter(function (a) {
+        return claimsCanDecide() || CLAIM_ADMIN_ONLY.indexOf(a) === -1;
+      }).length > 0;
+    };
+    return rows.filter(yours)[0]
+      || rows.filter(function (r) { return (CLAIM_ACTS[r.status] || []).length > 0; })[0]
+      || rows[0] || null;
+  }
+
+  function claimsSelect(id) {
+    clq.selected = id;
+    clq.notice = null;
+    renderClaimsPanel();
+  }
+
+  /* Naira typed by a person, kobo stored by the books. Blank is not zero
+     here: it means "the operator did not say", which is a different fact
+     from a cost of nothing. */
+  function claimMoney(text) {
+    var raw = String(text === undefined || text === null ? '' : text).replace(/[^0-9.]/g, '');
+    if (!raw) return null;
+    var n = Number(raw);
+    return isFinite(n) && n > 0 ? Math.round(n * 100) : null;
+  }
+
+  /* "name = amount" per line. A line without a number is dropped rather
+     than sent as zero: a part that cost nothing is not a part. */
+  function claimPartsLines(text) {
+    return String(text || '').split('\n').map(function (line) {
+      var bits = line.split('=');
+      if (bits.length < 2) return null;
+      var name = String(bits[0] || '').trim().slice(0, 80);
+      var kobo = claimMoney(bits[1]);
+      return (name && kobo) ? { name: name, kobo: kobo } : null;
+    }).filter(function (x) { return !!x; }).slice(0, 20);
+  }
+
+  function claimEvidenceLines(text) {
+    return String(text || '').split('\n').map(function (u) { return u.trim(); })
+      .filter(function (u) { return /^https:\/\//.test(u); }).slice(0, 6);
+  }
+
+  function claimField(id, label, value, placeholder, kind) {
+    return '<div class="edit-fld"><label>' + esc(label) + '</label>' +
+      (kind === 'area'
+        ? '<textarea id="' + id + '" rows="3" placeholder="' + esc(placeholder) + '">' + esc(value) + '</textarea>'
+        : '<input type="text" id="' + id + '" placeholder="' + esc(placeholder) + '" value="' + esc(value) + '">') +
+      '</div>';
+  }
+
+  function claimInput(id) {
+    var el = $(id);
+    return el ? String(el.value === undefined || el.value === null ? '' : el.value) : '';
+  }
+
+  function claimPick(id, fallback) {
+    var v = claimInput(id);
+    return v ? v : fallback;
+  }
+
+  function claimPhotosHtml(claim) {
+    var photos = claim.photos || [];
+    if (!photos.length) return '';
+    return '<h3>' + ico('image', 16) + ' What the student sent</h3>' +
+      '<p class="sub">' + esc(photos.length) + ' photo link(s) filed with the claim \u2014 uploaded by the ' +
+      'student, not sent to this page.</p>' +
+      '<p class="sub">' + photos.map(function (u, i) {
+        return '<a href="' + esc(u) + '" target="_blank" rel="noopener">photo ' + esc(i + 1) + '</a>';
+      }).join(' \u00b7 ') + '</p>';
+  }
+
+  function claimPartsHtml(claim) {
+    var parts = claim.parts || [];
+    if (!parts.length) return '';
+    var sum = parts.reduce(function (n, p) { return n + (Number(p && p.kobo) || 0); }, 0);
+    return '<h3>' + ico('tag', 16) + ' Parts</h3>' +
+      '<div class="table-wrap"><table><thead><tr><th>Part</th>' +
+      '<th style="text-align:right">Cost</th></tr></thead><tbody>' +
+      parts.map(function (p) {
+        return '<tr><td>' + esc((p && p.name) || '') + '</td>' +
+          '<td style="text-align:right;font-family:var(--mono)">' + esc(naira((p && p.kobo) || 0)) + '</td></tr>';
+      }).join('') +
+      '<tr><td><b>Total</b></td><td style="text-align:right;font-family:var(--mono)"><b>' +
+      esc(naira(sum)) + '</b></td></tr></tbody></table></div>' +
+      '<p class="sub">Parts are shown as reported. Whether they sit inside the published ceiling is a ' +
+      'question for the cover\u2019s terms, not for this screen.</p>';
+  }
+
+  /* THE WORKER'S OWN ANSWER, in one place: it is read on the row, on the
+     card and in the work panel, and three renderings of the same fact is
+     how one of them ends up saying something the others do not.
+
+     `provider_answer` is the worker's word, not ours: 'accepted' is them
+     saying the job is theirs, 'declined' is them saying it is not, and
+     null is us having heard nothing back. Everything below is the
+     SERVER's data — the panel does not decide who agreed. */
+  function claimAnswerText(claim) {
+    if (claim.provider_answer === 'accepted') {
+      return { said: 'accepted the job on', chip: 'accepted', bad: false };
+    }
+    if (claim.provider_answer === 'declined') {
+      return { said: 'turned the job down on', chip: 'declined \u2014 needs another worker', bad: true };
+    }
+    /* THE ONE NOBODY SAID ANYTHING TO. Not the same fact as a refusal and
+       not shown as one: 'unanswered' is a job the clock took back after
+       the worker was asked and stayed silent, and the row says which — a
+       panel that reads it as "they said no" sends the next person to ring
+       somebody who may never have seen the message. */
+    if (claim.provider_answer === 'unanswered') {
+      return { said: 'never answered the handover, so the job was taken back on',
+        chip: 'no answer \u2014 needs another worker', bad: true, unanswered: true };
+    }
+    return null;
+  }
+
+  /* WHEN THEY SAID THEY CAN COME. A day is the worker's own words and the
+     panel quotes them: the reader is deciding who does what tomorrow, and
+     a computed "Saturday" would be this screen guessing a timezone on a
+     date somebody will be given. */
+  function claimProposalText(claim) {
+    var day = String(claim.provider_proposal || '').trim();
+    return day ? day : null;
+  }
+
+  /* THE CUSTOMER'S OWN HALF OF THAT CONVERSATION, from the two columns the
+     function writes: the instant they agreed a day, and the day they asked
+     for instead with its own instant. One at a time \u2014 the server refuses
+     to write both \u2014 because reading an agreement and a request off the
+     same row is a reader guessing which of the two a customer meant.
+
+     The day an agreement quotes is the WORKER's sentence, not a date this
+     screen worked out: re-computing "Saturday morning" means guessing a
+     timezone and then printing the guess as an appointment. And the panel
+     never says the two days agree: the customer's "Sunday afternoon" is a
+     sentence, and deciding it is the same day as the worker's is the
+     office's call, not this function's. */
+  function claimCustomerDayText(claim) {
+    if (claim.day_agreed_at) {
+      return { agreed: true, at: claim.day_agreed_at, day: claimProposalText(claim) };
+    }
+    var asked = String(claim.customer_proposal || '').trim();
+    if (asked) {
+      return {
+        agreed: false, at: claim.customer_proposed_at, asked: asked,
+        day: claimProposalText(claim)
+      };
+    }
+    return null;
+  }
+
+  /* The same fact on a row that is SCANNED: four words, with the customer's
+     own day in the title rather than across a column that is read by
+     looking rather than by reading. */
+  function claimCustomerDayMark(claim) {
+    var theirs = claimCustomerDayText(claim);
+    if (!theirs) return '';
+    return theirs.agreed
+      ? ' <span class="sub">customer agreed the day</span>'
+      : ' <span class="sub" title="' + esc('They asked for: ' + theirs.asked) + '">' +
+        'customer asked for another day</span>';
+  }
+
+  /* The Worker cell, and whether the person named agreed to come. A job
+     somebody has turned down is back with us, and the queue has to say so
+     ON THE ROW \u2014 a fact that only exists inside the work panel is a
+     fact whoever scans the list never sees. */
+  /* The same fact, as a suffix on the Worker value rather than a sentence
+     of its own: on the panel the worker's line already carries the number
+     and the address, and this is the third question about that person —
+     did they say yes? */
+  function claimAnswerKv(claim) {
+    var a = claimAnswerText(claim);
+    var day = claimProposalText(claim);
+    /* The customer's answer rides on the same line as the worker's, because
+       it is the same conversation: a day the worker offered and a day the
+       customer agreed or refused are two halves of one fact, and a reader
+       who sees only the offer thinks an appointment was made. */
+    var theirs = claimCustomerDayText(claim);
+    var theirMark = !theirs ? ''
+      : theirs.agreed
+        ? ' \u00b7 <span class="sub">the customer agreed this day on ' +
+          esc(fmtDate(theirs.at)) + '</span>'
+        : ' \u00b7 <span class="sub">the customer asked for another day on ' +
+          esc(fmtDate(theirs.at)) + '</span>';
+    if (!a) {
+      /* A day is an answer to something, and saying "has not answered yet"
+         beside the very words they sent would be the panel lying about
+         its own row. It is still not a yes, so the chip says what is
+         true: a time was suggested, and nobody agreed a job. */
+      return (day
+        ? ' \u00b7 <span class="sub">suggested a time: ' + esc(day) + '</span>'
+        : ' \u00b7 <span class="sub">has not answered yet</span>') + theirMark;
+    }
+    if (a.unanswered) return ' \u00b7 <b style="color:var(--alert,#b3261e)">no answer</b>';
+    return a.bad
+      ? ' \u00b7 <b style="color:var(--alert,#b3261e)">declined</b>' +
+        (day ? ' \u00b7 <span class="sub">then offered: ' + esc(day) + '</span>' : '')
+      : ' \u00b7 <span class="sub">has confirmed the job</span>' +
+        (day ? ' \u00b7 <span class="sub">can come ' + esc(day) + '</span>' : '') + theirMark;
+  }
+
+  function claimWorkerCell(r) {
+    if (!r.provider_name) return '\u2014';
+    var a = claimAnswerText(r);
+    var day = claimProposalText(r);
+    /* Scanned, not read: the Worker column answers "who, and are they
+       actually coming". On one line, a day the worker offered is the fact
+       that turns a name into an appointment. */
+    if (!a) {
+      /* Their words ride in the title rather than across the cell: a worker
+         who answers with a sentence ("I can do Saturday morning before
+         11") would push the table out of shape, and this column is read by
+         scanning. The full day is on the claim, one click away. */
+      return esc(r.provider_name) + (day
+        ? ' <span class="sub" title="' + esc(day) + '">suggested a time</span>'
+        : ' <span class="sub">not answered yet</span>') + claimCustomerDayMark(r);
+    }
+    return esc(r.provider_name) + ' <span class="sub"' +
+      (a.bad ? ' style="color:var(--alert,#b3261e)"' : '') + '>' + esc(a.chip) + '</span>' +
+      (day ? ' <span class="sub">' + esc(day) + '</span>' : '') + claimCustomerDayMark(r);
+  }
+
+  function claimHistoryHtml(claim) {
+    var out = '';
+    /* THE ANSWER, before anything else on this claim: it is the newest
+       fact about it and the only one that decides what happens next. */
+    var answer = claimAnswerText(claim);
+    if (answer) {
+      /* A decline is not a footnote: the job is back with us, the clock
+         restarted at 'name a worker', and the person who might be named
+         next is the reader. What the panel does NOT say is whether the
+         customer has been told the name is gone — that is the trail's
+         row, and this screen does not guess about a message. */
+      if (answer.bad) {
+        out += '<div class="ops-row"><span class="ic">' + ico('alert', 15) + '</span><span class="tx">' +
+          '<b>' + esc(claim.provider_name || 'The worker') + ' ' + esc(answer.said) + ' ' +
+          esc(fmtDate(claim.provider_answered_at)) + '</b><span>' +
+          (answer.unanswered
+            ? 'Nothing came back \u2014 not a yes, not a no \u2014 so the clock asked once and then gave the ' +
+              'job to somebody else. Somebody should ring them before this becomes a pattern: a worker ' +
+              'who never sees the handover is a number to fix, not a person to blame. '
+            : 'They replied: ' + esc(claim.provider_answer_note || 'no reason given') + '. ') +
+          'The claim went back to <b>covered with nobody on it</b>, so it is waiting in this queue for a ' +
+          'name again \u2014 the person named next replaces nobody, because there is nobody on it now. ' +
+          'Nothing about the customer\u2019s money or their call-out has moved.</span></span></div>';
+      } else {
+        out += '<p class="sub">' + esc(claim.provider_name || 'The worker') + ' ' +
+          esc(answer.said) + ' ' + esc(fmtDate(claim.provider_answered_at)) + ' \u2014 the job is ' +
+          'theirs, and they said so in their own words' +
+          (claim.provider_answer_note ? ': \u201c' + esc(claim.provider_answer_note) + '\u201d' : '') +
+          '.</p>';
+      }
+    }
+    /* THE DAY THEY OFFERED, under the answer rather than instead of it:
+       the customer has it on their pass link, and the team needs it to
+       know whether the visit is going to happen when they expect. */
+    var proposed = claimProposalText(claim);
+    if (proposed) {
+      out += '<div class="ops-row"><span class="ic">' + ico('calendar', 15) + '</span><span class="tx">' +
+        '<b>' + esc(claim.provider_name || 'The worker') + ' said they can come: ' +
+        esc(proposed) + '</b><span>Their own words, sent to the customer on ' +
+        esc(fmtDate(claim.provider_proposed_at)) + ' in the message that names when a worker is coming. ' +
+        'It is not a booked appointment \u2014 nobody here has agreed it with them \u2014 so if the day does ' +
+        'not suit the customer they will say so, and the work is still reported the same way.</span></span></div>';
+    }
+    /* AND WHAT THE CUSTOMER SAID ABOUT IT, under the offer rather than
+       instead of it: the offer is what the answer is an answer TO, and a
+       panel that replaced "they can come Saturday" with "they want Sunday"
+       would leave the reader unable to tell whether the two ever matched.
+
+       The two days are printed side by side and NEVER compared: "Sunday
+       afternoon" against "Saturday morning" is a judgement about somebody's
+       calendar, and the panel's job is to show a person both sentences so
+       they can make it. What it does say is what did NOT happen \u2014 no
+       booking was made here, no day was published to anybody but the worker
+       \u2014 because that is the mistake this row exists to prevent. */
+    var theirs = claimCustomerDayText(claim);
+    if (theirs) {
+      out += theirs.agreed
+        ? '<div class="ops-row"><span class="ic">' + ico('check', 15) + '</span><span class="tx">' +
+          '<b>The customer agreed this day on ' + esc(fmtDate(theirs.at)) + '</b><span>' +
+          'They said yes from their own pass link, and ' +
+          esc(claim.provider_name || 'the worker') + ' was messaged that the visit is on \u2014 a ' +
+          'confirmed visit only one of the two people knows about is not confirmed. The notice is on ' +
+          'the trail as its own row, which is where the channel it went on is written: this panel does ' +
+          'not guess about a message. ' +
+          (theirs.day
+            ? 'What was agreed to is the worker\u2019s own sentence: \u201c' + esc(theirs.day) + '\u201d. '
+            : '') +
+          'Nothing else moved: the same worker, the same call-out, the same clock. If the visit does ' +
+          'not happen on that day, this is the row that says what was agreed.</span></span></div>'
+        : '<div class="ops-row"><span class="ic">' + ico('calendar', 15) + '</span><span class="tx">' +
+          '<b>The customer cannot do ' +
+          (theirs.day ? esc('\u201c' + theirs.day + '\u201d') : 'the day the worker offered') +
+          ' \u2014 they said so on ' + esc(fmtDate(theirs.at)) + '</b><span>' +
+          'They suggested: \u201c' + esc(theirs.asked) + '\u201d, in their own words, and ' +
+          esc(claim.provider_name || 'the worker') + ' was sent that with the tenant\u2019s number to ' +
+          'settle it on. The job is still theirs \u2014 a different day is not a refusal \u2014 nothing was ' +
+          're-assigned, and no day was booked here: the two of them are agreeing it between them, and ' +
+          'this claim is on the same clock it was. If neither day ends up working, that is the row to ' +
+          'read before ringing either of them.</span></span></div>';
+    }
+    if (claim.disputed_at) {
+      out += '<div class="ops-row"><span class="ic">' + ico('alert', 15) + '</span><span class="tx">' +
+        '<b>The customer disputed this on ' + esc(fmtDate(claim.disputed_at)) + '</b><span>' +
+        esc(claim.dispute_reason || '') + '</span></span></div>';
+    }
+    if (claim.resolved_at) {
+      out += '<p class="sub">Resolved ' + esc(fmtDate(claim.resolved_at)) + ' by ' +
+        esc(claim.closed_by || 'the team') + ': ' + esc(claim.resolution || '') + '</p>';
+    }
+    if (claim.customer_confirmed_at) {
+      out += '<p class="sub">The customer confirmed the work on ' +
+        esc(fmtDate(claim.customer_confirmed_at)) + '.</p>';
+    }
+    return out;
+  }
+
+  function claimClosedReason(claim) {
+    if (claim.status === 'awaiting_customer') {
+      return 'Nothing for the team to do: the worker has reported the work and the claim is with the customer. ' +
+        'They confirm it from their pass link, or dispute it \u2014 and this queue follows whichever they do.';
+    }
+    if (claim.status === 'completed') return 'Closed. The customer confirmed the work on their pass link.';
+    if (claim.status === 'rejected') {
+      /* The decision's own sentence, and it usually ends in a full stop
+         already — appending ours unconditionally printed "covered..",
+         which reads as a bug rather than as emphasis. */
+      var why = String(claim.eligibility_reason || 'no reason recorded');
+      return 'Refused: ' + why + (/\.$/.test(why) ? '' : '.');
+    }
+    if (claim.status === 'cancelled') {
+      return 'Withdrawn by the student' + (claim.resolution ? ': ' + claim.resolution : '.');
+    }
+    return 'Nothing to do on this claim in its current state.';
+  }
+
+  function claimActsHtml(claim, mine, withheld) {
+    var out = '';
+
+    if (mine.indexOf('decide') !== -1) {
+      out += '<h3>' + ico('shield', 16) + ' Decide coverage</h3>' +
+        '<p class="sub">One decision, in words the customer reads. <b>Covered</b> takes a call-out through ' +
+        'claim_reserve_callout(), which locks the pass and reads the credit ledger itself \u2014 so if the pass ' +
+        'has nothing left the claim is told so and left under review rather than approved against an allowance ' +
+        'that is gone. <b>Not covered</b> refuses it, records the reason and spends nothing.</p>' +
+        '<div class="edit-fld"><label>Coverage</label><select id="claimDecide">' +
+        '<option value="covered"' + (clq.decision === 'covered' ? ' selected' : '') +
+        '>Covered \u2014 one call-out is committed</option>' +
+        '<option value="not_covered"' + (clq.decision === 'not_covered' ? ' selected' : '') +
+        '>Not covered \u2014 refused, nothing spent</option>' +
+        '</select></div>' +
+        claimField('claimReason', 'Why \u2014 in words, because the customer reads it', clq.reason,
+          'e.g. a burst pipe inside the flat is what the cover is for') +
+        claimField('claimEstimate', 'Estimate in \u20a6 (optional \u2014 a quote, not a cost)', clq.estimate, 'e.g. 4500') +
+        '<div style="display:flex;gap:8px;align-items:center;margin-top:6px">' +
+        '<button type="button" class="btn-inline" data-claim-act="decide">Record the decision</button>' +
+        '<span class="sub" id="claimNoteLive"></span></div>';
+    }
+
+    if (mine.indexOf('assign') !== -1) {
+      out += '<h3>' + ico('users', 16) + ' Name a worker</h3>' +
+        '<p class="sub">The customer is told who is coming, and a worker with no reachable number is not an ' +
+        'assignment. Support may do this \u2014 coordination is what support is for.</p>' +
+        claimField('claimWorker', 'Worker', clq.worker, 'e.g. Yinka, plumbing') +
+        claimField('claimWorkerPhone', 'A number the customer can reach', clq.workerPhone, '0803\u2026') +
+        claimField('claimWorkerEmail', 'Email (optional \u2014 the outcome is copied to it)',
+          clq.workerEmail, 'e.g. musa@example.com') +
+        '<div style="display:flex;gap:8px;align-items:center;margin-top:6px">' +
+        '<button type="button" class="btn-inline" data-claim-act="assign">Assign</button></div>';
+    }
+
+    if (mine.indexOf('progress') !== -1) {
+      out += '<h3>' + ico('refresh', 16) + ' Mark the work started</h3>' +
+        '<p class="sub">The only move support can make on a job that is already with a worker. Reporting the ' +
+        'work and closing the claim are the admin\u2019s.</p>' +
+        claimField('claimProgressNote', 'Note (optional)', clq.note, 'e.g. worker on site') +
+        '<div style="display:flex;gap:8px;align-items:center;margin-top:6px">' +
+        '<button type="button" class="btn-inline" data-claim-act="progress">Work started</button></div>';
+    }
+
+    if (mine.indexOf('report_work') !== -1) {
+      out += '<h3>' + ico('coin', 16) + ' Report the work, and what it cost</h3>' +
+        '<p class="sub">This does not close the claim. It moves it to <b>waiting on the customer</b>, because a ' +
+        'worker\u2019s word is not a finished job \u2014 the customer confirms from their pass link, or disputes it. ' +
+        'The actual cost is POSTED to the books as a pair, an expense and the provider payable, under a ' +
+        'reference derived from this claim, so a retry cannot double-post it.</p>' +
+        claimField('claimActual', 'Actual cost in \u20a6', clq.actual, 'e.g. 3200') +
+        claimField('claimParts', 'Parts, one per line as "name = \u20a6"', clq.parts, 'e.g. trap = 1800', 'area') +
+        claimField('claimEvidence', 'Photo links, one https URL per line', clq.evidence, 'https://\u2026', 'area') +
+        claimField('claimReportNote', 'What was done, and anything the customer should know', clq.note,
+          'e.g. replaced the trap and tested it') +
+        '<div style="display:flex;gap:8px;align-items:center;margin-top:6px">' +
+        '<button type="button" class="btn-inline" data-claim-act="report_work">Report the work</button></div>';
+    }
+
+    if (mine.indexOf('resolve') !== -1) {
+      out += '<h3>' + ico('alert', 16) + ' Resolve the dispute</h3>' +
+        '<p class="sub">A disputed claim is closed by name. If the outcome is not <b>completed</b> the committed ' +
+        'call-out goes back to the pass through claim_release_callout() \u2014 appended as the opposite row, ' +
+        'never by editing the ledger.</p>' +
+        '<div class="edit-fld"><label>Outcome</label><select id="claimOutcome">' +
+        [['completed', 'Completed \u2014 the complaint was the fix'],
+          ['rejected', 'Rejected \u2014 the work was wrong or not covered'],
+          ['cancelled', 'Cancelled \u2014 the job is not happening']].map(function (o) {
+          return '<option value="' + esc(o[0]) + '"' + (clq.outcome === o[0] ? ' selected' : '') + '>' +
+            esc(o[1]) + '</option>';
+        }).join('') +
+        '</select></div>' +
+        claimField('claimResolution', 'The resolution, on the record', clq.resolution,
+          'e.g. the trap was replaced again at our cost on 12 Oct') +
+        '<div style="display:flex;gap:8px;align-items:center;margin-top:6px">' +
+        '<button type="button" class="btn-inline" data-claim-act="resolve">Close the dispute</button></div>';
+    }
+
+    /* What we are NOT offered, and which rule says so. A hidden button is
+       not the protection — the function refuses these from support anyway
+       — but a support login is owed the reason. */
+    if (withheld.length) {
+      out += '<div class="ops-row"><span class="ic">' + ico('lock', 15) + '</span><span class="tx">' +
+        '<b>Only the admin login may ' +
+        esc(withheld.map(function (a) { return CLAIM_ACT_LABEL[a] || a; }).join(', ')) + '</b>' +
+        '<span>The function refuses these from a support login. Support can read the whole claim, name the ' +
+        'worker and record that work started.</span></span></div>';
+    }
+
+    if (!(CLAIM_ACTS[claim.status] || []).length) {
+      out += '<p class="sub">' + esc(claimClosedReason(claim)) + '</p>';
+    }
+
+    return out + clqNoteHtml();
+  }
+
+  function claimWorkHtml(claim) {
+    var st = claim.status;
+    var acts = CLAIM_ACTS[st] || [];
+    var canDecide = claimsCanDecide();
+    var mine = acts.filter(function (a) { return canDecide || CLAIM_ADMIN_ONLY.indexOf(a) === -1; });
+    var withheld = acts.filter(function (a) { return CLAIM_ADMIN_ONLY.indexOf(a) !== -1 && !canDecide; });
+
+    var money = function (kobo, note) {
+      if (kobo === null || kobo === undefined || kobo === '') return '\u2014';
+      return naira(kobo) + (note ? ' <span class="sub">' + esc(note) + '</span>' : '');
+    };
+    var where = [claim.property, claim.room].filter(function (x) { return !!x; }).join(' \u00b7 ');
+
+    return '<h3>' + ico('clipboard', 16) + ' ' + esc(claim.reference) + ' \u2014 ' +
+      esc(CLAIM_STATUS_LABEL[st] || st) + '</h3>' +
+      '<p class="sub">' + esc(claim.issue || '') + '</p>' +
+      '<div class="details-kv-grid">' +
+        kv('Student', esc(claim.student_name || '\u2014') +
+          (claim.student_phone ? ' \u00b7 ' + esc(claim.student_phone) : '')) +
+        kv('Where', esc(where || '\u2014')) +
+        kv('Coverage', claim.eligibility
+          ? esc(claim.eligibility === 'covered' ? 'Covered' : 'Not covered') +
+            (claim.eligibility_reason ? ' \u2014 ' + esc(claim.eligibility_reason) : '') +
+            (claim.decided_by ? ' (by ' + esc(claim.decided_by) + ')' : '')
+          : 'not decided yet') +
+        kv('Call-out', claim.call_out_no
+          ? '#' + esc(claim.call_out_no) + ' committed to this claim'
+          : 'none taken \u2014 nothing is spent until a decision says covered') +
+        kv('On the clock', claim.aging
+          ? claimAgingHtml(claim) + '<span class="sub"> \u2014 in this status since ' +
+            esc(fmtDate(claim.aging.status_since)) + ', ' +
+            esc(claim.aging.limit_hours) + 'h allowed' +
+            (claim.aging.who === 'customer' ? ', waiting on the customer' : '') + '</span>'
+          : '<span class="sub">not on the clock \u2014 nothing is waiting on this one</span>') +
+        /* The worker's ADDRESS is shown, not just their number: it is a
+           channel the decision goes out on, so "is there anywhere to
+           email them?" has to be answerable from this panel rather than
+           from a bounce. And whether they have ANSWERED: a name we chose
+           and a name that said yes are different states of the same job,
+           and the row is where that difference is visible. */
+        kv('Worker', claim.provider_name
+          ? esc(claim.provider_name) + (claim.provider_phone ? ' \u00b7 ' + esc(claim.provider_phone) : '') +
+            (claim.provider_email
+              ? ' \u00b7 ' + esc(claim.provider_email)
+              : ' <span class="sub">(no email on file)</span>') +
+            claimAnswerKv(claim)
+          : '\u2014') +
+        kv('Estimate', money(claim.estimate_kobo, 'a quote')) +
+        kv('Actual', money(claim.actual_kobo, 'posted to the books')) +
+        kv('Filed', esc(claim.created_at ? fmtDate(claim.created_at) : '')) +
+        kv('Pass', '<span style="font-family:var(--mono);font-size:12px">' + esc(claim.plan_id) + '</span>') +
+      '</div>' +
+      claimPhotosHtml(claim) + claimPartsHtml(claim) + claimHistoryHtml(claim) +
+      claimActsHtml(claim, mine, withheld);
+  }
+
+  /* The money on a row: the ACTUAL once the work was reported, otherwise
+     the decision's estimate marked as the quote it still is, otherwise
+     nothing. Never a figure this page worked out. */
+  function claimMoneyHtml(r) {
+    if (r.actual_kobo !== null && r.actual_kobo !== undefined) return esc(naira(r.actual_kobo));
+    if (r.estimate_kobo !== null && r.estimate_kobo !== undefined) return esc(naira(r.estimate_kobo)) + '*';
+    return '\u2014';
+  }
+
+  /* The same queue as cards, for the widths where admin.css hides
+     .table-wrap (max-width: 860px). This is the section a teammate works
+     from while standing in a hallway with a phone, so it cannot be the
+     one that disappears there — the data tables all render both for the
+     same reason.
+
+     The meta rows sit INSIDE .rc-head: admin.css scopes the flex and
+     the gap to `.row-card .rc-head .rc-sub`, and outside it the tokens
+     run together with no space between them. */
+  /* How long a claim may stand where it is, and whose move it is.
+     The clock itself is the server's: claims.js computes it from the
+     claim's own trail and the queue arrives already ordered by it, so
+     this function renders a number rather than deciding what late
+     means. `aging` is null for a status with no clock (a draft, or
+     anything finished), which is why every use below is guarded. */
+  function claimAgingHtml(r, opts) {
+    var a = r.aging;
+    if (!a) return '';
+    var overdue = a.overdue;
+    var waited = a.hours_over >= 48
+      ? Math.round(a.hours_over / 24) + ' days'
+      : Math.max(1, Math.round(a.hours_over)) + 'h';
+    var left = a.hours_left >= 48
+      ? Math.round(a.hours_left / 24) + ' days'
+      : Math.max(1, Math.round(a.hours_left)) + 'h';
+    /* Short on the row, exact on hover: a queue is scanned, and the one
+       fact this line carries is how late and whose move it is. The whole
+       deadline (the instant it was due) is in the title, and the work
+       panel spells the same numbers out in a sentence where there is
+       room for one. */
+    var when = overdue
+      ? (a.who === 'ours' ? waited + ' late' : 'no reply for ' + waited)
+      : left + ' left';
+    var title = 'Due ' + fmtDate(a.deadline_at) + ' \u00b7 ' + a.limit_hours +
+      'h allowed in this status' + (a.who === 'customer' ? ' \u00b7 waiting on the customer' : ' \u00b7 waiting on us');
+    /* Two different lates: a claim WE owe an answer on, and one waiting
+       on the customer. The second is not a failure and must not read
+       like one, or the queue teaches people to ignore red.
+
+       The sentence is two spans, not one string: admin.css puts the
+       second half on its own line, so the Status column is sized by the
+       longer HALF rather than by the whole sentence — a sentence that
+       sizes the column squeezes the date beside it into three lines, and
+       a queue nobody can scan is a queue nobody uses. The text reads the
+       same either way, which is also what the tests pin. */
+    var cls = !overdue ? 'claim-due' : (a.who === 'ours' ? 'claim-late' : 'claim-waiting');
+    return '<span class="' + cls + '"' + (opts && opts.block ? ' style="display:block;margin-top:6px"' : '') +
+      ' title="' + esc(title) + '">' + esc(when) +
+      '<span class="claim-says"> \u00b7 ' + esc(a.says) + '</span></span>';
+  }
+
+  function claimCardHtml(r) {
+    var here = clq.selected === r.id;
+    var a = r.aging;
+    return '<div class="row-card"' + (here ? ' style="border-color:rgba(160,130,255,.55)"' : '') +
+      (a && a.overdue && a.who === 'ours' ? ' style="border-color:rgba(248,113,113,.5)"' : '') + '>' +
+      '<div class="rc-top"><div class="rc-head"><b>' + esc(r.reference) + '</b>' +
+      '<div class="rc-sub"><span>' + esc(r.student_name || '\u2014') + '</span>' +
+      (r.student_phone ? '<span>' + esc(r.student_phone) + '</span>' : '') +
+      '<span>' + esc(r.created_at ? fmtDate(r.created_at) : '') + '</span></div>' +
+      '<div class="rc-sub" style="margin-top:6px">' + claimTag(r.status) + '</div>' +
+      claimAgingHtml(r, { block: true }) +
+      '<div class="rc-sub" style="margin-top:6px"><span>Call-out ' +
+        (r.call_out_no ? '#' + esc(r.call_out_no) : 'none') + '</span><span>' +
+        (r.provider_name ? claimWorkerCell(r) : 'no worker named') + '</span><span>' +
+        claimMoneyHtml(r) + '</span></div>' +
+      '</div></div>' +
+      '<div class="rc-sub" style="margin-top:6px">' +
+        esc(String(r.issue || '').slice(0, 120)) + '</div>' +
+      '<div style="margin-top:10px"><button type="button" class="btn-inline" data-claim="' +
+        esc(r.id) + '">' + (here ? 'Working on it' : 'Work on it') + '</button></div>' +
+      '</div>';
+  }
+
+  function renderClaimsPanel() {
+    var head = $('claimsHead'), queueEl = $('claimsQueue'), workEl = $('claimsWork');
+    if (!head || !queueEl || !workEl) return;
+
+    if (clq.error) {
+      head.innerHTML = '<h3>' + ico('shield', 16) + ' Repair claims</h3>' +
+        '<p class="sub">' + esc(clq.error) + '</p>';
+      queueEl.innerHTML = workEl.innerHTML = '';
+      return;
+    }
+    if (!clq.queue) {
+      head.innerHTML = '<h3>' + ico('shield', 16) + ' Repair claims</h3>' +
+        '<p class="sub">Reading the queue\u2026</p>';
+      claimsLoad();
+      return;
+    }
+
+    var rows = clq.queue.claims || [];
+    var summary = clq.queue.summary || [];
+    var statuses = clq.queue.statuses || CLAIM_STATUS;
+    var canDecide = claimsCanDecide();
+
+    var countOf = function (s) {
+      var m = summary.filter(function (x) { return x.status === s; })[0];
+      return m ? Number(m.claims || 0) : 0;
+    };
+    var onRecord = summary.reduce(function (n, s) { return n + Number(s.claims || 0); }, 0);
+    var committed = summary.reduce(function (n, s) { return n + Number(s.call_outs_committed || 0); }, 0);
+    var wantUs = rows.filter(function (r) {
+      return ['completed', 'rejected', 'cancelled', 'awaiting_customer'].indexOf(r.status) === -1;
+    }).length;
+
+    /* The clock, as the server sent it. `rows` arrives already ordered
+       overdue-first, so this only has to count and (when asked) filter
+       the page it was given — the filter says "of the page the server
+       sent" out loud, because filtering a page is not the same promise
+       as asking the database for every late claim. */
+    var overdueHere = rows.filter(function (r) { return r.aging && r.aging.overdue; }).length;
+    var overdueOurs = rows.filter(function (r) {
+      return r.aging && r.aging.overdue && r.aging.who === 'ours';
+    }).length;
+    /* How many visits are actually pinned down, counted by the server over
+       every open claim \u2014 not over this page. `null` is "that read
+       failed", which is NOT the same fact as zero: a dashboard that prints
+       "0 agreed" because it could not look is a dashboard that lies about
+       the one number this row exists for, so it says so instead. */
+    var days = (clq.queue && clq.queue.days) || null;
+    var shown = clq.lateOnly
+      ? rows.filter(function (r) { return r.aging && r.aging.overdue; })
+      : rows;
+
+    head.innerHTML = '<h3>' + ico('shield', 16) + ' Repair claims \u2014 the queue, and who may move</h3>' +
+      '<p class="sub">Every row and every count here came back from <b>/api/claims action:queue</b>. The ' +
+      'buttons under a claim are the ones that claim\u2019s own status permits: the function re-checks the ' +
+      'login\u2019s role and the claim\u2019s real state before it writes, so a refusal on this screen is the ' +
+      'server\u2019s and not a guess.</p>' +
+      '<div class="details-kv-grid">' +
+        kv('Claims on record', '<b>' + esc(onRecord) + '</b>') +
+        kv('Want a person', '<b>' + esc(wantUs) + '</b> of the ' + esc(rows.length) + ' shown') +
+        kv('Call-outs committed', esc(committed) + ' across every pass') +
+        kv('Past the deadline', overdueOurs
+          ? '<b>' + esc(overdueOurs) + '</b> waiting on us' +
+            (overdueHere - overdueOurs ? ' \u00b7 ' + esc(overdueHere - overdueOurs) + ' waiting on a customer' : '')
+          : 'none of the ' + esc(rows.length) + ' shown \u2014 the clock is keeping up') +
+        /* The visits, in one line: what is settled and what is still being
+           bargained over. Both figures are the server's, over every open
+           claim \u2014 a count off this page would move as the operator
+           scrolled, which is exactly the number that must not move. */
+        kv('Visit days', days
+          ? (days.visits
+            ? '<b>' + esc(days.agreed) + '</b> agreed \u00b7 ' +
+              (days.open
+                ? '<b>' + esc(days.open) + '</b> still being haggled over'
+                : 'nothing left in the air between a worker and a tenant')
+            : 'no visit day offered yet \u2014 a worker with no day named rings to arrange the time')
+          : '<span class="sub">not reported by this deploy \u2014 the queue read the days and could not '
+            + 'get an answer, which is not the same as none</span>') +
+        kv('Your login', esc(currentRole()) + ' \u2014 ' + (canDecide
+          ? 'may decide coverage and record cost'
+          : 'may coordinate the worker, not decide')) +
+      '</div>' +
+      '<p class="sub">' + CLAIM_STATUS.map(function (s) {
+        return '<span class="tag-status ' + esc(CLAIM_STATUS_TAG[s]) + '">' +
+          esc(CLAIM_STATUS_LABEL[s]) + ' ' + esc(countOf(s)) + '</span>';
+      }).join(' ') + '</p>' +
+      '<p class="sub">A status with a zero beside it is one nobody is in. Told rather than left out: ' +
+      '"nothing here" and "we did not look" must not look the same.</p>';
+
+    /* --- the queue --- */
+    var statusOpts = statuses.map(function (s) {
+      return '<option value="' + esc(s) + '"' + (clq.status === s ? ' selected' : '') + '>' +
+        esc(CLAIM_STATUS_LABEL[s] || s) + '</option>';
+    }).join('');
+
+    var body = shown.length ? shown.map(function (r) {
+      var here = clq.selected === r.id;
+      return '<tr' + (here ? ' style="background:rgba(124,58,237,.12)"' : '') + '>' +
+        '<td><b>' + esc(r.reference) + '</b><div class="sub" style="font-size:12px">' +
+          esc(String(r.issue || '').slice(0, 90)) + '</div></td>' +
+        '<td>' + esc(r.student_name || '\u2014') +
+          (r.student_phone ? '<div class="sub" style="font-size:12px">' + esc(r.student_phone) + '</div>' : '') +
+        '</td>' +
+        '<td>' + claimTag(r.status) + claimAgingHtml(r, { block: true }) + '</td>' +
+        '<td>' + (r.call_out_no ? '#' + esc(r.call_out_no) : '\u2014') + '</td>' +
+        '<td>' + claimWorkerCell(r) + '</td>' +
+        /* The money is right-aligned against a left-aligned date with no
+           cell padding between them (see admin.css), so the two figures
+           read as one number without these two gaps. */
+        '<td style="text-align:right;font-family:var(--mono);padding-right:10px">' + claimMoneyHtml(r) + '</td>' +
+        '<td style="font-family:var(--mono);font-size:12px;white-space:nowrap;padding-left:10px">' +
+          esc(r.created_at ? fmtDate(r.created_at) : '') + '</td>' +
+        '<td><button type="button" class="btn-inline" data-claim="' + esc(r.id) + '">' +
+          (here ? 'Working on it' : 'Work on it') + '</button></td>' +
+        '</tr>';
+    }).join('')
+      : '<tr><td colspan="8" class="sub">' + (clq.lateOnly
+        ? 'Nothing on this page is past its deadline. That is not the same as nothing anywhere \u2014 ' +
+          'the filter looks at the page the server sent, and the scheduled clock pages the team about every claim '
+        : 'No claim matches that filter. A claim reaches this queue the moment ' +
+          'a student files one from their pass link.') + '</td></tr>';
+
+    queueEl.innerHTML = '<h3>' + ico('clipboard', 16) + ' The queue</h3>' +
+      '<p class="sub">Late first, and the worst of them first \u2014 a claim past its deadline sits above ' +
+      'everything that is on time, and under those come the ones closest to going late. A claim with no ' +
+      'clock at all (a draft, or anything finished) never jumps one that is still moving. An asterisk on a ' +
+      'figure means it is the estimate the decision carried, not a cost \u2014 an actual only exists once the ' +
+      'work was reported.</p>' +
+      '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px">' +
+        '<div class="edit-fld" style="margin:0"><label>Show</label><select id="claimFilter">' +
+        '<option value="">Every status</option>' + statusOpts + '</select></div>' +
+        '<button type="button" class="btn-inline" data-claim-act="filter">Apply</button>' +
+        '<button type="button" class="btn-inline" data-claim-act="more">Widen to ' +
+        esc(Math.min(clq.limit + 50, 100)) + '</button>' +
+        (overdueHere
+          ? '<button type="button" class="btn-inline" data-claim-act="late"' +
+            (clq.lateOnly ? ' style="border-color:rgba(248,113,113,.6)"' : '') + '>' +
+            (clq.lateOnly ? 'Show every claim' : 'Show only the ' + esc(overdueHere) + ' past their deadline') +
+            '</button>'
+          : '') +
+        '<span class="sub">' + esc(shown.length) + ' shown, of ' + esc(onRecord) + ' on record' +
+        (clq.lateOnly ? ' \u00b7 filtered to what is overdue, of the page the server sent' : '') + '</span>' +
+      '</div>' +
+      '<div class="table-wrap"><table><thead><tr>' +
+      ['Claim', 'Student', 'Status', 'Call-out', 'Worker', 'Money', 'Filed', '']
+        .map(function (h, i) { return '<th' + (i === 5 ? ' style="text-align:right"' : '') + '>' + esc(h) + '</th>'; })
+        .join('') +
+      '</tr></thead><tbody>' + body + '</tbody></table></div>' +
+      '<div class="cards-wrap">' + (shown.length ? shown.map(claimCardHtml).join('') : '') + '</div>';
+
+    /* --- the claim being worked --- */
+    var sel = claimById(clq.selected) || claimDefault(rows);
+    clq.selected = sel ? sel.id : null;
+    workEl.innerHTML = sel ? claimWorkHtml(sel)
+      : '<h3>' + ico('clipboard', 16) + ' Nothing to work</h3>' +
+        '<p class="sub">The queue is empty. A claim appears here the moment a student files one from their ' +
+        'Care pass link, and a call-out is only ever spent by the decision recorded above.</p>';
+  }
+
+  /* One POST, then a re-read: every status on screen is the one the
+     function just wrote, never one this file adjusted. */
+  function claimsAct(payload, said) {
+    var btn = document.querySelector('[data-claim-act="' + payload.action + '"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving\u2026'; }
+    return claimsPost(payload).then(function (body) {
+      clq.notice = said(body);
+      clq.noticeKind = 'good';
+      clq.reason = '';
+      clq.estimate = '';
+      clq.worker = '';
+      clq.workerPhone = '';
+      clq.workerEmail = '';
+      clq.note = '';
+      clq.actual = '';
+      clq.parts = '';
+      clq.evidence = '';
+      clq.resolution = '';
+      if (window.ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('Claim updated.', 'success');
+      return claimsLoad();
+    }).catch(function (err) {
+      clq.notice = err.message;
+      clq.noticeKind = 'bad';
+      renderClaimsPanel();
+      return null;
+    });
+  }
+
+  function claimDecide() {
+    var claim = claimById(clq.selected);
+    if (!claim) return claimsNote('Pick a claim from the queue first.');
+    clq.decision = claimPick('claimDecide', clq.decision);
+    var reason = claimInput('claimReason').trim() || clq.reason;
+    clq.reason = reason;
+    clq.estimate = claimInput('claimEstimate').trim();
+    if (reason.length < 5) {
+      return claimsNote('A decision needs a reason in words \u2014 a refusal without one is the complaint that follows.');
+    }
+    var payload = { action: 'decide', id: claim.id, eligibility: clq.decision, reason: reason };
+    if (clq.estimate) {
+      var kobo = claimMoney(clq.estimate);
+      if (!kobo) return claimsNote('The estimate has to be a number of naira, or blank for no quote.');
+      payload.estimate_kobo = kobo;
+    }
+    return claimsAct(payload, function (body) {
+      return body.status === 'approved'
+        ? 'Covered. Call-out #' + body.call_out_no + ' of the pass is committed to ' + claim.reference +
+          (body.estimate_kobo ? ', quoted at ' + naira(body.estimate_kobo) : '') + '.'
+        : 'Recorded as not covered. The reason is on the claim for the customer to read, and no call-out was spent.';
+    });
+  }
+
+  function claimAssign() {
+    var claim = claimById(clq.selected);
+    if (!claim) return claimsNote('Pick a claim from the queue first.');
+    var name = claimInput('claimWorker').trim() || clq.worker;
+    var phone = claimInput('claimWorkerPhone').trim();
+    var email = claimInput('claimWorkerEmail').trim();
+    clq.worker = name;
+    clq.workerPhone = phone;
+    clq.workerEmail = email;
+    if (name.length < 2) return claimsNote('Name the worker who will do the job.');
+    if (!phone) return claimsNote('A worker needs a number the customer can reach.');
+    /* The address is optional and the function refuses a malformed one
+       rather than storing it to fail silently later, so it is sent as
+       whatever was typed — not pre-cleaned here, which would hide the
+       refusal. */
+    return claimsAct({
+      action: 'assign', id: claim.id, provider_name: name,
+      provider_phone: phone, provider_email: email || undefined,
+    }, function (body) {
+      /* What the SERVER says the channels did, not what this page hopes.
+         Naming a worker sends TWO notices — the job to them, and the name
+         to the customer the approval promised to tell — so the operator is
+         told about each separately: one "done" covering both is how a
+         handover nobody received gets called a success. The failure
+         wording matches the function's, and a failed channel is a call
+         somebody owes that has already paged the team. */
+      var told = (body && body.notified) || {};
+      /* No report at all is its own answer: the function sends this back
+         when the notice blew up before any channel ran. Nothing can be
+         claimed about delivery or about a page here, so nothing is. */
+      if (!Object.keys(told).length) {
+        return claim.reference + ' is with ' + name + '. The handover could not be reported — ' +
+          'the server said nothing about the channels, so nobody has been told yet. ' +
+          'The claim stays assigned and the failure is in the site log.';
+      }
+      /* Each half of the handover is read on its own: a notice that did
+         not go is a call somebody owes, and saying so is the only way the
+         operator finds out. A channel that does not exist ('no number',
+         'no address') counts as not reached here and is never dressed up. */
+      var channels = function (wa, mail) {
+        var kept = [];
+        var gone = [];
+        if (wa === 'sent') kept.push('WhatsApp');
+        else gone.push('WhatsApp' + (wa ? ' (' + esc(String(wa)) + ')' : ''));
+        if (mail === 'sent') kept.push('email');
+        else gone.push('email' + (mail ? ' (' + esc(String(mail)) + ')' : ''));
+        return { reached: kept.length > 0, kept: kept.join(' and '), gone: gone.join(', ') };
+      };
+      var who = channels(told.worker_whatsapp, told.worker_email);
+      var customer = channels(told.student_whatsapp, told.student_email);
+      var reach = who.reached
+        ? 'The job details reached them on ' + who.kept + '.'
+        : 'The job details did not reach them at all: ' + who.gone + '.';
+      var customerReach = customer.reached
+        ? 'The customer has been told who is coming and how to reach them, on ' + customer.kept + '.'
+        : 'The customer has NOT been told who is coming: ' + customer.gone + '.';
+      return claim.reference + ' is with ' + name + '. ' + reach + ' ' + customerReach +
+        (who.reached && customer.reached
+          ? ''
+          : ' The team has been paged to chase whoever was not reached.');
+    });
+  }
+
+  function claimProgress() {
+    var claim = claimById(clq.selected);
+    if (!claim) return claimsNote('Pick a claim from the queue first.');
+    clq.note = claimInput('claimProgressNote').trim();
+    return claimsAct({ action: 'progress', id: claim.id, status: 'in_progress', note: clq.note },
+      function () { return 'Work is marked started on ' + claim.reference + '.'; });
+  }
+
+  function claimReportWork() {
+    var claim = claimById(clq.selected);
+    if (!claim) return claimsNote('Pick a claim from the queue first.');
+    clq.actual = claimInput('claimActual').trim();
+    clq.parts = claimInput('claimParts');
+    clq.evidence = claimInput('claimEvidence');
+    clq.note = claimInput('claimReportNote').trim();
+    var payload = {
+      action: 'report_work', id: claim.id, note: clq.note,
+      parts: claimPartsLines(clq.parts), evidence: claimEvidenceLines(clq.evidence)
+    };
+    if (clq.actual) {
+      var kobo = claimMoney(clq.actual);
+      if (!kobo) return claimsNote('The actual cost has to be a number of naira, or blank if nothing was paid.');
+      payload.actual_kobo = kobo;
+    }
+    return claimsAct(payload, function (body) {
+      return 'Reported. ' + claim.reference + ' is now waiting on the customer' +
+        (body.actual_kobo
+          ? ', and ' + naira(body.actual_kobo) + ' was posted to the books as an expense and a provider payable'
+          : ', with no cost recorded') + '.';
+    });
+  }
+
+  function claimResolve() {
+    var claim = claimById(clq.selected);
+    if (!claim) return claimsNote('Pick a claim from the queue first.');
+    clq.outcome = claimPick('claimOutcome', clq.outcome);
+    clq.resolution = claimInput('claimResolution').trim() || clq.resolution;
+    if (clq.resolution.length < 5) {
+      return claimsNote('A resolution is a sentence on the record, not a status change.');
+    }
+    return claimsAct({ action: 'resolve', id: claim.id, outcome: clq.outcome, resolution: clq.resolution },
+      function (body) {
+        return 'Dispute closed as ' + (CLAIM_STATUS_LABEL[body.status] || body.status) + ' on ' + claim.reference +
+          (body.released ? ', and the call-out went back on the pass.' : '.');
+      });
+  }
+
+  function claimFilter() {
+    clq.status = claimInput('claimFilter');
+    /* A new question, so the old answer's filter does not ride along. */
+    clq.lateOnly = false;
+    clq.notice = null;
+    return claimsLoad();
+  }
+
+  function claimWiden() {
+    clq.limit = Math.min(clq.limit + 50, 100);
+    clq.lateOnly = false;
+    return claimsLoad();
+  }
+
+  /* Not a server filter, and the button says so: the page that arrived is
+     already ordered by the clock, so "show me the late ones" is a view of
+     what is on screen. Asking the database for every late claim would be a
+     different promise, and pretending the two are the same is how a filter
+     starts lying. */
+  function claimLateOnly() {
+    clq.lateOnly = !clq.lateOnly;
+    renderClaimsPanel();
+    return true;
+  }
+
+  document.addEventListener('click', function (e) {
+    var act = e.target.closest ? e.target.closest('[data-claim-act]') : null;
+    if (act && !act.disabled) {
+      var what = act.getAttribute('data-claim-act');
+      if (what === 'decide') return claimDecide();
+      if (what === 'assign') return claimAssign();
+      if (what === 'progress') return claimProgress();
+      if (what === 'report_work') return claimReportWork();
+      if (what === 'resolve') return claimResolve();
+      if (what === 'filter') return claimFilter();
+      if (what === 'more') return claimWiden();
+      if (what === 'late') return claimLateOnly();
+      return;
+    }
+    var pick = e.target.closest ? e.target.closest('[data-claim]') : null;
+    if (pick) return claimsSelect(pick.getAttribute('data-claim'));
+  });
+
+  /* Exposed for the boot harness, which cannot dispatch a document click:
+     it drives the same functions a click would rather than a copy. */
+  window.arzuzClaimsRender = renderClaimsPanel;
+  window.arzuzClaimsFrame = function (q) { clq.queue = q; clq.error = null; renderClaimsPanel(); };
+  window.arzuzClaimsFail = function (message) { clq.queue = null; clq.error = message; renderClaimsPanel(); };
+  window.arzuzClaims = {
+    load: claimsLoad,
+    select: claimsSelect,
+    filter: claimFilter,
+    widen: claimWiden,
+    late: claimLateOnly,
+    decide: claimDecide,
+    assign: claimAssign,
+    progress: claimProgress,
+    report: claimReportWork,
+    resolve: claimResolve,
+    state: function () { return clq; }
+  };
+
+  /* ================= 10. Details modal ================= */
 
   function kv(label, valueHtml, full) {
     return '<div class="details-kv-item"' + (full ? ' style="grid-column:1/-1"' : '') + '><div class="details-kv-lbl">' + esc(label) + '</div><div class="details-kv-val">' + valueHtml + '</div></div>';
@@ -3359,6 +6974,26 @@
       if (p.desc || p.description) html += kv('Description', esc(p.desc || p.description), true);
       var photoUrl = pick(row, 'photo_url', ['photo']);
       if (photoUrl) html += kv('Photo', '<img class="details-media" src="' + esc(photoUrl) + '" alt="Listing photo" data-act="photo" data-url="' + esc(photoUrl) + '">', true);
+
+      /* The whole answer to "why is this room checked rarely?" — the score
+         the badges above are drawn from, in the open rather than behind a
+         hover, plus the list of what is missing from the page. It is the
+         scorer's own list (assets/listing-score.js), so acting on it moves
+         the <changefreq> the engines are given. */
+      var crawl = crawlHintOf(row);
+      if (crawl) {
+        var editDate = crawl.lastEdit ? new Date(crawl.lastEdit) : null;
+        html += kv('Crawl priority',
+          '<b>' + esc(crawl.hint.changefreq) + '</b> \u2014 ' + esc(CRAWL_WORDS[crawl.hint.changefreq]) +
+          ' (sitemap priority ' + esc(crawl.hint.priority) + ')');
+        html += kv('Page completeness', esc(crawl.has + ' of ' + crawl.total + ' facts a student decides with'));
+        html += kv('Last edited', esc(editDate && !isNaN(editDate.getTime()) ? fmtDate(crawl.lastEdit) : '\u2014'));
+        html += kv('What to fill in',
+          crawl.missing.length
+            ? crawl.missing.map(function (m) { return '<span class="crawl-missing">' + esc(m) + '</span>'; }).join('')
+            : '<span class="crawl-complete">nothing \u2014 the rent, a photo, a pin, the type, the vacancy and a description are all on the page</span>',
+          true);
+      }
       var videoUrl = p.video || p.video_url;
       if (videoUrl)        html += kv('Video Tour', '<button type="button" class="act-btn act-video" style="padding:8px 14px;margin-top:4px" onclick="window.openVideoLightbox(\'' + esc(videoUrl) + '\')">Play Video Tour</button>', true);
     } else if (table === 'scout_submissions') {
@@ -3385,6 +7020,44 @@
   };
 
   $('btnCloseDetails').addEventListener('click', function () { hide($('detailsModal')); });
+  $('btnCloseDossier').addEventListener('click', function () { hide($('dossierModal')); });
+
+  /* ================= The dossier, on paper =================
+     The whole reason the dossier exists is a phone call about ONE
+     student, and the answer usually has to leave the browser: attached
+     to a ticket, or printed and read out to the person on the line.
+
+     window.print() by itself prints the entire dark dashboard behind
+     the modal. So the click puts a class on <body> and @media print in
+     admin.css narrows the page to the dossier and re-inks it: black on
+     white, no chrome, and a provenance line saying what this sheet is
+     and that nothing on it can be edited.
+
+     The class is removed on afterprint, with a timeout behind it —
+     Safari does not fire afterprint consistently, and a class that
+     outlived the dialog would silently clip every later print to the
+     modal. */
+  var dossierPrintTimer = 0;
+
+  function endDossierPrint() {
+    clearTimeout(dossierPrintTimer);
+    dossierPrintTimer = 0;
+    document.body.classList.remove('printing-dossier');
+  }
+
+  $('btnPrintDossier').addEventListener('click', function () {
+    var meta = $('dossierPrintMeta');
+    if (meta) {
+      meta.textContent = 'Arzuz consent record \u2014 ' +
+        ($('dossierTitle').textContent || 'Student') + ' \u2014 printed ' +
+        new Date().toLocaleString('en-NG') +
+        ' \u2014 append-only: no login can change or delete a line on this sheet.';
+    }
+    document.body.classList.add('printing-dossier');
+    window.addEventListener('afterprint', endDossierPrint);
+    dossierPrintTimer = setTimeout(endDossierPrint, 30000);
+    window.print();
+  });
   $('btnEditFromDetails').addEventListener('click', function () {
     if (state.detail) { hide($('detailsModal')); openEditModal(state.detail.table, state.detail.id); }
   });
@@ -3450,7 +7123,7 @@
     })
       .then(function (res) {
         if (res.status === 401 || res.status === 403) { onAuthError(new Error('Delete rejected')); throw new Error('Your session has expired.'); }
-        if (!res.ok) throw new Error('Deletion failed (HTTP ' + res.status + ')');
+        if (!res.ok) throw apiErr(res);
         state.data[table] = (state.data[table] || []).filter(function (r) { return r.id !== id; });
         hide(delModal);
         state.pendingDelete = null;
@@ -3465,7 +7138,7 @@
 
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
-    [addModal, editModal, $('detailsModal'), delModal, $('photoLightbox'), $('videoLightbox')].forEach(function (m) {
+    [addModal, editModal, $('detailsModal'), $('dossierModal'), $('digestModal'), delModal, $('photoLightbox'), $('videoLightbox')].forEach(function (m) {
       if (m && m.classList.contains('open')) {
         if (m === $('videoLightbox')) closeVideoLightbox();
         else hide(m);
@@ -3473,7 +7146,7 @@
     });
     if (state.pendingDelete) state.pendingDelete = null;
   });
-  [addModal, editModal, $('detailsModal'), delModal].forEach(function (m) {
+  [addModal, editModal, $('detailsModal'), $('dossierModal'), $('digestModal'), delModal].forEach(function (m) {
     if (m) m.addEventListener('click', function (e) { if (e.target === m) { hide(m); if (m === delModal) state.pendingDelete = null; } });
   });
 
@@ -3537,7 +7210,7 @@
       return fetch(apiRoot() + '/rest/v1/amenities?name=eq.' + encodeURIComponent(name), { method: 'DELETE', headers: h });
     }).then(function (r) {
       if (r.status === 401 || r.status === 403) { onAuthError(new Error('Amenity delete rejected')); throw new Error('Your session has expired.'); }
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if (!r.ok) throw apiErr(r);
       return ArzuzData.reload();
     }).then(function () {
       renderAmenitiesManager();
@@ -3559,7 +7232,7 @@
       return fetch(apiRoot() + '/rest/v1/amenities', { method: 'POST', headers: h, body: JSON.stringify({ name: val }) });
     }).then(function (r) {
       if (r.status === 401 || r.status === 403) { onAuthError(new Error('Amenity insert rejected')); throw new Error('Your session has expired.'); }
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if (!r.ok) throw apiErr(r);
       return ArzuzData.reload();
     }).then(function () {
       input.value = '';
@@ -3673,6 +7346,324 @@
     }
   }
 
+  /* ================= 14b. Status code history — "I never got the code" =================
+
+     A student rings the desk with a reference and no message. Before this
+     panel the only record of what had been sent to them was a line in a
+     Netlify build log, so the honest answer was "ask for another one and
+     see" — the same answer whether the first one had been delivered or
+     not. Everything here comes back from public.status_history()
+     (supabase-status-history.sql §5), which authorizes the login itself:
+     the Support Desk and an admin, and nobody else.
+
+     IT WRITES NOTHING, and that is deliberate. A code is never re-sent
+     from a dashboard: sending one is the student's own request on /status,
+     where the per-reference ceiling and the proof of the contact on file
+     are what stand between a leaked reference and somebody's file. A
+     button here that could mint a code would be a way round both.
+
+     The words are the panel's, mapped from the machine words the trail
+     stores — one place, so a new outage mode cannot reach an officer as a
+     bare database string, and an unknown one says so rather than
+     pretending to be understood. */
+
+  /* What each outcome MEANS, which is not what it says. `sent` is "the
+     sender accepted it", not "the student has it": nothing here can know
+     that, and a screen claiming it would be inventing a fact. */
+  var CODE_OUTCOMES = {
+    sent:        { word: 'accepted by the sender', cls: 'ok' },
+    refused:     { word: 'refused', cls: 'bad' },
+    unreachable: { word: 'nothing was sent', cls: 'warn' }
+  };
+
+  var CODE_NOTES = {
+    'openwa-refused':      'the WhatsApp server was asked for this message and refused it',
+    'openwa-unreachable':  'the number on the record is not one this site can message',
+    'openwa-unconfigured': 'WhatsApp sending is not set up on this deploy',
+    'no-mail-on-file':     'there is no email address on the record to fall back to',
+    'mail-refused':        'the mail provider was asked for this message and refused it',
+    'mail-unconfigured':   'the mail provider is not set up on this deploy',
+    'unrecorded':          'the deployment that sent it recorded no reason '
+  };
+
+  var CHANNEL_WORD = { whatsapp: 'WhatsApp', email: 'Email' };
+
+  function chWhen(iso) {
+    if (!iso) return '—';
+    var d = new Date(iso);
+    if (isNaN(d)) return '—';
+    /* The clock time for something from today, because that is how it gets
+       said out loud on a call ("you asked at 2:07"); the date for anything
+       older, because "eight days ago" is not what a person checks. */
+    return d.toDateString() === new Date().toDateString()
+      ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+      : fmtDate(iso);
+  }
+
+  function chAgo(iso) {
+    var d = new Date(iso);
+    if (isNaN(d)) return '';
+    var mins = Math.round((Date.now() - d.getTime()) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + ' min ago';
+    var hours = Math.round(mins / 60);
+    if (hours < 24) return hours + (hours === 1 ? ' hour ago' : ' hours ago');
+    var days = Math.round(hours / 24);
+    return days + (days === 1 ? ' day ago' : ' days ago');
+  }
+
+  function chDeliveryHtml(d) {
+    var word = CODE_OUTCOMES[d.outcome] || { word: d.outcome, cls: 'warn' };
+    var note = d.note ? (CODE_NOTES[d.note] || d.note) : '';
+    return '<div class="ch-line">' +
+      '<span class="ch-chan" data-ch="' + esc(d.channel) + '">' +
+        ico(d.channel === 'email' ? 'mail' : 'whatsapp', 14) + ' ' +
+        esc(CHANNEL_WORD[d.channel] || d.channel) + '</span>' +
+      '<span class="ch-out ' + word.cls + '">' + esc(word.word) + '</span>' +
+      '<span class="ch-when">' + esc(chWhen(d.at)) + '</span>' +
+      (note ? '<span class="ch-note">' + esc(note) + '</span>' : '') +
+      '</div>';
+  }
+
+  function chCodeHtml(c) {
+    /* live / used / expired, straight from the row — the panel does not
+       work out an expiry for itself, because the database is the thing
+       that decides whether a code can still be typed. */
+    var state = c.used_at ? { word: 'used', cls: 'ok' }
+      : (c.live ? { word: 'still live', cls: 'ok' } : { word: 'expired', cls: 'muted' });
+    var trail = toList(c.deliveries);
+
+    return '<div class="ch-code">' +
+      '<div class="ch-code-head">' +
+        '<b>' + esc(chWhen(c.asked_at)) + '</b>' +
+        '<span class="ch-ago">' + esc(chAgo(c.asked_at)) + '</span>' +
+        '<span class="ch-state ' + state.cls + '">' + esc(state.word) + '</span>' +
+      '</div>' +
+      '<div class="ch-meta">' +
+        (c.used_at
+          ? 'used at ' + esc(chWhen(c.used_at)) + ' — they saw their record'
+          : (c.max_attempts
+              ? (Number(c.attempts) === 0
+                  ? 'no attempt was made — ' + esc(String(c.max_attempts)) + ' are allowed'
+                  : Number(c.attempts) + ' of ' + esc(String(c.max_attempts)) +
+                    ' attempts used · ' + esc(String(c.attempts_left)) + ' left')
+              : '')) +
+      '</div>' +
+      (trail.length
+        ? trail.map(chDeliveryHtml).join('')
+        : '<div class="ch-line"><span class="ch-note">Nothing was ever sent for this code — it was issued and no delivery attempt reached us.</span></div>') +
+      '</div>';
+  }
+
+  /* How the query was READ, in the officer's words. The lookup accepts the
+     whole reference, the end of one, the beginning of one, or a phone
+     number, so the panel has to say which of those it took — otherwise an
+     officer who typed four characters and got an answer cannot tell
+     whether the answer is about the reference they meant. */
+  var LOOKUP_WORD = {
+    ref:   'read as the whole reference',
+    tail:  'found by the end of a reference',
+    head:  'found by the start of a reference',
+    phone: 'found by the phone number on the record'
+  };
+
+  function chPickRowHtml(m) {
+    var kind = m.kind === 'landlord' ? 'a landlord listing'
+      : (m.kind === 'student' ? 'a student registration' : 'no record of it now');
+    return '<button type="button" class="ch-pick-row" data-chpick="' + esc(m.ref) + '">' +
+      '<b>' + esc(m.ref) + '</b>' +
+      '<span class="ch-tag">' + esc(kind) + '</span>' +
+      '<span class="ch-when">' + (m.asked_at ? 'handed out ' + esc(chWhen(m.asked_at)) : '') + '</span>' +
+      '</button>';
+  }
+
+  function chHistoryHtml(h) {
+    if (!h || h.ok !== true) {
+      return '<div class="codehist-empty">That reference could not be read. ' +
+        'If it keeps doing that, send it to the team — it is a fault in the lookup, not in the student\u2019s code.</div>';
+    }
+
+    /* TOO SHORT TO MEAN ANYTHING. Not an error and not a "no record": two
+       characters of a reference would match hundreds of them, and a bare
+       four-digit number could be the tail of one with the letters lost off
+       the end. Saying which is missing is more use than an empty answer. */
+    if (h.lookup === 'none') {
+      return '<div class="codehist-empty">That is too short to look anything up. ' +
+        'Type the whole reference, or the last four characters of it, or the phone number the student ' +
+        'applied with — a number needs all ten digits, because that is what the site itself matches on.</div>';
+    }
+
+    /* MORE THAN ONE REFERENCE COULD BE MEANT — so the panel shows them and
+       stops. It deliberately shows NO code history here: everything below
+       this point belongs to one reference, and picking the newest would be
+       the panel guessing which student is on the phone and then reading
+       the wrong history back with complete confidence. */
+    if (h.ambiguous) {
+      var list = toList(h.matches);
+      return '<div class="ch-pick">' +
+        '<div class="ch-pick-head">' +
+          '<b>' + list.length + (h.more ? '+' : '') + (list.length === 1 ? ' reference matches' : ' references match') + '</b>' +
+          '<span class="ch-tag">' + esc(LOOKUP_WORD[h.lookup] || h.lookup) + '</span>' +
+        '</div>' +
+        '<p class="ch-pick-sub">Ask the student to read the rest of the reference, or pick the one on their ' +
+        'confirmation below. Nothing is said about a reference until one is chosen, because only they know which is theirs.</p>' +
+        list.map(chPickRowHtml).join('') +
+        (h.more ? '<p class="ch-pick-sub">There are more than these ' + list.length +
+          ' — read out more of the reference and the list will narrow.</p>' : '') +
+        '</div>';
+    }
+
+    var codes = toList(h.codes);
+
+    if (!codes.length) {
+      /* THE ONE HOLE IN THIS RECORD, said out loud rather than implied.
+         Two refusals happen before a code is issued — a deploy with no
+         mail provider, and the per-reference ceiling — and neither leaves
+         a code, so neither can leave a trail row. An officer who is told
+         "nothing was ever asked for" about a student who really did ask
+         would go looking for the wrong problem. */
+      return '<div class="codehist-empty">' +
+        (h.known_reference
+          ? 'No code has ever been asked for against that reference. '
+          : 'No record of that reference, and no code has ever been asked for against it. ') +
+        'A request that was refused BEFORE a code was issued leaves no row here: that is a deploy with ' +
+        'no mail provider, or more codes for that reference in the last hour than the page allows.' +
+        (h.known_reference ? '' : ' If the student read out a reference and it is not a typo, the record was deleted by hand — reopen their row in Demands.') +
+        /* WHAT A BARE RUN OF DIGITS COULD HAVE BEEN INSTEAD. Below ten
+           digits a number cannot be one this site can match, so it is read
+           as the end of a reference — which is right, and which also means
+           a mistyped number lands here looking like a bad reference. Saying
+           so is the difference between "they gave me a wrong number" and
+           "this panel is broken". */
+        (h.lookup === 'tail' && /^[0-9]{7,9}$/.test(String(h.query || ''))
+          ? ' That was a run of digits: if it was meant to be a phone number it needs all ten of them, '
+            + 'because ten is what the site itself matches a number on.'
+          : '') +
+        '</div>';
+    }
+
+    var kind = h.kind === 'landlord' ? 'a landlord listing' : 'a student registration';
+    /* WHAT THE QUERY WAS, echoed — but only when it was part of a REFERENCE.
+       A fragment is read back ("found by the end of a reference — 7E3F") so
+       the officer can see which of two readings answered. A phone number is
+       NOT: it is a contact detail, and the desk's screen should not carry a
+       student's number in a tag that a screenshot or a shoulder keeps. The
+       resolved reference below is the whole answer either way. */
+    var how = LOOKUP_WORD[h.lookup] || '';
+    var howText = how && h.lookup !== 'ref'
+      ? how + ((h.lookup === 'head' || h.lookup === 'tail') && h.query ? ' \u2014 ' + h.query : '')
+      : '';
+    return '<div class="ch-head">' +
+        '<b>' + esc(h.ref) + '</b>' +
+        '<span class="ch-tag">' + esc(kind) + '</span>' +
+        (h.known_reference ? '' : '<span class="ch-tag warn">no such record — deleted, or read out wrong</span>') +
+        (howText ? '<span class="ch-tag">' + esc(howText) + '</span>' : '') +
+        '<span class="ch-tag">' + (Number(h.asked_last_hour) === 1 ? '1 request' : Number(h.asked_last_hour) + ' requests') + ' in the last hour</span>' +
+        '<span class="ch-tag">' + (codes.length === 1 ? '1 code' : codes.length + ' codes') + '</span>' +
+      '</div>' +
+      codes.map(chCodeHtml).join('');
+  }
+
+  function renderStatusHistory() {
+    var panel = $('statusHistoryPanel');
+    if (!panel) return;
+    /* The two logins supabase-status-history.sql admits. Drawing the panel
+       for anyone else would be a control that teaches the dashboard lies —
+       the same rule the verification shift follows. */
+    var role = currentRole();
+    panel.style.display = (role === 'support' || role === 'admin') ? '' : 'none';
+    if (panel.style.display === 'none') return;
+
+    var out = $('chOut');
+    if (out && !out.dataset.armed) {
+      out.dataset.armed = '1';
+      out.innerHTML = '<div class="codehist-empty">No reference looked up yet. It starts with ARZ- and is ' +
+        'on the confirmation message the student got when their form was accepted \u2014 but the whole of it is ' +
+        'not required: the last four characters will do, and so will the phone number they applied with.</div>';
+    }
+  }
+
+  function statusHistoryLookup(override) {
+    var input = $('chRef');
+    var out = $('chOut');
+    var btn = $('chLook');
+    if (!input || !out) return;
+
+    /* WHAT IS SENT IS WHAT WAS TYPED, trimmed and nothing else. The
+       uppercasing, the dash-stripping and the "is this a phone number"
+       question all belong to public.status_history(), which does them once;
+       a panel that normalised first would be a second rule that has to stay
+       in step with the first, and the day they disagree an officer is told
+       "no record of that number" about a student who is on the phone. */
+    var typed = String(override === undefined ? input.value : override).trim();
+    input.value = typed;
+    if (!typed) {
+      out.innerHTML = '<div class="codehist-empty">Type the reference first — it is the ARZ- string on their ' +
+        'confirmation — or the last few characters of it, or the phone number they applied with. ' +
+        'Either way this only asks the database, and the database decides.</div>';
+      return;
+    }
+
+    out.innerHTML = '<div class="codehist-empty">Reading ' + esc(typed) + '\u2026</div>';
+    if (window.ArzuzUI && btn) ArzuzUI.setBusy(btn, true, 'Reading\u2026');
+
+    ArzuzAuth.headers().then(function (h) {
+      return fetch(apiRoot() + '/rest/v1/rpc/status_history', {
+        method: 'POST', headers: h, body: JSON.stringify({ p_query: typed })
+      });
+    })
+      .then(function (r) {
+        /* 401 is a stale session — the one read an officer can act on.
+           403 stays derived: it is a login outside the desk, which is a
+           grant fact rather than something to renew. */
+        if (r.status === 401) { onAuthError(new Error('status_history')); throw new Error('Your session has expired — sign in again.'); }
+        if (r.status === 403) throw new Error('This login may not read a code history: it is the support desk\u2019s, and an admin\u2019s.');
+        if (!r.ok) throw apiErr(r);
+        return r.text();
+      })
+      .then(function (text) {
+        var h = null;
+        try { h = JSON.parse(text); } catch (e) { h = null; }
+        out.innerHTML = chHistoryHtml(h);
+      })
+      .catch(function (err) {
+        out.innerHTML = '<div class="codehist-empty bad">The lookup failed: ' + esc(err.message || err) + '</div>';
+      })
+      .then(function () { if (window.ArzuzUI && btn) ArzuzUI.setBusy(btn, false); });
+  }
+
+  if ($('chLook')) $('chLook').addEventListener('click', function () { statusHistoryLookup(); });
+  if ($('chRef')) {
+    $('chRef').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); statusHistoryLookup(); }
+    });
+    /* One clear puts the panel back to its own question. Without it a wrong
+       answer stays on the screen until it is replaced by the next lookup,
+       which is exactly the wrong way round on a call: the officer is
+       looking at somebody's history while asking about somebody else. */
+    $('chRef').addEventListener('input', function () {
+      if (this.value.trim()) return;
+      var o = $('chOut');
+      if (o) delete o.dataset.armed;
+      renderStatusHistory();
+    });
+  }
+
+  /* The pick list. Delegated, because the panel is redrawn by innerHTML and
+     a listener bound per button would be gone the moment it rendered once.
+     Choosing one asks the SAME question again with the whole reference —
+     the officer's own click is the narrowing, not a guess by the panel. */
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-chpick]') : null;
+    if (!b) return;
+    statusHistoryLookup(b.getAttribute('data-chpick'));
+  });
+
+  /* exposed for dev/admin-boot-test.js, which drives the desk the way it
+     drives the shift */
+  window.renderStatusHistory = renderStatusHistory;
+  window.statusHistoryLookup = statusHistoryLookup;
+
   document.addEventListener('click', function (e) {
     var b = e.target.closest ? e.target.closest('[data-canned]') : null;
     if (!b) return;
@@ -3707,7 +7698,7 @@
     })
       .then(function (r) {
         if (r.status === 401 || r.status === 403) { onAuthError(new Error('Ticket insert rejected')); throw new Error('Your session has expired.'); }
-        if (!r.ok) throw new Error('HTTP ' + r.status);
+        if (!r.ok) throw apiErr(r);
         return r.json();
       })
       .then(function (created) {
@@ -3743,7 +7734,7 @@
       return fetch('/api/team', { method: 'POST', headers: h, body: JSON.stringify(body) });
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (data) {
-        if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+        if (!r.ok) throw apiErr(r, data);
         return data;
       });
     });
@@ -3855,4 +7846,17 @@
   applyRoleNav();
   renderRoute();
   checkAuth();
+
+  /* ------------------------------------------------------------------
+     A name for THIS script, and the only thing that proves it ran.
+
+     The dashboard's own boot is this file; every other layer it names is
+     reached through a typeof guard, so losing one of them degrades a
+     section rather than stopping the page. Losing this file leaves the
+     dashboard on its shell with nothing in the console to say why — the
+     failure the dev harness has to tell apart from a broken page
+     (dev/page-harness-boot.js), and a marker is how the harness asks
+     whether the boot ran. It is inert: nothing reads it but the harness.
+     ------------------------------------------------------------------ */
+  window.ArzuzAdmin = { booted: true, version: 25 };
 })();

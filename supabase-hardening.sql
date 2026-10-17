@@ -68,6 +68,51 @@ alter table demand_records    enable row level security;
 alter table listings          enable row level security;
 alter table scout_submissions enable row level security;
 
+-- THE SWEEP COMES FIRST, and that ordering is load-bearing in three
+-- different installs. It drops, by name, every policy this file has
+-- ever created plus the old wide ones, so that what follows can
+-- simply create them again:
+--
+--   a legacy database  — the `allow select …` / `using (true)` set goes;
+--   a fresh install     — supabase-schema.sql already created several of
+--                         these exact names, and without the sweep the
+--                         create below dies on 42710 (duplicate_object);
+--                         the SQL editor runs this file in ONE
+--                         transaction, so the whole hardening pass would
+--                         roll back and the columns and views the later
+--                         files preflight for would never appear;
+--   this file again     — a second run finds its own output and replaces it.
+--
+-- It used to sit AFTER the three INSERT policies below. That was wrong
+-- in a way nothing caught: the list includes 'admin can add demand',
+-- 'admin can add listings' and 'admin can add scout reports', so the
+-- sweep deleted the three policies it had just created and the
+-- dashboard's Add modal was refused by RLS — while the file still read
+-- as "safe to run more than once".
+do $$
+declare p text;
+begin
+  foreach p in array array[
+    'allow select demand', 'allow select listings', 'allow select scout reports',
+    'allow update demand', 'allow update listings', 'allow update scout reports',
+    'allow delete demand', 'allow delete listings', 'allow delete scout reports',
+    'public can select demand', 'public can select listings',
+    'public can select scout reports', 'public can update demand',
+    'public can update listings', 'public can update scout reports',
+    'public can delete demand', 'public can delete listings',
+    'public can delete scout reports',
+    'public can submit demand', 'public can submit listings', 'public can submit scout reports',
+    'admin can read demand', 'admin can read listings', 'admin can read scout reports',
+    'admin can update demand', 'admin can update listings', 'admin can update scout reports',
+    'admin can delete demand', 'admin can delete listings', 'admin can delete scout reports',
+    'admin can add demand', 'admin can add listings', 'admin can add scout reports'
+  ] loop
+    execute format('drop policy if exists %I on demand_records',    p);
+    execute format('drop policy if exists %I on listings',          p);
+    execute format('drop policy if exists %I on scout_submissions', p);
+  end loop;
+end $$;
+
 -- INSERT: the public site forms. A public form must never be able to
 -- write its own approval state — with check (true) would let anyone
 -- holding the anon key POST a listing with status='active', tier=2
@@ -96,30 +141,9 @@ create policy "admin can add scout reports"
 
 -- The old policies: anonymous read / update / delete with using (true).
 -- Anyone holding the public anon key could read, alter or wipe every
--- phone number on the site. All of them go.
-do $$
-declare p text;
-begin
-  foreach p in array array[
-    'allow select demand', 'allow select listings', 'allow select scout reports',
-    'allow update demand', 'allow update listings', 'allow update scout reports',
-    'allow delete demand', 'allow delete listings', 'allow delete scout reports',
-    'public can select demand', 'public can select listings',
-    'public can select scout reports', 'public can update demand',
-    'public can update listings', 'public can update scout reports',
-    'public can delete demand', 'public can delete listings',
-    'public can delete scout reports',
-    'admin can read demand', 'admin can read listings', 'admin can read scout reports',
-    'admin can update demand', 'admin can update listings', 'admin can update scout reports',
-    'admin can delete demand', 'admin can delete listings', 'admin can delete scout reports',
-    'admin can add demand', 'admin can add listings', 'admin can add scout reports',
-    'admin can add amenities', 'admin can remove amenities', 'public can read amenities'
-  ] loop
-    execute format('drop policy if exists %I on demand_records',    p);
-    execute format('drop policy if exists %I on listings',          p);
-    execute format('drop policy if exists %I on scout_submissions', p);
-  end loop;
-end $$;
+-- phone number on the site. All of them go — they are in the sweep at
+-- the top of this section, which also removes the previous version of
+-- this file's own policies so this file can be run twice.
 
 -- SELECT / UPDATE / DELETE: the signed-in admin only.
 create policy "admin can read demand"
@@ -274,6 +298,11 @@ select
   property_type,
   area,
   rooms,
+  -- Whether the owner wrote a description, WITHOUT shipping it: the
+  -- listings sitemap sizes a room with this, and a boolean is a few
+  -- bytes where the text is a paragraph times a thousand rows. It reads
+  -- the same two keys the room page reads (desc, then description).
+  (coalesce(nullif(payload ->> 'desc', ''), nullif(payload ->> 'description', '')) is not null) as has_description,
   payload - 'nm' - 'last' - 'ph' - 'who' - 'email' as payload
 from listings
 where status = 'active'

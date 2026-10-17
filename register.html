@@ -37,12 +37,63 @@
 <link rel="stylesheet" href="assets/share.css">
 </head>
 <body>
-<div class="wrap pad"><div id="form"></div></div>
+<!--
+  The introduction below is not decoration and it is not a fallback for old
+  browsers: it is the page Google is allowed to read.
+
+  Every word a visitor reads on /register is drawn by assets/app.js a
+  moment after load, so the document used to arrive as one empty <div>.
+  Search Console fetches the served HTML first, and a page with no text and
+  no heading is a page it will not index — which is why this URL sat
+  unindexed while the site itself was fine for anyone with a browser.
+
+  Arzuz.form() overwrites #form on its first draw, so a visitor with
+  JavaScript never sees this, and a crawler that runs no script sees a
+  complete page.
+-->
+<div class="wrap pad">
+  <!-- The h1 lives OUTSIDE #form. The form engine overwrites #form on its
+       first draw, and its step question is an <h2> — so a page whose only
+       heading was inside the intro ended up with no h1 at all in the
+       rendered document, which is what a crawler that runs JavaScript
+       reads. This one survives the draw, and the outline becomes the
+       intended h1 (the page) then h2 (the current step). -->
+  <h1 class="page-h1">Register the room you need, near KWASU</h1>
+  <div id="form"><div class="intro">
+  <p>Arzuz matches students to verified hostels, rooms and self-contains in Malete, the town
+  outside the KWASU main campus — at the price the owner actually charges, with no agent fee
+  on top of it.</p>
+  <p>You tell us the kind of room you want, the most you can pay for the session, how far from
+the campus gate you are willing to walk, and when you need it. If you are under 18 we also ask for
+a parent or guardian's number, and we will not arrange a viewing for you on your own — that is
+spelled out on <a href="/safety">your safety</a>.</p>
+  <h2>What happens after you register</h2>
+  <ul>
+    <li>A WhatsApp message when a room matches what you asked for, with the price, the area and
+the walking time to the campus gate, measured from the owner's own dropped pin.</li>
+    <li>Every room we send you was checked before it was listed. The badge on each one says how
+far that check went.</li>
+    <li>You pay the owner directly. Arzuz collects no rent and holds no deposit, and renting through
+Arzuz costs nothing — the only thing Arzuz ever sells is an optional Care Pass for repairs.</li>
+  </ul>
+  <h2>Where Arzuz is live</h2>
+  <p>Malete, in Kwara State, is the first location and the only one with listings on it today.
+Students anywhere can register, and the numbers tell us which campus to open next.</p>
+  <h2>Keep looking</h2>
+  <ul class="ilinks">
+    <li><a href="/browse">Browse verified rooms</a></li>
+    <li><a href="/list">List your property</a></li>
+    <li><a href="/my-building">Register your building</a></li>
+    <li><a href="/roommates">Roommate matching</a></li>
+    <li><a href="/care">Arzuz Care</a></li>
+  </ul>
+</div></div></div>
 <script src="assets/config.js"></script>
+<script src="assets/api-errors.js?v=1"></script>
 <script src="assets/data.js"></script>
 <script src="assets/attribution.js"></script>
 <script src="assets/notify.js"></script>
-<script src="assets/submit.js?v=3"></script>
+<script src="assets/submit.js?v=4"></script>
 <script src="assets/share.js"></script>
 <script src="assets/whatsapp.js"></script>
 <script src="assets/app.js"></script>
@@ -52,7 +103,7 @@
 Arzuz.chrome('student');
 Arzuz.form({
   table:'demand_records',
-  backHref:'index.html', backLabel:'\u2190 Back to home',
+  backHref:'/', backLabel:'\u2190 Back to home',
   steps:[
    {k:'type', h:"What kind of room?", o:ROOM_TYPES.concat(["Not sure yet"])},
    {k:'budget', h:"What's your maximum for the session?",
@@ -65,11 +116,14 @@ Arzuz.form({
    {k:'when', h:"When do you need it?",
     o:["This session","Next session","Within 3 months","Flexible"]},
    {k:'age', h:"How old are you?",
-    hint:"We ask because anyone under 18 gets extra protection \u2014 see <a href='safety.html'>our safety page</a>.",
+    hint:"We ask because anyone under 18 gets extra protection \u2014 see <a href='/safety'>our safety page</a>.",
     o:["Under 18","18 to 20","21 to 24","25 or older"]},
    {k:'ct', h:"Where should we message you?",
-    hint:"Matches come on WhatsApp. Your number is never shown publicly.",
-    f:[["first","First name","text"],["last","Last name","text"],["phone","WhatsApp number","tel"]]},
+    hint:"Matches come on WhatsApp. Your number is never shown publicly. An email is optional \u2014 if you give us one it is the second way we reach you, and it is how you can open your status page if you ever change your number.",
+    /* The email is `{opt:true}` — the form engine treats a field with no
+       fourth element as REQUIRED, so leaving it off would have made an
+       optional address a wall a student without one cannot get past. */
+    f:[["first","First name","text"],["last","Last name","text"],["phone","WhatsApp number","tel"],["email","Email","email",{opt:true}]]},
    {k:'guardian', h:"A parent or guardian's number",
     hint:"You told us you are under 18. We send them everything we send you, and we will not arrange a viewing for you on your own. This is the one question we cannot skip.",
     onlyIf:function(a){ return a.age === 'Under 18'; },
@@ -100,7 +154,7 @@ Arzuz.form({
    '<span class="lnk">arzuz.com/\u2026</span><div class="tm">09:14</div></div></div>'+
    '<p style="font-size:13.5px;color:var(--mid);margin-top:14px;line-height:1.5">No app to open, '+
    'no notification to enable. It arrives where students already are.</p>'+
-   '<div class="nav"><a class="next" href="index.html">Done</a></div></div>'
+   '<div class="nav"><a class="next" href="/">Done</a></div></div>'
 });
 
 /* Delegated listener lives on the persistent #form container; the form

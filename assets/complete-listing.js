@@ -81,6 +81,18 @@
     });
   }
 
+  /* A failure carries the platform's own answer — the status, the code
+     and the sentence PostgREST wrote — because the NUMBER is not enough
+     to tell three different situations apart:
+
+       404 + PGRST202  "no matches were found in the schema cache"
+                       this site is running ahead of its database
+       400 + 22P02     "invalid input syntax for type uuid"
+                       the link arrived damaged, not unknown
+       401/403 + 42501 this page is not allowed to call that
+
+     All three used to be thrown away as "HTTP 404" and reported to the
+     landlord as a bad link. assets/draft-errors.js is what reads them. */
   function rpc(name, args) {
     var key = cfg.SUPABASE_ANON_KEY;
     var headers = { 'Content-Type': 'application/json', apikey: key, Authorization: 'Bearer ' + key };
@@ -88,8 +100,34 @@
     return fetch(cfg.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/rpc/' + name, {
       method: 'POST', headers: headers, body: JSON.stringify(args || {})
     }).then(function (r) {
-      if (!r.ok) throw new Error('Supabase RPC failed (HTTP ' + r.status + ')');
-      return r.json();
+      return r.text().then(function (raw) {
+        var body = null;
+        try { body = raw ? JSON.parse(raw) : null; } catch (e) { body = null; }
+        if (r.ok) return body;
+        /* Read back through the shared classifier: PostgREST's own
+           sentence and code, plus the class — a table this project does
+           not have yet is a deploy to run, not a link to replace. */
+        var W = (typeof ArzuzApiErrors !== 'undefined') ? ArzuzApiErrors : null;
+        var err = W ? W.failed(r, body)
+          : new Error((body && body.message) || 'Arzuz could not answer.');
+        /* The fallback carries what the page's classifier reads — status
+           and code — so a page that never loaded api-errors.js still
+           tells a missing table apart from a dropped connection. */
+        if (!W){
+          err.status = r.status;
+          err.code = (body && body.code) || null;
+        }
+        err.rpc = name;
+        throw err;
+      });
+    }, function (e) {
+      /* The request never reached Arzuz: status 0 is what
+         assets/draft-errors.js reads as "offline", and it is a
+         different sentence from a platform that refused. */
+      var err = new Error((e && e.message) || 'the request did not go through');
+      err.status = 0;
+      err.rpc = name;
+      throw err;
     });
   }
 
@@ -101,9 +139,60 @@
     window.scrollTo(0, 0);
   }
 
-  function failState(msg) {
+  /* ---------------- turning a failure into words ----------------
+     ONE place decides what the landlord is told, because the whole
+     point is that the page must not answer every failure with "your
+     link is invalid" — a half-deployed site would then send a person
+     to ask for a fresh link that cannot work either. */
+
+  function describe(d) {
+    if (d && d.kind && d.title) return d;   /* already a descriptor */
+    var D = window.ArzuzDraftErrors;
+    if (D) return D.classify(d);
+    /* assets/draft-errors.js did not load. That is the same
+       half-deployed shape this file exists to explain — this page
+       shipped ahead of its own script — so say the honest minimum
+       rather than throwing and leaving a blank screen. */
+    return {
+      kind: 'error',
+      title: 'We could not open this page',
+      body: 'Arzuz could not finish loading the invite form. Message us on WhatsApp and we will ' +
+        'send you a link that works, or finish your details with you.',
+      inline: 'That did not go through. Message us on WhatsApp and we will sort it out.'
+    };
+  }
+
+  function detailOf(d) {
+    var D = window.ArzuzDraftErrors;
+    if (D && D.detail) return D.detail(d);
+    return typeof d === 'string' ? d : String((d && d.message) || d);
+  }
+
+  /* The whole screen: the link cannot be used, and the reason may not
+     be the link's fault. */
+  function failState(d) {
+    var st = describe(d);
+    if ($('clDeadTitle')) $('clDeadTitle').textContent = st.title;
+    if ($('clDeadBody')) $('clDeadBody').textContent = st.body;
     show('dead');
-    if (window.console) console.warn('[complete-listing]', msg);
+    if (window.console) console.warn('[complete-listing] ' + st.kind + ' — ' + detailOf(d));
+  }
+
+  /* The form stays on screen and keeps what was typed: a save that
+     did not happen is a fact about the last minute, not a reason to
+     throw away somebody's work. */
+  function failNote(d) {
+    var st = describe(d);
+    setNote($('clError'), st.inline || ('That did not go through. ' + detailOf(d)));
+    if (window.console) console.warn('[complete-listing] ' + st.kind + ' — ' + detailOf(d));
+  }
+
+  /* A class the page has already decided for itself, e.g. an empty
+     answer from listing_draft_get, which is not an error at all —
+     just a row that is not there. */
+  function showState(kind) {
+    var D = window.ArzuzDraftErrors;
+    failState(D ? D.state(kind) : undefined);
   }
 
   function credit() {
@@ -475,7 +564,23 @@
     }
     if (statusEl) { statusEl.className = 'cl-up uploading'; statusEl.textContent = 'Preparing the signed upload…'; }
     fetch('/api/cloudinary-sign', { method: 'POST' })
-      .then(function (r) { if (!r.ok) throw new Error('Could not get an upload signature (HTTP ' + r.status + ')'); return r.json(); })
+      .then(function (r) {
+        if (r.ok) return r.json();
+        /* the same rule as the dashboard and the public forms: the
+           server's own sentence beats "HTTP 500" everywhere */
+        return r.text().then(function (body) {
+          /* The sign function's own sentence — it names the missing
+             Cloudinary variable — and the class it named with it, so the
+             invite page's own classifier does not answer a deploy with
+             no storage as if it were a dropped connection. */
+          if (typeof ArzuzApiErrors !== 'undefined') throw ArzuzApiErrors.failed(r, body);
+          var own = '';
+          try { own = (JSON.parse(body) || {}).error || ''; } catch (e) { own = str(body).slice(0, 160); }
+          var plain = new Error(own || 'Arzuz could not start the upload just now — that is our side, not yours.');
+          plain.status = r.status || 0;
+          throw plain;
+        });
+      })
       .then(function (sig) {
         if (statusEl) statusEl.textContent = 'Uploading ' + kind + '…';
         var fd = new FormData();
@@ -494,7 +599,13 @@
         if (statusEl) { statusEl.className = 'cl-up success'; statusEl.textContent = 'Uploaded!'; }
         onDone(data.secure_url);
       })
-      .catch(function (err) { fail('Upload failed: ' + err.message); });
+      .catch(function (err) {
+        var msg = 'Upload failed: ' + err.message;
+        if (/cloudinary environment variables|not configured|no credentials/i.test(err.message)) {
+          msg += ' — ask the Arzuz team to finish setting up photo storage (CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET / CLOUDINARY_CLOUD_NAME), or send the photos on WhatsApp.';
+        }
+        fail(msg);
+      });
   }
 
   /* Video tours stream straight to YouTube (unlisted) with a live
@@ -678,6 +789,9 @@
           done++;
           markDirty();
           renderGallery();
+          /* a photo is one of the six facts: the panel moves now, not on
+             the next visit */
+          refreshStrength();
           report();
           pump();
         }, function (pct) {
@@ -762,6 +876,7 @@
       MEDIA.push({ type: 'video', url: url, label: '', credit: credit() });
       markDirty();
       renderGallery();
+      refreshStrength();
       var st = $('clVideoProgress');
       if (st) { st.className = 'cl-up success'; st.textContent = 'Video link added.'; }
     }
@@ -922,6 +1037,9 @@
           badge.textContent = '📍 ' + lat.toFixed(5) + ', ' + lng.toFixed(5);
           badge.classList.add('set');
         }
+        /* the pin is one of the six facts, and dropping it fires no form
+           event — so the panel is told directly rather than left stale */
+        refreshStrength();
       },
       /* a traced walk path with no pin yet: keep the route, add no position */
       onRoute: function (meta) {
@@ -1009,6 +1127,135 @@
     storedName = p.prop_name || 'This apartment';
 
     markClean();
+  }
+
+  /* ================= the page-strength panel =================
+
+     WHY THIS IS HERE
+
+       A room's <changefreq> and <priority> are not set by hand. They come
+       off ONE score, built from how much of the page there is and how
+       recently it moved, and that score lives in assets/listing-score.js so
+       this page, the admin dashboard and the listings sitemap cannot
+       disagree about the same room (see
+       netlify/functions/listings-sitemap.js).
+
+       The landlord is the only person who can fix a thin page, and this is
+       the only page they ever open. So the score is drawn here, LIVE: it
+       reads the form through the same collectPatch() the save uses, so what
+       is on screen is the payload that would be SAVED — not a description
+       of it that could drift away from it.
+
+     WHAT IT CLAIMS ABOUT CRAWLING
+
+       A draft is not on the board, so nothing is being crawled yet. The band
+       is therefore shown as the forecast it is ("once this is live we come
+       back to it weekly") and never as a measurement. On this page the
+       freshness half of the score is pinned to "edited now", which is the
+       honest answer while somebody is filling the form in — so what moves
+       here is the half a landlord can actually do something about.
+
+     THE NUDGE
+
+       What this browser showed on the last visit is remembered per room
+       (localStorage) and, when the page has slipped since then, the panel
+       says so and names the cheapest way back up. It is deliberately
+       per-device: there is no owner account to store it against, and a
+       browser that forgets stays quiet rather than claiming a fall that
+       never happened. See renderStrength() for what it will and will not
+       say. */
+  var Score = (typeof window !== 'undefined' && window.ArzuzListingScore) || null;
+  var BANDS = ['daily', 'weekly', 'monthly', 'yearly'];   /* best first */
+  var STRENGTH_PREFIX = 'arzuz.crawl.';
+  var lastVisit = null;        /* { band, found } from the visit before this one */
+
+  function roomKey() {
+    return (draft && draft.id) ? String(draft.id) : String(TOKEN || 'draft');
+  }
+
+  function readLastVisit() {
+    try {
+      var raw = window.localStorage.getItem(STRENGTH_PREFIX + roomKey());
+      var obj = raw ? JSON.parse(raw) : null;
+      return (obj && obj.band) ? { band: String(obj.band), found: Number(obj.found) || 0 } : null;
+    } catch (e) { return null; }
+  }
+
+  function rememberVisit(state) {
+    try {
+      window.localStorage.setItem(STRENGTH_PREFIX + roomKey(),
+        JSON.stringify({ band: state.hint.changefreq, found: state.found }));
+    } catch (e) { /* a browser in private mode has no memory, and makes no claim */ }
+  }
+
+  /* The room as the score reads it: the payload that would be saved, and a
+     stamp of now — the room IS being edited as we look at it. */
+  function strengthState() {
+    var row = { payload: collectPatch('progress'), created_at: new Date().toISOString() };
+    var missing = Score.missing(row);
+    return {
+      missing: missing,
+      found: Score.SIGNALS.length - missing.length,
+      total: Score.SIGNALS.length,
+      hint: Score.signals(row, Date.now())
+    };
+  }
+
+  /* `withNudge` is true only on the first draw of a visit. A remark about
+     what changed since last time has to be made once, against the value
+     that was left behind — saying it again on every keystroke would be
+     noise, and comparing against a value this session just wrote would be a
+     lie. */
+  function renderStrength(withNudge) {
+    var host = $('clStrength');
+    if (!host || !Score) return null;
+    var st = strengthState();
+
+    host.hidden = false;
+    $('clStrengthCount').textContent = st.found + ' of ' + st.total + ' details';
+    var fill = $('clStrengthFill');
+    if (fill) fill.style.width = Math.round((st.found / st.total) * 100) + '%';
+    $('clStrengthMissing').innerHTML = st.missing.length
+      ? '<span>Still missing:</span>' + st.missing.map(function (m) {
+          return '<em class="cl-strength-chip">' + esc(m) + '</em>';
+        }).join('')
+      : '<span>Every detail a student decides with is on this page.</span>';
+    $('clStrengthBand').textContent = st.found === st.total
+      ? 'Once this is live we come back to it ' + st.hint.changefreq + '.'
+      : 'Right now we would come back to it ' + st.hint.changefreq +
+        ' \u2014 the more of these are filled in, the more often.';
+
+    var lines = [];
+    if (withNudge && lastVisit) {
+      if (BANDS.indexOf(st.hint.changefreq) > BANDS.indexOf(lastVisit.band)) {
+        lines.push('The band we would check this page on has fallen from ' +
+          lastVisit.band + ' to ' + st.hint.changefreq + '.');
+      }
+      if (lastVisit.found > st.found) {
+        lines.push('Last time you opened this link it had ' + lastVisit.found + ' of ' +
+          st.total + ' details; it has ' + st.found + ' now.');
+      }
+    }
+    var nudge = $('clStrengthNudge');
+    if (nudge) {
+      nudge.hidden = lines.length === 0;
+      nudge.textContent = lines.length
+        ? lines.join(' ') + (st.missing.length ? ' Adding ' + st.missing[0] + ' is the quickest way back up.' : '')
+        : '';
+    }
+    return st;
+  }
+
+  /* Every other refresh: the form changed, a photo landed, the pin moved. */
+  function refreshStrength() { renderStrength(false); }
+
+  /* Once, when the form is first filled: read what the last visit left
+     behind, draw the panel against it, and make what is drawn the baseline
+     for the next visit. */
+  function loadStrength() {
+    lastVisit = readLastVisit();
+    var st = renderStrength(true);
+    if (st) rememberVisit(st);
   }
 
   /* ---------------- collect + save ---------------- */
@@ -1167,7 +1414,9 @@
         }
       })
       .catch(function (e) {
-        setNote($('clError'), 'Could not save: ' + e.message);
+        /* Not "Could not save: HTTP 404". The sentence depends on which
+           failure it was, and three of the five are not the link. */
+        failNote(e);
       })
       .then(function () { setBusy(btn, false); });
   }
@@ -1202,12 +1451,12 @@
     }
     rpc('listing_draft_get', { p_token: TOKEN })
       .then(function (row) {
-        if (!row || !row.id) { failState('This link is no longer valid.'); return; }
+        if (!row || !row.id) { showState('dead-link'); return; }
         draft = row;
         fillForm(row.payload || {}, row);
         toast('Changes discarded.', 'info');
       })
-      .catch(function (e) { setNote($('clError'), 'Could not reload your details: ' + e.message); });
+      .catch(function (e) { failNote(e); });
   }
 
   /* ---------------- load ---------------- */
@@ -1222,17 +1471,23 @@
       $('clForm').insertBefore(note, $('clForm').firstChild);
       show('form');
       fillForm({}, null);
+      loadStrength();
       return;
     }
-    if (!TOKEN) { failState('No ref token in the URL'); return; }
+    if (!TOKEN) {
+      if (window.console) console.warn('[complete-listing] no ref token in the URL');
+      showState('no-link');
+      return;
+    }
     rpc('listing_draft_get', { p_token: TOKEN })
       .then(function (row) {
-        if (!row || !row.id) { failState('Token rejected or draft already approved'); return; }
+        if (!row || !row.id) { showState('dead-link'); return; }
         draft = row;
         VIEW_ONLY = (row.draft_permission === 'view');
         show('form');
         fillForm(row.payload || {}, row);
         permNote(row);
+        loadStrength();
         if (VIEW_ONLY) lockForm();
         var when = row.draft_completed_at ? new Date(row.draft_completed_at) : null;
         var whenText = (when && !isNaN(when))
@@ -1252,7 +1507,7 @@
           $('clTitle').textContent = 'Adjust your apartment';
         }
       })
-      .catch(function (e) { failState(e.message); });
+      .catch(function (e) { failState(e); });
   }
 
   /* ---------------- boot ---------------- */
@@ -1286,6 +1541,10 @@
     formEl.addEventListener('submit', function (e) { e.preventDefault(); save('send'); });
     formEl.addEventListener('input', markDirty, true);
     formEl.addEventListener('change', markDirty, true);
+    /* the panel is live: every keystroke can move the score. Capture phase,
+       like markDirty, so it reads the value the event carries. */
+    formEl.addEventListener('input', refreshStrength, true);
+    formEl.addEventListener('change', refreshStrength, true);
   }
 
   var draftBtn = $('clSaveDraft');
@@ -1337,4 +1596,17 @@
   }
 
   load();
+
+  /* ------------------------------------------------------------------
+     A name for THIS script, and the only thing that proves it ran.
+
+     Every other layer this page names is reached through a typeof guard,
+     so losing one of them degrades the form rather than stopping it. Losing
+     this file stops it dead: the form never leaves the loading card, with no
+     console error to explain why. That is the failure the dev harness has to
+     be able to tell apart from a broken page (dev/complete-listing-harness-boot.js),
+     and a marker is how it asks "did the page's own boot run?". It is inert:
+     nothing reads it but the harness.
+     ------------------------------------------------------------------ */
+  window.ArzuzCompleteListing = { booted: true, version: 8 };
 })();

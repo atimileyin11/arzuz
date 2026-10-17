@@ -38,15 +38,54 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body>
-<div class="wrap pad"><div id="form"></div></div>
+<!--
+  The introduction below is the page a crawler reads. Without it this
+  document arrived as one empty <div>: every visible word of
+  /my-building is drawn by assets/app.js after ArzuzData resolves, and a
+  page with no text and no heading is a page Google will not index.
+  Arzuz.form() overwrites #form on its first draw, so nobody with
+  JavaScript ever sees this.
+-->
+<div class="wrap pad">
+  <!-- The h1 sits outside #form on purpose: the form engine overwrites
+       #form on its first draw and its step question is an <h2>, so a
+       heading inside the intro leaves the rendered page with no h1. -->
+  <h1 class="page-h1">Register the building you already live in</h1>
+  <div id="form"><div class="intro">
+  <p>You know your compound better than any agent does — what the rent really is, what works in
+the room, and how to walk in. Arzuz is built on tenants telling us that, and it is the fastest way
+to get a building in Malete onto the map for students who are still looking.</p>
+  <p>You do not have to own the building to register it. Tell us where you live, drop a pin at the
+gate, say what you actually pay for the session and what the place has. If a room is about to come
+free, say so — that reaches us before it reaches any agent.</p>
+  <h2>What you get for it</h2>
+  <ul>
+    <li>The building is listed with a <b>Community verified</b> badge once we have checked it.</li>
+    <li>When a student moves in through what you told us, we credit you for it.</li>
+    <li>What you pay is stored privately and only ever shown combined with other tenants. Your name
+is never attached to the number.</li>
+  </ul>
+  <h2>Keen to list a property you own instead?</h2>
+  <p>Landlords with vacant rooms want <a href="/list">the property form</a>, which asks for the
+rooms you have free and how you take enquiries. This page is for the building you live in.</p>
+  <h2>Keep looking</h2>
+  <ul class="ilinks">
+    <li><a href="/browse">Browse verified rooms</a></li>
+    <li><a href="/register">Find a room</a></li>
+    <li><a href="/list">List your property</a></li>
+    <li><a href="/roommates">Roommate matching</a></li>
+    <li><a href="/care">Arzuz Care</a></li>
+  </ul>
+</div></div></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="assets/config.js"></script>
+<script src="assets/api-errors.js?v=1"></script>
 <script src="assets/data.js"></script>
 <script src="assets/attribution.js"></script>
 <script src="assets/notify.js"></script>
-<script src="assets/submit.js?v=3"></script>
+<script src="assets/submit.js?v=4"></script>
 <script src="assets/whatsapp.js"></script>
-<script src="assets/arzuz-map.js?v=3"></script>
+<script src="assets/arzuz-map.js?v=4"></script>
 <script src="assets/app.js"></script>
 <script src="assets/motion.js"></script>
 <script>
@@ -55,7 +94,7 @@ Arzuz.chrome('student');
 ArzuzData.ready.then(function(){
 Arzuz.form({
   table:'scout_submissions',
-  backHref:'index.html', backLabel:'\u2190 Back to home',
+  backHref:'/', backLabel:'\u2190 Back to home',
   steps:[
    {k:'where', h:"Where do you live?",
     f:[["area","Street or area name","text"],["rooms","How many rooms in the building?","number"]]},
@@ -90,7 +129,7 @@ Arzuz.form({
    '<b>Community verified</b> badge.</p>'+
    '<p class="sm">What you pay is stored privately and only ever shown combined with other tenants. '+
    'Your name is never attached to it.</p>'+
-   '<div class="nav"><a class="next" href="index.html">Done</a></div></div>'
+   '<div class="nav"><a class="next" href="/">Done</a></div></div>'
 });
 });
 

@@ -16,9 +16,14 @@
 
    Authorization model:
      * the caller must present a valid Supabase access token
-     * that token's app_metadata.role must be unset or 'admin'
-     * marketing and support logins get 403 — only the main
-       admin manages the team.
+     * that token's app_metadata.role must be unset, 'admin' or
+       'super_admin' — the same level, and the only level that may
+       manage the team
+     * every other login gets 403. The four job roles (operations,
+       verification, finance, marketing) are issued here and never
+       self-assigned: there is no public registration path that
+       writes app_metadata at all, which is what stops a visitor
+       from making themselves staff.
 
    GoTrue admin API reference (Supabase):
      GET    /auth/v1/user                (caller token → who is this)
@@ -28,18 +33,36 @@
      DELETE /auth/v1/admin/users/{id}
    ============================================================ */
 
-const ROLES = ['marketing', 'support'];   // 'admin' = unset role
+/* The role vocabulary the spec names, and it is a CLOSED list on
+   purpose: 'create' and 'set_role' refuse anything not in it, so a
+   typo cannot mint a login that public.arzuz_role() would normalize
+   into the main admin (an unrecognised claim falls through to
+   auth.role() = 'authenticated' → 'admin', which is the safe default
+   for a real person and the wrong one for a typo).
+
+   'support' and 'admin' are kept in the list because tokens carrying
+   them already exist; public.arzuz_role() maps operations→support and
+   super_admin→admin at the single point where a JWT becomes a role, so
+   the two names are the same level and no policy anywhere had to be
+   rewritten to add the spec's vocabulary. */
+const ROLES = ['operations', 'verification', 'finance', 'marketing', 'support'];
+const ADMINS = ['admin', 'super_admin'];            // no role key = admin
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey',
 };
 
-function json(statusCode, body) {
+/* The shared failure vocabulary — the SAME file the page loads, so the
+   class in this body is the class assets/admin.js reads, not a second
+   guess at the same status code. */
+const ApiErrors = require('../../assets/api-errors.js');
+
+function json(statusCode, body, kind) {
   return {
     statusCode,
     headers: { ...CORS, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(ApiErrors.wireBody(statusCode, body, kind)),
   };
 }
 
@@ -71,7 +94,7 @@ async function verifyCaller(callerToken) {
   const user = await res.json().catch(() => null);
   if (!user || !user.id) return null;
   const role = user.app_metadata && user.app_metadata.role;
-  if (role && role !== 'admin') return null;   // only the main admin
+  if (role && ADMINS.indexOf(role) === -1) return null;   // only the main admin
   return user;
 }
 
@@ -95,8 +118,12 @@ async function goTrue(method, path, body) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const msg = data.msg || data.error_description || data.message || ('GoTrue HTTP ' + res.status);
-    throw new Error(msg);
+    /* GoTrue's own sentence first; when it has none, a sentence for the
+       operator — never a bare status, which is a log line, not a
+       message. This string reaches the dashboard's Team panel. */
+    const own = data.msg || data.error_description || data.message;
+    if (!own) console.error('[team] GoTrue answered HTTP', res.status, JSON.stringify(data).slice(0, 200));
+    throw new Error(own || 'The identity service could not complete that just now.');
   }
   return data;
 }
@@ -112,11 +139,14 @@ exports.handler = async function (event) {
   if (!ready) {
     return json(503, {
       error: 'Team management is not configured: SUPABASE_SERVICE_ROLE_KEY is missing in Netlify. Add it under Site settings → Environment variables (Supabase → Project Settings → API → service_role key), then redeploy.',
-    });
+    }, 'not-ready');
   }
 
   const callerToken = (event.headers.authorization || event.headers.Authorization || '').replace(/^Bearer\s+/i, '');
-  if (!callerToken) return json(401, { error: 'Sign in to the dashboard first.' });
+  /* The dashboard holds a session, so a 401 here is a stale token —
+     the one read the admin can act on. A 403 stays derived: a grant
+     that is missing is a deployment fact, not a session to renew. */
+  if (!callerToken) return json(401, { error: 'Sign in to the dashboard first.' }, 'expired');
 
   let caller;
   try {
@@ -151,7 +181,7 @@ exports.handler = async function (event) {
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(400, { error: 'Enter a valid email address.' });
       if (password.length < 10) return json(400, { error: 'Temporary password must be at least 10 characters.' });
       if (role && !ROLES.includes(role)) return json(400, { error: 'Unknown role: ' + role });
-      const app_metadata = role ? { role } : {};
+      const app_metadata = role ? { role } : {};   // no role key = the main admin level
       const user = await goTrue('POST', '/auth/v1/admin/users', {
         email, password, email_confirm: true, app_metadata,
       });
@@ -169,7 +199,7 @@ exports.handler = async function (event) {
          by REMOVING the role key, exactly like the manual flow */
       const existing = await goTrue('GET', '/auth/v1/admin/users?id=' + encodeURIComponent(id));
       const found = (existing.users && existing.users[0]) || null;
-      if (!found) return json(404, { error: 'User not found.' });
+      if (!found) return json(404, { error: 'User not found.' }, 'rejected');
       const app_metadata = Object.assign({}, found.app_metadata || {});
       if (role) app_metadata.role = role;
       else delete app_metadata.role;

@@ -169,7 +169,12 @@ var ArzuzMap = (function () {
       coordStr + '?overview=full&geometries=geojson&steps=false';
     return fetch(url)
       .then(function (r) {
-        if (!r.ok) throw new Error('OSRM HTTP ' + r.status);
+        /* Console-only: the caller falls back to a straight line. The
+           status is still not composed into a message, so one rule can be
+           checked across every module. */
+        if (!r.ok) throw new Error(typeof ArzuzApiErrors !== 'undefined'
+          ? ArzuzApiErrors.sentence({ status: r.status })
+          : 'Arzuz could not work out the route.');
         return r.json();
       })
       .then(function (j) {

@@ -53,23 +53,53 @@ var Arzuz = (function(){
     if (document.querySelector('header')) return;
     var tag = role === 'owner' ? 'Landlord Portal' : (role === 'student' ? 'Student Portal' : 'Know before you pay.');
     document.body.insertAdjacentHTML('afterbegin',
-      '<header><div class="hrow"><a href="index.html" aria-label="Arzuz Home">'+
+      '<header><div class="hrow"><a href="/" aria-label="Arzuz Home">'+
       '<span class="m"><span>az</span></span>'+
       '<span class="hw">ar<i>z</i>u<i>z</i></span></a>'+
       '<span class="htag">' + tag + '</span></div></header>');
   }
 
+  /* The footer is the site's internal-link hub: the only navigation every
+     page shares, and the way a crawler gets from any page to the pages that
+     need to be found. Two things about it are deliberate.
+
+     The links are the canonical, extension-less URLs. They used to be
+     `safety.html` and friends — a different address from the one in the
+     page's own canonical tag and in sitemap.xml, so every page was
+     reachable three ways (with .html, without, and via /list and /scout)
+     and each copy competed with the others.
+
+     And it links the money pages, not just the legal ones. A crawler
+     discovers a page by following a link to it, which is why browse, the
+     two forms and the building page each get a link from every page on the
+     site. That is what internal linking means in practice: not a sitemap
+     file, but a path from every page to every other page.
+
+     The `if (document.querySelector('.sitefoot')) return;` above is what
+     keeps a page that ships this markup statically from drawing it twice. */
   function footer(){
     if (document.querySelector('.sitefoot')) return;
     document.body.insertAdjacentHTML('beforeend',
       '<div class="wrap"><div class="sitefoot">'+
-      '<div class="flinks">'+
-      '<a href="safety.html">Your safety</a>'+
-      '<a href="privacy.html">Privacy</a>'+
-      '<a href="terms.html">Terms</a>'+
+      '<div class="flinks"><b class="flbl">Find a room</b>'+
+      '<a href="/browse">Browse verified rooms</a>'+
+      '<a href="/register">Find a room</a></div>'+
+      '<div class="flinks"><b class="flbl">List a property</b>'+
+      '<a href="/list">List your property</a>'+
+      '<a href="/my-building">Register your building</a></div>'+
+      '<div class="flinks"><b class="flbl">Student guides</b>'+
+      '<a href="/rent-in-malete">What rent costs</a>'+
+      '<a href="/hostels-near-kwasu">Choosing a hostel</a></div>'+
+      '<div class="flinks"><b class="flbl">Arzuz</b>'+
+      '<a href="/safety">Your safety</a>'+
+      '<a href="/care">Arzuz Care</a>'+
+      '<a href="/privacy">Privacy</a>'+
+      '<a href="/roommates">Roommate matching</a>'+
+      '<a href="/terms">Terms</a>'+
       '<a href="mailto:support@arzuz.com">support@arzuz.com</a>'+
       '<a href="https://wa.me/2349024814771" target="_blank" rel="noopener noreferrer">WhatsApp: 09024814771</a></div>'+
-      'Arzuz does not collect rent, hold deposits, or take payment from tenants. '+
+      'Arzuz does not collect rent, hold deposits, or charge you to rent, view or contact a '+
+      'landlord. The only thing Arzuz sells is an optional Care Pass for repairs. '+
       'Your phone number is used to verify your account and send you matches. '+
       'It is never shown publicly.<br><br>'+
       'Arzuz. Open to students everywhere, starting in Malete, Kwara State. Pronounced AR-zuz.'+
@@ -78,6 +108,30 @@ var Arzuz = (function(){
 
   /* ---------- multi-step form engine ---------- */
   var F = {steps:[], step:0, answers:{}, done:'', backHref:'', backLabel:'', table:null};
+
+  /* THE FIVE TABLES THE PUBLIC DOOR SERVES (netlify/functions/waitlist.js).
+     Consent is required for all of them, and is enforced on the server;
+     this list exists so the CONSENT STEP is only added to a real public
+     submission and never to an internal screen. */
+  var CONSENT_TABLES = ['demand_records','listings','scout_submissions','booking_requests','support_tickets',
+                        /* The roommate questionnaire is on this list for the
+                           same reason as the other five and not because it
+                           writes to demand_records: it collects a phone
+                           number and it is a submission the server requires
+                           consent for. It is also the one form whose name
+                           differs from its table — netlify/functions/waitlist.js
+                           maps form 'roommate_profiles' onto demand_records,
+                           which is why the door's allowlist has to know this
+                           name at all. */
+                        'roommate_profiles'];
+
+  /* THE EXACT SENTENCE THE SERVER RECORDS IN consent_text. It is the
+     same string in netlify/functions/waitlist.js on purpose, and
+     scripts/test-waitlist.mjs fails the build if the two ever say
+     different things — a page that shows one version of what someone
+     agreed to while the database stores another is worse than no
+     consent record at all. CHANGE BOTH, OR NEITHER. */
+  var CONSENT_SENTENCE = 'By submitting this form I agree that Arzuz may contact me on the phone number or email I have given, about my housing request and about rooms Arzuz matches to it. I can ask Arzuz to stop contacting me at any time.';
   var activePinCapture = null;
   var activePassageEditor = null;
 
@@ -86,6 +140,22 @@ var Arzuz = (function(){
     F.done = opts.done; F.backHref = opts.backHref || 'index.html';
     F.backLabel = opts.backLabel || '\u2190 Back';
     F.table = opts.table || null;
+
+    /* THE CONSENT STEP, ADDED BY THE ENGINE RATHER THAN IN EIGHT PAGES.
+       Every public form now ends with one box and one sentence, because
+       the server requires consent from all of them and records the
+       sentence agreed to. Putting it here means the pages that call
+       Arzuz.form() cannot drift apart from each other or from the
+       server, and a page added next month gets it without knowing it
+       exists. */
+    if (CONSENT_TABLES.indexOf(F.table) !== -1
+        && !F.steps.some(function(st){ return st.agree; })) {
+      F.steps = F.steps.concat([{
+        k: 'consent',
+        h: 'Before we take your details',
+        agree: CONSENT_SENTENCE
+      }]);
+    }
     draw();
   }
 
@@ -138,6 +208,27 @@ var Arzuz = (function(){
         'they can pay, as soon as your listing is in.') +'</div>';
 
     // Multiple choice options
+    /* THE HONEYPOT. A field no person can see and no person fills in,
+       named the way a form-filler expects a form field to be named. It
+       is here on every step, and it travels in the payload so that the
+       DATABASE can refuse a filled one as well as this page's server
+       (see the anon insert policies in supabase-team-roles.sql). A bot
+       that talks to the API directly and sends an `hp` with anything in
+       it meets that check whether or not it ever loaded this page. */
+    h += '<div style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden" aria-hidden="true">'+
+         '<label for="f_hp">Website</label>'+
+         '<input type="text" id="f_hp" name="website" tabindex="-1" autocomplete="off" value="">'+
+         '</div>';
+
+    /* The consent box, on the one step that asks for it. */
+    if (s.agree) {
+      h += '<label for="f_consent" style="display:flex;gap:10px;align-items:flex-start;margin:16px 0;cursor:pointer">'+
+           '<input type="checkbox" id="f_consent" style="margin-top:3px;width:18px;height:18px;flex:none"'+
+           (F.answers.consent === 'yes' ? ' checked' : '')+'>'+
+           '<span style="font-size:13.5px;color:var(--mid);line-height:1.5">'+ s.agree +'</span>'+
+           '</label>';
+    }
+
     if(s.o) h += '<div class="opts">'+ s.o.map(function(o){
       var isSel = F.answers[s.k] === o;
       return '<button type="button" class="opt'+(isSel?' sel':'')+'" data-v="'+o+'">'+o+'</button>';
@@ -286,10 +377,20 @@ var Arzuz = (function(){
     });
 
     // Option buttons event listener
-    el.querySelectorAll('.opt').forEach(function(b){
+    /* SCOPED TO THE REAL OPTIONS, and that is the whole point of the
+       `.opts` prefix. This used to be a bare `.opt`, which also matched
+       this step's OWN guidance badge — `step-guide-bar '+(compulsory ?
+       'req' : 'opt')` above — so on an OPTIONAL step the decorative badge
+       was a live control: tapping the thing that says "Optional (You can
+       skip)" ran this handler, wrote `F.answers[s.k] = undefined` (a badge
+       has no data-v) and advanced the step. A person could skip a whole
+       optional step's fields without knowing, and every answer on it
+       arrived empty. The badge is a label; only buttons drawn inside
+       `.opts` are answers. */
+    el.querySelectorAll('.opts .opt').forEach(function(b){
       b.addEventListener('click', function(){
         F.answers[s.k] = b.dataset.v;
-        el.querySelectorAll('.opt').forEach(function(o){o.classList.remove('sel')});
+        el.querySelectorAll('.opts .opt').forEach(function(o){o.classList.remove('sel')});
         b.classList.add('sel');
         setTimeout(next, 160);
       });
@@ -398,8 +499,22 @@ var Arzuz = (function(){
 
     fetch('/api/cloudinary-sign', { method: 'POST' })
       .then(function(r){
-        if (!r.ok) throw new Error('Sign endpoint returned ' + r.status);
-        return r.json();
+        if (r.ok) return r.json();
+        /* "Sign endpoint returned 500" hid the one sentence that
+           explains every photo that never uploads: the function says
+           which environment variable is missing. Pass it through. */
+        return r.text().then(function(body){
+          /* The sign function's sentence is preferred — it names the
+             missing environment variable — and its CLASS comes with it,
+             so a deploy with no Cloudinary key (every photo will fail
+             the same way, forever) is not read as a bad minute. A bare
+             status is never shown either way, and the server's sentence
+             is not lost if the classifier did not load. */
+          if (typeof ArzuzApiErrors !== 'undefined') throw ArzuzApiErrors.failed(r, body);
+          var detail = '';
+          try { detail = (JSON.parse(body) || {}).error || ''; } catch (e) { detail = String(body || '').slice(0, 160); }
+          throw new Error(detail || 'Arzuz could not start the photo upload just now — that is our side, not yours.');
+        });
       })
       .then(function(sig){
         setProgress('📤 Uploading photo…');
@@ -442,7 +557,8 @@ var Arzuz = (function(){
       })
       .catch(function(err){
         console.error('[Arzuz] Photo upload failed:', err.message);
-        setProgress('⚠️ Upload failed — please try again.', 'error');
+        setProgress('⚠️ Photo upload is unavailable — ' + err.message +
+          '. You can still submit and send the photos on WhatsApp.', 'error');
         if (zoneEl) zoneEl.classList.remove('uploading');
       });
   }
@@ -490,6 +606,25 @@ var Arzuz = (function(){
         if (cWrap) cWrap.classList.add('input-error');
         return false;
       }
+    }
+
+    // Validate the consent box (s.agree). One box, and it is the one
+    // answer the server will not accept a submission without.
+    if (s.agree && F.answers.consent !== 'yes') {
+      var boxEl = document.getElementById('f_consent');
+      if (boxEl) boxEl.classList.add('input-error');
+      var boxErr = document.getElementById('err_consent');
+      if (!boxErr) {
+        var wrapEl = document.getElementById('f_consent');
+        if (wrapEl && wrapEl.parentNode) {
+          var note = document.createElement('div');
+          note.id = 'err_consent';
+          note.className = 'fld-err active';
+          note.textContent = 'We cannot take your details without this.';
+          wrapEl.parentNode.appendChild(note);
+        }
+      }
+      return false;
     }
 
     // Validate individual fields (s.f)
@@ -550,6 +685,16 @@ var Arzuz = (function(){
   }
 
   function collect(){
+    /* The honeypot and the consent box are not fields of a step, so they
+       are read here rather than by the s.f loop below. `hp` always
+       exists in F.answers once a step has been drawn: an absent key and
+       an empty one have to mean the same thing to the server, which
+       reads a filled one as a bot (and the database refuses it too —
+       the anon insert policies in supabase-team-roles.sql). */
+    var trap = document.getElementById('f_hp');
+    F.answers.hp = trap ? trap.value : (F.answers.hp || '');
+    var box = document.getElementById('f_consent');
+    if (box) F.answers.consent = box.checked ? 'yes' : '';
     var s = F.steps[F.step];
     if (!s) return;
     if(s.f) s.f.forEach(function(f){
@@ -595,15 +740,57 @@ var Arzuz = (function(){
 
     ArzuzSubmit.send(F.table, F.answers).then(function(res){
       el.innerHTML = F.done;
+      /* The sentence is the submit layer's classifier's, not this page's.
+         This block used to say "your connection dropped" about EVERY
+         queued failure — a table that was never created, a rate limit,
+         a local-preview build included — and said nothing at all about a
+         refusal, so a save the database rejected ended on a screen that
+         looked like success. */
       if(res.queued){
         el.insertAdjacentHTML('beforeend',
           '<div class="live" style="margin-top:16px; border-left: 3.5px solid #F59E0B;">'+
-          'Your connection dropped or database is in local preview mode. Submission is '+
-          'saved on your device and will sync automatically once online.</div>');
+          (res.note || 'We could not send that just now, so it is kept on this device and will sync automatically.') + '</div>');
       } else if(res.ok) {
         el.insertAdjacentHTML('beforeend',
           '<div class="live" style="margin-top:16px; border-left: 3.5px solid #10B981;">'+
-          '<b>Submission saved!</b> Your information was securely sent to the database.</div>');
+          '<b>'+(res.duplicate ? 'You are already on the list.' : 'Submission saved!')+'</b> '+
+          (res.duplicate
+            /* The door's own sentence when it has one, because the door is
+               where "this is a duplicate" is actually decided. And when
+               the reference did not come back, "this is the reference you
+               already have" is a promise about this page — so the fallback
+               is only used when there is a reference under it. */
+            ? (res.note || 'Nothing was submitted twice \u2014 this is the reference you already have.')
+            : 'Your information was securely sent to the database.')+'</div>'+
+          /* THE REFERENCE, IN THE ONE MOMENT IT IS USEFUL. A person who
+             has just been told they are on the list is the only person
+             who will ever read this string, and it is the only handle
+             they have: it goes in the WhatsApp message they send us and
+             it is what a support agent types to find their row. */
+          (res.ref
+            ? '<div class="live" style="margin-top:12px;border-left:3.5px solid #6366F1;">'+
+              '<b>Your reference: '+res.ref+'</b><br>Keep this \u2014 read it to us on WhatsApp and '+
+              'we can find your place on the list straight away. '+
+              /* AND THE OTHER THING A REFERENCE IS FOR. This is the only
+                 moment the person holding it is looking at the string, so
+                 it is the only moment worth linking /status from: the
+                 page needs the reference and a phone number, and both are
+                 in front of them right now. The ref is URL-encoded rather
+                 than pasted in \u2014 it is a server-minted value, but a
+                 value on its way into a URL is a value to encode. */
+              'You can also <a href="/status?ref='+encodeURIComponent(res.ref)+'">check where it has '+
+              'got to</a> yourself, any time.</div>'
+            : '')+
+          (res.note && !res.duplicate
+            ? '<div class="live" style="margin-top:12px;">'+res.note+'</div>'
+            : ''));
+      } else {
+        /* Not saved and deliberately not held: the database refused it,
+           so retrying changes nothing. Saying so is the whole point —
+           silence here read as success. */
+        el.insertAdjacentHTML('beforeend',
+          '<div class="live" style="margin-top:16px; border-left: 3.5px solid #EF4444;">'+
+          (res.note || 'Arzuz could not save that — that is our side, not yours. Message us on WhatsApp and we will finish it with you.') + '</div>');
       }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });

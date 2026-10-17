@@ -136,7 +136,25 @@ var ArzuzWhatsApp = (function(){
       body: JSON.stringify({ to: jid, text: text })
     })
     .then(function(res){
-      if (!res.ok) throw new Error('HTTP ' + res.status);
+      if (res.ok) return;
+      /* The send function's answer, read back through the classifier: its
+         own sentence, and the CLASS it named — "not configured" and
+         "rate limited" are both actionable, and they are not the same
+         action. This is a confirmation nobody is waiting on, so it only
+         ever reaches the console; the class is still kept, so the log
+         says which of the two happened. */
+      return res.text().then(function(raw){
+        if (typeof ArzuzApiErrors !== 'undefined') throw ArzuzApiErrors.failed(res, raw);
+        /* Without the classifier the function's own sentence is still
+           read out of the body rather than replaced by ours. */
+        var own = '';
+        try { own = (JSON.parse(raw) || {}).error || ''; } catch (e) { own = ''; }
+        var plain = new Error(own || 'Arzuz could not send that message.');
+        plain.status = res.status || 0;
+        throw plain;
+      });
+    })
+    .then(function(){
       console.log('[ArzuzWhatsApp] \u2705 Confirmation sent');
     })
     .catch(function(err){

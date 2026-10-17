@@ -19,7 +19,18 @@ var ArzuzNotify = (function(){
       body: JSON.stringify(payload)
     }).then(function(r){
       return r.json().catch(function(){ return {}; }).then(function(body){
-        if (!r.ok) throw new Error((body && body.error) || ('HTTP ' + r.status));
+        /* The alert function's own sentence, and its CLASS — a 503 that
+           means "TELEGRAM_BOT_TOKEN is missing in Netlify" is a deploy to
+           finish, not a minute to wait out, and the caller decides
+           whether to mention it at all based on which it is. */
+        if (!r.ok) {
+          if (typeof ArzuzApiErrors !== 'undefined') throw ArzuzApiErrors.failed(r, body);
+          /* A log line either way, but it keeps the function's sentence
+             and the status the caller would need to act on it. */
+          var plain = new Error((body && body.error) || 'Arzuz could not send that alert.');
+          plain.status = r.status || 0;
+          throw plain;
+        }
         return body;
       });
     });

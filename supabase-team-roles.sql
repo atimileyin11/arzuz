@@ -16,20 +16,46 @@
 -- so the database has to answer the second question itself: WHICH
 -- signed-in user is this?
 --
--- The three roles, and what each one may reach:
+-- The FIVE roles the team is issued, and what each one may reach.
+-- Two of them are new names for a level that already existed, which
+-- is why adding them changes no policy: the spec's vocabulary and
+-- this file's enforcement are reconciled in the mapping below, not
+-- by rewriting four hundred lines of policy.
 --
---   admin      the main admin — no role key at all, or role='admin'.
---              Sees and changes everything.
---   support    a team member who phones students and landlords.
---              Reads demands and listings, works bookings and
---              support tickets. Cannot delete, cannot touch scouts,
---              cannot see the strategy pack or the growth panel.
---   marketing  a growth teammate. NO policy on any table that holds
---              a phone number: with RLS on and no applicable policy
---              a select returns ZERO ROWS, so a marketing login
---              physically cannot read a student's or landlord's
---              contact details. It reads the growth numbers through
---              the scrubbed views in section 3 instead.
+--   admin /        the main admin — no role key at all, or
+--   super_admin    role='admin'/'super_admin'. Both answer 'admin'.
+--                  Sees and changes everything. It is the only role
+--                  that may manage the team (netlify/functions/team.js)
+--                  and the only one that may delete a row.
+--   support /      a team member who phones students and landlords.
+--   operations     Reads demands and listings, works bookings and
+--                  support tickets. Cannot delete, cannot touch
+--                  scouts, cannot see the strategy pack, the growth
+--                  panel, or the books.
+--   verification   the officer who checks a listing before it goes
+--                  live. Reads demands and listings and scout
+--                  evidence, and is the one non-admin role whose
+--                  decision is a fixed one: it approves a listing by
+--                  CALLING public.listing_verify(), which moves
+--                  status, tier, verified_at and verified_by and
+--                  nothing else (supabase-verification-rpc.sql). It
+--                  holds no UPDATE policy on listings at all — see
+--                  section 2g. It cannot delete, cannot touch
+--                  bookings or tickets, and cannot reach the money.
+--                  Every listing change it makes is written to
+--                  staff_audit_log by trigger.
+--   finance        the money. NO policy on any of the six tables in
+--                  this file — not one phone number, not one demand.
+--                  Its reach is the books, in supabase-finance.sql,
+--                  and it is deliberately narrower than the support
+--                  role it was split out of (see that file's section
+--                  4).
+--   marketing      a growth teammate. NO policy on any table that holds
+--                  a phone number: with RLS on and no applicable policy
+--                  a select returns ZERO ROWS, so a marketing login
+--                  physically cannot read a student's or landlord's
+--                  contact details. It reads the growth numbers through
+--                  the scrubbed views in section 3 instead.
 --
 -- That last point is the whole purpose of the file. It is not
 -- enforced by hiding a nav item in the browser (assets/admin.js
@@ -116,20 +142,41 @@ end $$;
 -- policy can never mistake it for the main admin.
 -- ------------------------------------------------------------
 
+/*
+  THE MAPPING, and why it is a mapping rather than five branches.
+
+  `operations` is what the spec calls the role this file has been
+  calling `support`, and `super_admin` is what it calls `admin`. Both
+  are normalized to the older name here, ONCE, at the single point
+  where a JWT becomes a role — so every policy below, and every policy
+  in supabase-care.sql, supabase-finance.sql and supabase-claims.sql,
+  keeps matching without being touched. The alternative was to edit
+  five files and sixty policies to rename one level, on the week of
+  launch, for no change in what anyone can reach.
+
+  `verification` and `finance` are genuinely new levels and are
+  returned under their own names, which is what makes the policies
+  added for them below mean something.
+*/
 create or replace function public.arzuz_role()
 returns text
 language sql
 stable
 as $$
+  with claims as (
+    select coalesce(auth.jwt(), '{}'::jsonb) -> 'app_metadata' ->> 'role' as claim
+  )
   select case
     when auth.role() = 'anon' then 'anon'
-    when coalesce(auth.jwt(), '{}'::jsonb) -> 'app_metadata' ->> 'role' = 'marketing'
-      then 'marketing'
-    when coalesce(auth.jwt(), '{}'::jsonb) -> 'app_metadata' ->> 'role' = 'support'
-      then 'support'
+    when claims.claim = 'marketing' then 'marketing'
+    when claims.claim in ('support', 'operations') then 'support'
+    when claims.claim = 'verification' then 'verification'
+    when claims.claim = 'finance' then 'finance'
+    when claims.claim in ('admin', 'super_admin') then 'admin'
     when auth.role() = 'authenticated' then 'admin'
     else coalesce(auth.role(), 'anon')
-  end;
+  end
+  from claims;
 $$;
 
 -- Supabase grants EXECUTE on a new function to PUBLIC by default;
@@ -139,7 +186,7 @@ revoke execute on function public.arzuz_role() from public;
 grant  execute on function public.arzuz_role() to anon, authenticated, service_role;
 
 comment on function public.arzuz_role() is
-  'Arzuz team role from the signed JWT: anon | marketing | support | admin.';
+  'Arzuz team role from the signed JWT, normalized: anon | marketing | support | verification | finance | admin. The claim may say operations (= support) or super_admin (= admin); this function is the one place that mapping happens.';
 
 
 -- ------------------------------------------------------------
@@ -181,8 +228,17 @@ end $$;
 -- INSERT: the public registration form. A public form must never be
 -- able to write its own approval state: with check (true) would let
 -- anyone holding the anon key POST a demand already marked 'matched'.
+--
+-- The second half of the check is the honeypot, and it is here rather
+-- than only in netlify/functions/waitlist.js because a spam guard a
+-- page can skip is not a guard. `hp` is a field the real form hides
+-- and no person can see, so an empty or absent value is what every
+-- honest submission looks like; a bot that fills in every input it
+-- finds trips it. This holds on BOTH doors — the function's insert
+-- and the direct-to-PostgREST path the offline queue still uses.
 create policy "anon can submit demand"
-  on demand_records for insert to anon with check (status = 'open');
+  on demand_records for insert to anon
+  with check (status = 'open' and coalesce(payload ->> 'hp', '') = '');
 
 -- Admin creates records by hand (phone registrations at the gate).
 create policy "admin can add demand"
@@ -217,7 +273,8 @@ create policy "admin can delete demand"
 -- straight onto the public browse feed.
 create policy "anon can submit listings"
   on listings for insert to anon
-  with check (status = 'pending' and tier = 0);
+  with check (status = 'pending' and tier = 0
+              and coalesce(payload ->> 'hp', '') = '');
 
 create policy "admin can add listings"
   on listings for insert to authenticated
@@ -251,7 +308,8 @@ create policy "admin can delete listings"
 -- ------------------------------------------------------------
 
 create policy "anon can submit scout reports"
-  on scout_submissions for insert to anon with check (status = 'pending');
+  on scout_submissions for insert to anon
+  with check (status = 'pending' and coalesce(payload ->> 'hp', '') = '');
 
 create policy "admin can add scout reports"
   on scout_submissions for insert to authenticated
@@ -279,7 +337,8 @@ create policy "admin can delete scout reports"
 -- ------------------------------------------------------------
 
 create policy "anon can request a booking"
-  on booking_requests for insert to anon with check (status = 'pending');
+  on booking_requests for insert to anon
+  with check (status = 'pending' and coalesce(payload ->> 'hp', '') = '');
 
 create policy "admin can add bookings"
   on booking_requests for insert to authenticated
@@ -321,7 +380,8 @@ create policy "admin can delete bookings"
 -- ------------------------------------------------------------
 
 create policy "anon can report a problem"
-  on support_tickets for insert to anon with check (status = 'open');
+  on support_tickets for insert to anon
+  with check (status = 'open' and coalesce(payload ->> 'hp', '') = '');
 
 create policy "admin can add tickets"
   on support_tickets for insert to authenticated
@@ -369,12 +429,73 @@ create policy "admin can remove amenities"
 
 
 -- ------------------------------------------------------------
--- 2g. WHAT IS MISSING ON PURPOSE
+-- 2g. VERIFICATION — the officer who checks a room before it ships
+--
+-- Putting a listing live (status → 'active', tier up) is not an
+-- administrative act, it is THE verification act, and a role hired to
+-- do it that cannot do it is a role that hands its work back to the
+-- main admin. What it may not do is the other half — delete a listing,
+-- approve a student demand, touch a booking or a ticket, or reach
+-- anywhere that holds money. Least privilege is the shape of the gap,
+-- not the absence of a role.
+--
+-- WHY THERE IS NO UPDATE POLICY HERE ANY MORE
+--
+-- There used to be one, and it was too wide to keep: a policy decides
+-- which ROWS a role may touch and cannot decide which COLUMNS, so an
+-- officer approving a listing could also change its price. The decision
+-- now lives in public.listing_verify() — a SECURITY DEFINER function
+-- that moves status, tier, verified_at and verified_by and nothing else
+-- — and the UPDATE policy is withdrawn, in
+-- supabase-verification-rpc.sql. With no applicable rule, a
+-- verification token's PATCH of this table matches ZERO ROWS, which is
+-- the same silence the marketing role gets on every table.
+--
+-- That file is also where the drop lives, rather than here: a fresh
+-- install never creates the policy (this file no longer writes the
+-- line), and the drop is what takes it away from the databases that
+-- already have it. Both directions are asserted in dev/sql-proof.mjs
+-- section 13d, together with the fact that a row-wide PATCH by a
+-- verification token now changes nothing at all.
+--
+-- Every change the function makes is written to public.staff_audit_log
+-- by the trigger in supabase-waitlist-launch.sql — a trigger fires on
+-- the statement, not on the key that issued it — with the changed
+-- column names and both sides of the change, so "who approved this and
+-- when" is a query rather than a recollection.
+-- ------------------------------------------------------------
+
+create policy "verification can read demand"
+  on demand_records for select to authenticated
+  using (public.arzuz_role() = 'verification');
+
+create policy "verification can read listings"
+  on listings for select to authenticated
+  using (public.arzuz_role() = 'verification');
+
+-- The UPDATE policy that used to sit here ("verification can approve a
+-- listing") is deliberately absent; the approve action is the RPC named
+-- in section 2g above.
+
+-- The scout report is the field evidence a verification decision is
+-- made from: who went, where, what they saw. Read-only for the same
+-- reason support's listing access is read-only — seeing the evidence
+-- is the job, changing it is not.
+create policy "verification can read scout reports"
+  on scout_submissions for select to authenticated
+  using (public.arzuz_role() = 'verification');
+
+
+-- ------------------------------------------------------------
+-- 2h. WHAT IS MISSING ON PURPOSE
 -- There is no marketing policy on demand_records, listings,
--- scout_submissions, booking_requests or support_tickets. That is
--- the enforcement, not an oversight: with RLS enabled and no
--- applicable policy, Postgres returns zero rows to a select and
--- refuses writes outright. Do not "fix" this by adding a
+-- scout_submissions, booking_requests or support_tickets, and there
+-- is NO finance policy on any of the six. That is the enforcement,
+-- not an oversight: with RLS enabled and no applicable policy,
+-- Postgres returns zero rows to a select and refuses writes
+-- outright. The finance login's reach is the books, defined in
+-- supabase-finance.sql, and it reaches no phone number at all.
+-- Do not "fix" either absence by adding a
 -- `to authenticated using (true)` policy. If marketing needs a new
 -- number, add the column to a scrubbed view in section 3.
 --
@@ -586,10 +707,20 @@ grant  select on amenities to anon;
 --   order by tablename, cmd, policyname;
 
 --     The demand_records set should read exactly:
---       anon            insert    (status = 'open')
+--       anon            insert    (status = 'open', honeypot empty)
 --       admin           insert / select / update / delete
 --       support         select
---     and NO row for marketing on any of the six tables.
+--       verification    select
+--     and NO row for marketing or finance on any of the six tables.
+--
+--     On listings, verification must appear with SELECT and nothing
+--     else: no row of any cmd may name it. Its one write is the RPC
+--     in supabase-verification-rpc.sql, which is not a policy and
+--     therefore appears in no row of pg_policies.
+--     On staff_audit_log (supabase-waitlist-launch.sql) the readers
+--     are admin, support and verification; marketing and finance are
+--     absent, and NOBODY has insert, update or delete: only the
+--     audit trigger, which runs as its owner, writes a line.
 
 -- (c) The real test, from the browser console on the live site, once
 --     per login. Paste this after signing in (devtools → Console):

@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arzuz — feel tuner (thumb only)</title>
+<style>
+  :root { color-scheme: dark; --line:#2a2f37; --ink:#e7e9ee; --dim:#98a0ae; --accent:#7fd1c0; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#14171c; color:var(--ink); }
+  header { padding:14px 18px; border-bottom:1px solid var(--line); }
+  h1 { font-size:15px; margin:0 0 4px; font-weight:600; }
+  header p { margin:0; color:var(--dim); font-size:12px; }
+  main { display:grid; grid-template-columns: minmax(300px,360px) 1fr; gap:22px; padding:18px; align-items:start; }
+  @media (max-width: 780px) { main { grid-template-columns:1fr; } }
+  .phone { position:relative; width:100%; aspect-ratio:360/640; background:#0d0f13; border:1px solid var(--line);
+           border-radius:14px; overflow:hidden; touch-action:none; }
+  .hint { position:absolute; inset:auto 0 56%; text-align:center; color:var(--dim); font-size:12px; pointer-events:none; }
+  .drawer { position:absolute; inset:0 auto 0 0; width:82%; max-width:288px; background:#1b2027; border-right:1px solid var(--line);
+            transform:translateX(-104%); }
+  .drawer.open { transform:none; }
+  .drawer .grip { position:absolute; inset:0 -14px 0 auto; width:14px; cursor:grab; }
+  .scrim { position:absolute; inset:0; background:#000; opacity:0; pointer-events:none; }
+  .drawer.open ~ .scrim { opacity:.48; }
+  .sheet { position:absolute; left:0; right:0; bottom:0; height:300px; background:#1b2027; border-radius:14px 14px 0 0;
+           border:1px solid var(--line); transform:translateY(0); }
+  .sheet .head { height:44px; display:flex; align-items:center; justify-content:center; color:var(--dim); cursor:grab;
+                 border-bottom:1px solid var(--line); font-size:12px; }
+  .flash { position:absolute; inset:0; background:var(--accent); opacity:0; pointer-events:none; transition:opacity .2s; }
+  .flash.on { opacity:.10; }
+  .panel { display:grid; gap:14px; }
+  fieldset { border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin:0; }
+  legend { color:var(--accent); font-size:12px; padding:0 6px; }
+  label { display:grid; grid-template-columns:1fr 92px; align-items:center; gap:10px; font-size:12px; color:var(--dim); }
+  input[type=number] { width:100%; background:#0d0f13; color:var(--ink); border:1px solid var(--line); border-radius:6px;
+                       padding:5px 7px; font:inherit; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  button { background:var(--accent); color:#06231d; border:0; border-radius:8px; padding:8px 14px; font:inherit; font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--ink); border:1px solid var(--line); font-weight:400; }
+  .readout { font-size:12px; color:var(--dim); min-height:3.4em; }
+  .readout b { color:var(--ink); font-weight:600; }
+  textarea { width:100%; min-height:96px; background:#0d0f13; color:var(--ink); border:1px solid var(--line); border-radius:8px;
+             padding:8px; font:12px/1.45 ui-monospace,monospace; }
+  .ok { color:var(--accent); } .bad { color:#ff8f7a; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Feel tuner — judge the physics by thumb, then fold the values back</h1>
+  <p>The real <code>swipe-gesture.js</code> and <code>release-policy.js</code> with the constants below substituted, so nothing
+     here is a second implementation of the thing being tuned. Drag the sheet header, or in from the left edge for the drawer.
+     Numbers are what the modules were loaded with; change one and press Apply.</p>
+</header>
+<main>
+  <div class="phone" id="phone">
+    <div class="hint" id="hint">grab the sheet header, or swipe in from the left edge</div>
+    <div class="drawer" id="drawer"><div class="grip" id="grip"></div></div>
+    <div class="scrim"></div>
+    <div class="sheet" id="sheet"><div class="head" id="sheetHead">drag me down</div></div>
+    <div class="flash" id="flash"></div>
+  </div>
+
+  <div class="panel">
+    <fieldset><legend>engine (swipe-gesture.js)</legend>
+      <label>SLOP — px before a drag is a drag <input type="number" id="v_SLOP" step="1" min="1"></label>
+      <label>TICK — ms of velocity history <input type="number" id="v_TICK" step="5" min="10"></label>
+      <label>DECAY — Apple's projection decay <input type="number" id="v_DECAY" step="0.0005" min="0.9" max="0.9999"></label>
+    </fieldset>
+    <fieldset><legend>sheet / lightbox (release-policy.js)</legend>
+      <label>FAR — the px floor <input type="number" id="v_FAR" step="5" min="0"></label>
+      <label>OPEN_MIN — share of the height <input type="number" id="v_SOPEN" step="0.05" min="0.05" max="1"></label>
+      <label>RATIO — resistance when lifted <input type="number" id="v_SRATIO" step="0.05" min="0.05" max="1"></label>
+      <label>FLICK — px/s that dismiss at any distance <input type="number" id="v_SFLICK" step="10" min="50"></label>
+    </fieldset>
+    <fieldset><legend>drawer (release-policy.js)</legend>
+      <label>OPEN_MIN — share of its width <input type="number" id="v_DOPEN" step="0.05" min="0.05" max="1"></label>
+      <label>RATIO — give past a resting edge <input type="number" id="v_DRATIO" step="0.02" min="0.02" max="1"></label>
+      <label>FLICK — px/s, opens or shuts by sign <input type="number" id="v_DFLICK" step="10" min="50"></label>
+      <label>COAST_OPEN — share of width a coast may add <input type="number" id="v_CFORWARD" step="0.1" min="0" max="2"></label>
+      <label>COAST_BACK — and may carry back <input type="number" id="v_CBACK" step="0.1" min="0" max="3"></label>
+    </fieldset>
+    <div class="row">
+      <button id="apply">Apply and reload the modules</button>
+      <button class="ghost" id="copy">Copy the settled values</button>
+      <button class="ghost" id="reset">Reset to the file's own</button>
+    </div>
+    <div class="readout" id="readout">last gesture: nothing yet</div>
+    <textarea id="diff" spellcheck="false" aria-label="substitutions to fold back"></textarea>
+  </div>
+</main>
+<script>
+/* ------------------------------------------------------------------
+   Every value below is applied to the REAL source by substituting the
+   block it lives in, and the pair of strings that did it is printed at
+   the bottom — so what gets folded back into the module is exactly the
+   text this page ran, not a paraphrase of it. Nothing is fetched from
+   anywhere but the two files beside this one.
+   ------------------------------------------------------------------ */
+const FILES = { engine: '../assets/swipe-gesture.js', policy: '../assets/release-policy.js' };
+
+/* the module's own defaults, read from the files (not restated) — a blank
+   box would silently tune a value nobody meant */
+let src = {};
+const SPEC = [
+  { id:'v_SLOP',    file:'engine', find:/var SLOP = [\d.]+;/,      show:v=>'var SLOP = '+v+';' },
+  { id:'v_TICK',    file:'engine', find:/var TICK = [\d.]+;/,      show:v=>'var TICK = '+v+';' },
+  { id:'v_DECAY',   file:'engine', find:/var DECAY = [\d.]+;/,     show:v=>'var DECAY = '+v+';' },
+  { id:'v_FAR',     file:'policy', find:/FAR: [\d.]+,/,            block:'surface', name:'FAR' },
+  { id:'v_SOPEN',   file:'policy', block:'surface', name:'OPEN_MIN' },
+  { id:'v_SRATIO',  file:'policy', block:'surface', name:'RATIO' },
+  { id:'v_SFLICK',  file:'policy', block:'surface', name:'FLICK' },
+  { id:'v_DOPEN',   file:'policy', block:'drawer',  name:'OPEN_MIN' },
+  { id:'v_DRATIO',  file:'policy', block:'drawer',  name:'RATIO' },
+  { id:'v_DFLICK',  file:'policy', block:'drawer',  name:'FLICK' },
+  { id:'v_CFORWARD',file:'policy', block:'drawer',  name:'COAST_OPEN' },
+  { id:'v_CBACK',   file:'policy', block:'drawer',  name:'COAST_BACK' },
+];
+
+const BLOCK_RE = {
+  drawer:  /(var DRAWER = \{)[\s\S]*?(\};)/,
+  surface: /(var SURFACE = \{)[\s\S]*?(\};)/,
+};
+const blockOf = (name) => src.policy.match(BLOCK_RE[name])[0];
+const valueIn = (block, name) => {
+  const m = block.match(new RegExp('\\b' + name + ':\\s*([\\d.]+)'));
+  return m ? Number(m[1]) : null;
+};
+
+/* the drawer block, rebuilt from the boxes, with the file's own comments kept
+   above it untouched. Names and order come from the file, so a field added
+   there does not vanish here. */
+const DRAWER_ORDER = ['RATIO','OPEN_MIN','FLICK','COAST_OPEN','COAST_BACK'];
+const SURFACE_ORDER = ['RATIO','OPEN_MIN','FAR','FLICK'];
+function rebuilt(name) {
+  const order = name === 'drawer' ? DRAWER_ORDER : SURFACE_ORDER;
+  const pairs = order.map(k => k + ': ' + Number(document.getElementById(boxFor(name, k)).value));
+  return 'var ' + name.toUpperCase() + ' = {\n    ' + pairs.join(',\n    ') + '\n  };';
+}
+function boxFor(block, name) {
+  const s = SPEC.find(x => x.block === block && x.name === name);
+  return s ? s.id : '';
+}
+
+function currentValues() {
+  const out = {};
+  for (const s of SPEC) out[s.id] = Number(document.getElementById(s.id).value);
+  return out;
+}
+
+/* the substitutions this page actually made — printed for folding back */
+function diffs() {
+  const d = [];
+  for (const s of SPEC) {
+    const v = document.getElementById(s.id).value;
+    if (s.block) {
+      d.push({ file: 'assets/release-policy.js', find: blockOf(s.block).replace(/\n\s*/g, ' '),
+               to: rebuilt(s.block).replace(/\n\s*/g, ' ') });
+    } else {
+      d.push({ file: 'assets/swipe-gesture.js', find: src.engine.match(s.find)[0], to: s.show(v) });
+    }
+  }
+  /* one line per block, not per field */
+  const seen = new Set(); const out = [];
+  for (const x of d) { const k = x.file + x.to; if (!seen.has(k)) { seen.add(k); out.push(x); } }
+  return out;
+}
+
+function patched() {
+  let engine = src.engine, policy = src.policy;
+  engine = engine.replace(/var SLOP = [\d.]+;/, 'var SLOP = ' + document.getElementById('v_SLOP').value + ';');
+  engine = engine.replace(/var TICK = [\d.]+;/, 'var TICK = ' + document.getElementById('v_TICK').value + ';');
+  engine = engine.replace(/var DECAY = [\d.]+;/, 'var DECAY = ' + document.getElementById('v_DECAY').value + ';');
+  policy = policy.replace(BLOCK_RE.drawer, () => rebuilt('drawer'));
+  policy = policy.replace(BLOCK_RE.surface, () => rebuilt('surface'));
+  return { engine, policy };
+}
+
+function loadScript(text) {
+  const el = document.createElement('script');
+  el.textContent = text;
+  document.body.appendChild(el);
+}
+
+async function boot() {
+  const [e, p] = await Promise.all([FILES.engine, FILES.policy].map(f => fetch(f).then(r => {
+    if (!r.ok) throw new Error(f + ' → HTTP ' + r.status);
+    return r.text();
+  })));
+  src = { engine: e, policy: p };
+  /* the boxes start at the files' own numbers */
+  document.getElementById('v_SLOP').value  = Number(src.engine.match(/var SLOP = ([\d.]+);/)[1]);
+  document.getElementById('v_TICK').value  = Number(src.engine.match(/var TICK = ([\d.]+);/)[1]);
+  document.getElementById('v_DECAY').value = Number(src.engine.match(/var DECAY = ([\d.]+);/)[1]);
+  const dr = blockOf('drawer'), su = blockOf('surface');
+  for (const s of SPEC) if (s.block) document.getElementById(s.id).value = valueIn(s.block === 'drawer' ? dr : su, s.name);
+  ORIGINAL = currentValues();
+  mount();
+}
+
+let ORIGINAL = {};
+
+/* ---- the phone, rebuilt on every apply ----
+
+   Rebuilding the surfaces rather than reusing them is what keeps an Apply
+   honest: the engine attaches its listeners to the elements it is given, so a
+   fresh element is a fresh gesture, and nothing from the last load keeps
+   listening to a node that is no longer on screen. */
+function mount() {
+  const { engine, policy } = patched();
+  loadScript(engine);
+  loadScript(policy);
+  document.getElementById('diff').value = diffs()
+    .map(d => d.file + '\n  from: ' + d.find + '\n  to:   ' + d.to).join('\n\n');
+  const phone = document.getElementById('phone');
+  phone.innerHTML =
+    '<div class="hint" id="hint">grab the sheet header \u2014 or swipe in from the left edge for the drawer</div>' +
+    '<div class="drawer" id="drawer"><div class="grip" id="grip"></div></div>' +
+    '<div class="scrim" id="scrim"></div>' +
+    '<div class="sheet" id="sheet"><div class="head" id="sheetHead">drag me down</div></div>' +
+    '<div class="flash" id="flash"></div>';
+  wire(TESTED_ENGINE(), document.getElementById('readout'));
+  document.getElementById('readout').textContent = 'last gesture: nothing yet';
+}
+
+function TESTED_ENGINE() {
+  return window.ArzuzSwipeGesture;
+}
+
+function wire(SG, readout) {
+  const RP = window.ArzuzReleasePolicy;
+  const phone = document.getElementById('phone');
+  const sheet = document.getElementById('sheet'), head = document.getElementById('sheetHead');
+  const drawer = document.getElementById('drawer'), scrim = document.getElementById('scrim');
+  const flash = document.getElementById('flash');
+  const say = html => { readout.innerHTML = html; };
+  const paint = (name, v, dy, proj, line, goes) =>
+    '<b>' + name + '</b> &nbsp;v <b>' + Math.round(v) + 'px/s</b>' +
+    (Math.abs(v) > (name === 'drawer' ? RP.DRAWER.FLICK : RP.SURFACE.FLICK) ? ' <b class="ok">flick</b>' : '') +
+    ' &nbsp;finger <b>' + Math.round(dy) + 'px</b>' +
+    ' &nbsp;projection <b>' + Math.round(proj) + 'px</b>' +
+    ' &nbsp;line <b>' + Math.round(line) + 'px</b> \u2192 <b' + (goes ? ' class="ok"' : '') + '>' +
+    (goes ? 'leaves' : 'stays') + '</b>';
+
+  /* ---- the sheet: the surface policy, against its own measured height ---- */
+  const h = () => sheet.offsetHeight || 1;
+  new SG({
+    axis: 'y', target: head,
+    canStart: e => !!(e.target && e.target.closest && e.target.closest('.head')),
+    allow: d => d > 0,
+    onDrag: dy => { sheet.style.transform = 'translateY(' + RP.surfacePaint(dy) + 'px)'; },
+    onEnd: (v, dy, proj) => {
+      const p = RP.policyFor('sheet');
+      const size = h(), goes = p.release(v, dy, proj, size);
+      sheet.style.transition = 'transform .26s ease';
+      sheet.style.transform = 'translateY(' + (goes ? size + 40 : 0) + 'px)';
+      if (goes) { flash.classList.add('on'); setTimeout(() => flash.classList.remove('on'), 180); }
+      setTimeout(() => { sheet.style.transition = ''; if (goes) sheet.style.transform = 'translateY(0px)'; }, 320);
+      say(paint('sheet (policy: ' + p.kind + ')', v, dy, proj, p.line(size), goes));
+    }
+  });
+
+  /* ---- the drawer: open from the left edge, thrown shut from its panel ---- */
+  let open = false;
+  const dow = () => RP.drawerWidth(0, phone.clientWidth || 360);
+  const placeDrawer = raw => { drawer.style.transform = 'translateX(' + RP.drawerPaint(raw, dow()).x + 'px)'; };
+  const settleDrawer = (isOpen, animate) => {
+    open = isOpen;
+    drawer.style.transition = animate ? 'transform .3s ease' : '';
+    placeDrawer(isOpen ? 0 : -dow());
+    drawer.style.transform = 'translateX(' + (isOpen ? 0 : -dow()) + 'px)';
+    scrim.style.opacity = isOpen ? '.48' : '0';
+  };
+  settleDrawer(false, false);
+  new SG({
+    axis: 'x', target: phone,
+    canStart: e => {
+      const t = e.target && e.target.closest ? e.target : null;
+      if (!t) return false;
+      if (open) return !!(t.closest('.drawer') || t.closest('.scrim'));
+      return e.clientX <= 28;
+    },
+    allow: () => true,
+    onBegin: () => { drawer.style.transition = ''; },
+    onDrag: d => { placeDrawer(open ? d : d - dow()); },
+    onEnd: (v, d, proj) => {
+      const p = RP.policyFor('drawer');
+      const isOpen = p.release(v, d, proj, dow());
+      settleDrawer(isOpen, true);
+      say(paint('drawer', v, d, proj, p.line(dow()), isOpen));
+    }
+  });
+}
+
+/* ---- the buttons ---- */
+document.getElementById('apply').addEventListener('click', () => mount());
+document.getElementById('reset').addEventListener('click', () => {
+  for (const k of Object.keys(ORIGINAL)) document.getElementById(k).value = ORIGINAL[k];
+  mount();
+});
+document.getElementById('copy').addEventListener('click', async () => {
+  const ta = document.getElementById('diff');
+  try { await navigator.clipboard.writeText(ta.value); document.getElementById('readout').textContent = 'the substitutions are on your clipboard'; }
+  catch (e) { ta.focus(); ta.select(); document.getElementById('readout').textContent = 'select-all is done \u2014 copy it, the clipboard is blocked'; }
+});
+
+boot().catch(err => {
+  document.getElementById('readout').innerHTML = '<b class="bad">could not load the modules:</b> ' + err.message +
+    '<br>Serve this file over HTTP (a static server in the project root), not from file:// \u2014 fetch is blocked there.';
+});
+</script>
+</body>
+</html>

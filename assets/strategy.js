@@ -27,6 +27,42 @@
 
   /* ================= helpers ================= */
 
+  /* The site-wide failure vocabulary (assets/api-errors.js), if this
+     page loaded it. */
+  function E(){ return (typeof ArzuzApiErrors !== 'undefined') ? ArzuzApiErrors : null; }
+
+  /* A failed request, carrying its CLASS — read from the function's own
+     answer, never re-derived from the number — so the pane can tell a
+     deploy that has not shipped the document from a session to renew.
+     `said` is the words for a person when this call has better ones than
+     the class does; the server's sentence is used when it does not. */
+  function fail(res, body, said){
+    var W = E();
+    if (W){
+      var err = W.failed(res, body, { audience: 'operator' });
+      if (said) err.message = said;
+      return err;
+    }
+    /* No classifier: the function's own sentence is still read out of
+       its body, and `said` still wins when this pane has better words. */
+    var own = '';
+    if (body !== undefined && body !== null) {
+      try { own = (typeof body === 'string' ? JSON.parse(body) : body).error || ''; } catch (e) { own = ''; }
+    }
+    var err2 = new Error(said || own || 'Arzuz could not load that just now — that is our side, not yours. ' +
+      'Try again in a minute.');
+    err2.status = (res && res.status) || 0;
+    return err2;
+  }
+
+  /* The words for something that is not an HTTP answer at all — a fetch
+     that rejected, a response with no status. */
+  function word(err){
+    var W = E();
+    return W ? W.sentence(err, { audience: 'operator' })
+      : 'We could not reach Arzuz — check your connection and try again.';
+  }
+
   function esc(s) {
     if (s === null || s === undefined) return '';
     return String(s)
@@ -268,12 +304,25 @@
     ArzuzAuth.headers().then(function (h) {
       return fetch('/strategy-docs?name=' + encodeURIComponent(name), { headers: h });
     }).then(function (r) {
-      if (r.status === 401 || r.status === 403) throw new Error('Your session has expired — sign in again to read the strategy pack.');
-      if (r.status === 404) throw new Error('This document is not in the deployment. Run the latest supabase/netlify deploy.');
-      if (!r.ok) throw new Error('Could not load the document (HTTP ' + r.status + ').');
-      return r.text();
+      return r.text().then(function (text) {
+        if (r.ok) return text;
+        /* The reader's own advice is better than the class's for these
+           two, and it is passed IN; the class itself still comes from
+           the answer, which is what keeps this pane and the function
+           saying the same thing. */
+        if (r.status === 401 || r.status === 403) {
+          throw fail(r, text, 'Your session has expired — sign in again to read the strategy pack.');
+        }
+        if (r.status === 404) {
+          throw fail(r, text, 'This document is not in the deployment. Run the latest supabase/netlify deploy.');
+        }
+        throw fail(r, text);
+      });
     }).then(paint).catch(function (err) {
-      pane.innerHTML = '<div class="strategy-err"><b>Could not open ' + esc(meta.title) + '.</b><span>' + esc(err.message) + '</span>' +
+      /* A rejected fetch has no status and no sentence of ours — the
+         pane printed the browser's own "Failed to fetch" for that. */
+      var said = (err && err.status) ? err.message : word(err);
+      pane.innerHTML = '<div class="strategy-err"><b>Could not open ' + esc(meta.title) + '.</b><span>' + esc(said) + '</span>' +
         '<span style="margin-top:8px">If you are testing locally, run <code>netlify dev</code> — the docs come from a Netlify function.</span></div>';
     });
   }

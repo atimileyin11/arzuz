@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your Arzuz Care — what is left of your session — Arzuz</title>
+  <meta name="description" content="Your own Arzuz Care page: how many call-outs are left this session, every visit on the record, and a way to ask for a worker.">
+  <!--
+    ONE STUDENT'S PRIVATE LINK PAGE. /my-care?t=… is the whole
+    credential — there is no login and no password, exactly like a
+    roommate profile. So it is never indexed, never cached, and the
+    balance it shows is never computed here: every number on this page
+    arrived from /api/care-credit, which reads the append-only ledger.
+  -->
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
+  <link rel="stylesheet" href="assets/arzuz.css">
+  <style>
+    .doc {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 34px 20px 70px
+    }
+
+    html.motion-ready .doc > [data-rise] {
+      transition-duration: .5s, .62s;
+    }
+
+    .doc h1 {
+      font-family: var(--display);
+      font-size: clamp(28px, 5vw, 40px);
+      font-weight: 800;
+      letter-spacing: -.035em;
+      line-height: 1.08;
+      margin-bottom: 12px
+    }
+
+    .doc h2 {
+      font-family: var(--display);
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -.02em;
+      margin: 34px 0 12px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line)
+    }
+
+    .doc p {
+      font-size: 15.5px;
+      line-height: 1.65;
+      color: var(--body-c);
+      margin-bottom: 14px
+    }
+
+    .doc strong { color: var(--ink) }
+    .doc a { color: var(--stamp) }
+    .lede { font-size: 16px; color: var(--mid); max-width: 60ch }
+
+    /* the balance — the one number the page exists for */
+    .balcard {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--stamp);
+      border-radius: 0 8px 8px 0;
+      padding: 20px 22px;
+      margin: 8px 0 4px
+    }
+
+    .balcard .big {
+      font-family: var(--display);
+      font-size: clamp(30px, 7vw, 46px);
+      font-weight: 800;
+      letter-spacing: -.03em;
+      line-height: 1;
+      color: var(--ink)
+    }
+
+    .balcard .big small {
+      display: block;
+      font-family: var(--body);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: .02em;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 6px
+    }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px }
+
+    .chip {
+      font-size: 12.5px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, .6);
+      color: var(--mid)
+    }
+
+    .chip.ok { color: var(--stamp); border-color: color-mix(in srgb, var(--stamp) 35%, transparent) }
+    .chip.warn { color: var(--alert); border-color: color-mix(in srgb, var(--alert) 35%, transparent) }
+
+    /* the ledger — one line per event, newest last, because that is the order it happened in */
+    .led { margin: 6px 0 0 }
+
+    .led-row {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 11px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .6);
+      margin-bottom: 8px
+    }
+
+    .led-row .when {
+      flex: none;
+      width: 92px;
+      font-size: 12.5px;
+      font-family: var(--mono);
+      color: var(--mid);
+      padding-top: 2px
+    }
+
+    .led-row .what { flex: 1 1 auto; font-size: 14.5px; line-height: 1.5 }
+    .led-row .what b { display: block; color: var(--ink); font-weight: 600 }
+    .led-row .what span { color: var(--mid); display: block; font-size: 13.5px }
+    .led-row .delta { flex: none; font-family: var(--mono); font-weight: 700; font-size: 14px }
+    .led-row .delta.up { color: var(--stamp) }
+    .led-row .delta.down { color: var(--mid) }
+
+    .led-row.next {
+      border-style: dashed;
+      background: transparent;
+      color: var(--mid)
+    }
+
+    /* covered / not covered */
+    .cov { margin: 0 0 16px; padding: 0; list-style: none }
+
+    .cov li {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 9px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .6);
+      margin-bottom: 8px;
+      font-size: 14.5px
+    }
+
+    .cov li .ic { flex: none; font-weight: 800; width: 18px; text-align: center }
+    .cov.yes li .ic { color: var(--stamp) }
+    .cov.no li { background: transparent }
+    .cov.no li .ic { color: var(--alert) }
+
+    /* the request form */
+    .ask { border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; background: var(--surface) }
+    .ask .fld { margin-bottom: 12px }
+    .ask label { display: block; font-size: 13px; font-weight: 600; color: var(--mid); margin-bottom: 5px }
+    .ask input, .ask textarea {
+      width: 100%;
+      font: inherit;
+      font-size: 15px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink)
+    }
+    .ask textarea { min-height: 74px; resize: vertical }
+    .ask .row { display: flex; gap: 10px; flex-wrap: wrap }
+    .ask .row .fld { flex: 1 1 180px }
+
+    .btn {
+      font: inherit;
+      font-weight: 700;
+      font-size: 15px;
+      padding: 11px 18px;
+      border: none;
+      border-radius: 9px;
+      background: var(--ink);
+      color: #fff;
+      cursor: pointer
+    }
+
+    .btn[disabled] { opacity: .45; cursor: not-allowed }
+    .btn.quiet { background: transparent; color: var(--ink); border: 1px solid var(--line) }
+
+    .note { font-size: 13.5px; line-height: 1.6; color: var(--mid); margin: 10px 0 0 }
+    .note.bad { color: var(--alert) }
+    .note.good { color: var(--stamp) }
+
+    .statebox {
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--stamp);
+      border-radius: 0 8px 8px 0;
+      background: var(--surface);
+      padding: 16px 18px;
+      margin: 18px 0
+    }
+
+    .statebox b { display: block; font-size: 15.5px; margin-bottom: 6px }
+    .statebox span { font-size: 14.5px; line-height: 1.6; color: var(--body-c) }
+
+    .sharebox {
+      border: 1px dashed var(--line);
+      border-radius: 9px;
+      padding: 14px 16px;
+      background: transparent
+    }
+
+    .sharebox code {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      word-break: break-all;
+      color: var(--mid);
+      display: block;
+      margin: 8px 0 10px
+    }
+
+    .wa {
+      display: inline-block;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 14px;
+      padding: 9px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      color: var(--ink)
+    }
+
+    /* a claim, as the student tracks it. The status chip is the
+       server's word for where it stands — this page never decides. */
+    .claim {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px 16px;
+      background: rgba(255, 255, 255, .6);
+      margin-bottom: 10px
+    }
+
+    .claim .top {
+      display: flex;
+      gap: 10px;
+      align-items: baseline;
+      flex-wrap: wrap;
+      margin-bottom: 7px
+    }
+
+    .claim .ref {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      color: var(--mid)
+    }
+
+    .claim .said {
+      font-size: 15px;
+      line-height: 1.5;
+      color: var(--ink);
+      margin-bottom: 4px
+    }
+
+    .claim .ans {
+      font-size: 14.5px;
+      line-height: 1.6;
+      color: var(--body-c);
+      border-left: 2px solid var(--line);
+      padding-left: 11px;
+      margin: 9px 0
+    }
+
+    .claim .ans b { color: var(--ink) }
+
+    .claim .acts {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 11px
+    }
+
+    .claim .acts .btn { padding: 8px 13px; font-size: 14px }
+
+    .chip.wait { color: var(--mid) }
+    .chip.done { color: var(--ink) }
+
+    .claim .shots {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 8px 0 0
+    }
+
+    .claim .shots a {
+      font-size: 13px;
+      font-weight: 600
+    }
+  </style>
+</head>
+
+<body>
+  <div class="doc">
+    <h1 data-rise>Your Arzuz Care</h1>
+    <p class="lede" data-rise>One credit is one call-out, and your session includes four of them. This page is
+      your own view of that balance — every visit that has been recorded, in the order it happened, and a way to
+      ask for the next one.</p>
+
+    <div id="careLoading" class="statebox">
+      <b>Opening your Care account…</b>
+      <span>Reading your session and its ledger.</span>
+    </div>
+
+    <div id="careGone" class="statebox" style="display:none">
+      <b>This page needs your own link.</b>
+      <span>
+        Care has no login and no password: your link <em>is</em> the key, and it was sent to you when the
+        session was opened. Open it exactly as it arrived. If you have lost it, message us and we will find
+        your plan — nothing is lost, and your call-outs are still yours.
+      </span>
+    </div>
+
+    <div id="careDown" class="statebox" style="display:none">
+      <b id="careDownTitle">We could not open your Care account.</b>
+      <span id="careDownBody">Try again in a moment, or message us on WhatsApp.</span>
+    </div>
+
+    <div id="careAccount" style="display:none">
+      <div id="careBalance" data-rise></div>
+      <h2 data-rise>The record</h2>
+      <p data-rise>This is the whole of it — a ledger, not a counter. Nothing on it can be edited, only added
+        to, so a visit that was recorded stays recorded and a credit that was taken stays taken.</p>
+      <div id="careLedger" class="led"></div>
+
+      <h2 data-rise>What Care covers</h2>
+      <div id="careCover" data-rise></div>
+
+      <h2 data-rise>Repairs &mdash; file a claim</h2>
+      <p data-rise>A claim is how a fault gets a worker and a written answer. File it here and follow it on
+        this page: we decide whether it is covered and say why either way, and a call-out is spent only when we
+        say it is. Nothing here is a number you have to keep track of &mdash; the record does it.</p>
+      <div id="careClaims" data-rise></div>
+
+      <h2 data-rise>Ask for a worker</h2>
+      <div id="careRequest" data-rise></div>
+
+      <h2 data-rise>Keep this link</h2>
+      <div id="careShare" class="sharebox" data-rise></div>
+    </div>
+  </div>
+
+  <script src="assets/config.js"></script>
+  <script src="assets/api-errors.js?v=1"></script>
+  <script src="assets/data.js"></script>
+  <script src="assets/submit.js?v=4"></script>
+  <script src="assets/app.js"></script>
+  <script src="assets/motion.js"></script>
+  <script src="assets/my-care.js"></script>
+</body>
+
+</html>

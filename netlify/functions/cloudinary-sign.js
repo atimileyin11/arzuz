@@ -14,6 +14,11 @@
 
 const crypto = require('crypto');
 
+/* The shared failure vocabulary — the SAME file the pages load, so the
+   class in this body is the class assets/app.js, assets/admin.js and
+   assets/complete-listing.js read, not a second guess at the status. */
+const ApiErrors = require('../../assets/api-errors.js');
+
 /* Copyright context stamped into every uploaded asset. Plain ASCII
    so the signature survives every client and encoding path — the
    visible "©" treatment is applied by the site itself. */
@@ -32,7 +37,11 @@ exports.handler = async function (event) {
   }
 
   if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, headers: CORS, body: JSON.stringify({ error: 'Method not allowed' }) };
+    return {
+      statusCode: 405,
+      headers: CORS,
+      body: JSON.stringify(ApiErrors.wireBody(405, { error: 'Method not allowed' })),
+    };
   }
 
   const API_KEY    = process.env.CLOUDINARY_API_KEY;
@@ -40,10 +49,24 @@ exports.handler = async function (event) {
   const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME;
 
   if (!API_KEY || !API_SECRET || !CLOUD_NAME) {
+    /* The status stays 500 — changing it is not this file's business —
+       but the CLASS is 'not-ready', because a deploy with no Cloudinary
+       credentials is not something to try again in a minute: every
+       photo would fail identically forever, and the class is what tells
+       the page that (it switches the upload button off instead of
+       asking someone to press it again). This is the case the wire
+       class exists for. */
     return {
       statusCode: 500,
       headers: CORS,
-      body: JSON.stringify({ error: 'Cloudinary environment variables not configured on server' })
+      body: JSON.stringify(ApiErrors.wireBody(500, {
+        /* The sentence names the fix. "not configured" alone told an
+           operator there was a problem without saying which three
+           variables to add — and this is the one failure that kills
+           every photo upload until somebody does. */
+        error: 'Photo storage is not configured on this deploy: CLOUDINARY_API_KEY, ' +
+          'CLOUDINARY_API_SECRET and CLOUDINARY_CLOUD_NAME are not set in Netlify.',
+      }, 'not-ready'))
     };
   }
 

@@ -383,15 +383,22 @@ console.log('youtube-health: the handler');
   const bogus = await Health.handler(event({ headers: { authorization: 'Bearer short' } }));
   check('a junk bearer token is refused without asking Supabase', bogus.statusCode === 401);
 
-  /* The reason this function exists is to report what a deployment is
-     MISSING, so it must not itself depend on anything a deployment
-     might not have. A require of a sibling module that is not in git
-     turns it into a 500 that reads exactly like the outage it is
-     meant to diagnose. */
-  check('the health function requires nothing outside node itself',
-    !/require\s*\(/.test(HEALTH_SRC));
-  check('it declares the shared six-name vocabulary, in the shared spelling',
-    /const KINDS = \['not-ready', 'expired', 'rejected', 'busy', 'offline', 'error'\];/.test(HEALTH_SRC));
+  /* This function used to carry its own copy of the six-name vocabulary,
+     on the reasoning that it must not depend on anything a deployment
+     might not have: a health check that cannot load its own dependency
+     answers 500, which reads exactly like the outage it exists to
+     diagnose. That reasoning was correct while `assets/api-errors.js`
+     was not in git — `git ls-files` matched nothing — and it expired the
+     moment the module was committed. Nineteen functions now require it,
+     and scripts/test-api-errors.mjs refuses to let this one be the
+     exception: a second copy is only a second place for the names to
+     drift. What is pinned here is the require that replaced the copy, so
+     the copy cannot come back by accident. */
+  check('the health function loads the shared classifier, not a copy of it',
+    /require\('\.\.\/\.\.\/assets\/api-errors\.js'\)/.test(HEALTH_SRC));
+  check('and it keeps no second copy of the six names',
+    !/const KINDS = \[/.test(HEALTH_SRC) &&
+    !/'not-ready', 'expired', 'rejected', 'busy', 'offline', 'error'/.test(HEALTH_SRC));
   const VOCABULARY = ['not-ready', 'expired', 'rejected', 'busy', 'offline', 'error'];
   check('every class its refusals carry is one the pages can read',
     [anon, post].every(r => VOCABULARY.indexOf(JSON.parse(r.body).kind) !== -1));

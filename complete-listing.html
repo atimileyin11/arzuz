@@ -224,6 +224,32 @@
     padding: 6px; text-align: center; font-size: 10.5px; line-height: 1.35; overflow-wrap: anywhere;
     color: #fff; background: rgba(22, 18, 29, .78); }
   .cl-coords, .cl-status, .cl-up { overflow-wrap: anywhere; }
+
+  /* ---------- the page-strength panel ----------
+     The score from assets/listing-score.js, on the landlord's own page and
+     live as they fill the form in. It is information, not a warning: the
+     count leads, the band follows, and the missing facts are chips they can
+     act on immediately. */
+  .cl-strength { margin: 4px 0 18px; padding: 13px 14px; border-radius: 14px;
+    border: 1px solid var(--line, #e8e2f0); background: var(--bg, #faf8fc); }
+  .cl-strength[hidden] { display: none; }
+  .cl-strength-head { display: flex; align-items: baseline; justify-content: space-between;
+    gap: 10px; flex-wrap: wrap; }
+  .cl-strength-head b { font-size: 15px; color: var(--ink, #16121d); }
+  .cl-strength-head span { font-size: 12.5px; color: var(--body-c, #544a63); }
+  .cl-strength-bar { height: 6px; margin: 9px 0 10px; border-radius: 999px;
+    background: rgba(139, 92, 246, .14); overflow: hidden; }
+  .cl-strength-bar i { display: block; height: 100%; width: 0; border-radius: 999px;
+    background: var(--stamp, #8B5CF6); transition: width 240ms cubic-bezier(.16, 1, .3, 1); }
+  @media (prefers-reduced-motion: reduce) { .cl-strength-bar i { transition: none; } }
+  .cl-strength-missing { display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    font-size: 12.5px; color: var(--body-c, #544a63); }
+  .cl-strength-chip { font-style: normal; font-size: 11.5px; font-weight: 700;
+    padding: 3px 9px; border-radius: 999px; background: rgba(139, 92, 246, .12);
+    color: var(--ink, #16121d); overflow-wrap: anywhere; }
+  .cl-strength-nudge { margin: 10px 0 0; font-size: 12.5px; line-height: 1.45;
+    color: #b45309; }
+  .cl-strength-nudge[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -243,10 +269,21 @@
   <div class="cl-card" id="clDead" style="display:none;" data-rise>
     <div class="cl-state">
       <div class="big">🔗</div>
-      <h1>This link is not valid</h1>
-      <p class="lead">The invite link may have been replaced, revoked, expired, or the apartment has
+      <!-- The static copy is the dead-link case and stays as the default:
+           it is what a view with no JavaScript still reads, and it is the
+           only one of the reasons that really is about the link. The page's
+           script replaces both lines when the failure was something else
+           (assets/draft-errors.js). -->
+      <h1 id="clDeadTitle">This link is not valid</h1>
+      <p class="lead" id="clDeadBody">The invite link may have been replaced, revoked, expired, or the apartment has
       already been approved. Ask the Arzuz team to send you a fresh link.</p>
-      <p class="lead" style="font-size:13.5px">WhatsApp us on <b>0902 481 4771</b>.</p>
+      <!-- The number is printed and linked, and both come from
+           assets/api-errors.js: the href is the module's own waNumber()
+           (0902 481 4771 → 2349024814771), and the href and the number on
+           screen are held against the module by
+           scripts/test-invite-render.mjs, so a page that follows the
+           module and a view with no JavaScript both work. -->
+      <p class="lead" style="font-size:13.5px">WhatsApp us on <a href="https://wa.me/2349024814771" target="_blank" rel="noopener noreferrer"><b>0902 481 4771</b></a>.</p>
     </div>
   </div>
 
@@ -269,6 +306,26 @@
     <h1 id="clTitle" data-rise>Complete your apartment</h1>
     <p class="lead" data-rise>Fill in what you know — everything can be changed later from this same
       link. Nothing is published until the Arzuz team verifies it.</p>
+
+    <!-- ============ the page-strength panel ============
+         The same score the listings sitemap turns into a room's
+         <changefreq>/<priority> (assets/listing-score.js), shown to the
+         landlord on the one page they actually reach — and live, so it
+         reads the form as they type. It answers the two questions this
+         page used to leave to a WhatsApp message: what is this room
+         missing, and how often will the search engines come back for it.
+
+         Hidden until assets/complete-listing.js draws it, so a reader
+         without JavaScript (and every crawler) sees no empty box. -->
+    <div class="cl-strength" id="clStrength" hidden>
+      <div class="cl-strength-head">
+        <b id="clStrengthCount">0 of 6 details</b>
+        <span id="clStrengthBand"></span>
+      </div>
+      <div class="cl-strength-bar"><i id="clStrengthFill"></i></div>
+      <div class="cl-strength-missing" id="clStrengthMissing"></div>
+      <p class="cl-strength-nudge" id="clStrengthNudge" hidden></p>
+    </div>
 
     <div class="cl-tabs" role="tablist" aria-label="Apartment sections">
       <button type="button" class="cl-tab active" role="tab" aria-selected="true" data-cl-tab="specs">1 · Property &amp; Pricing</button>
@@ -443,12 +500,18 @@
 </div>
 
 <script src="assets/config.js"></script>
+<script src="assets/api-errors.js?v=1"></script>
 <script src="assets/data.js"></script>
-<script src="assets/submit.js?v=3"></script>
+<script src="assets/submit.js?v=4"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="assets/arzuz-map.js?v=3"></script>
-<script src="assets/video.js?v=2"></script>
-<script src="assets/complete-listing.js?v=5"></script>
+<script src="assets/arzuz-map.js?v=4"></script>
+<script src="assets/video.js?v=3"></script>
+<script src="assets/draft-errors.js?v=2"></script>
+<!-- The freshness/completeness score, shared with the listings sitemap
+     (netlify/functions/listings-sitemap.js) and the admin dashboard, so the
+     panel below and the <changefreq> the engines are given are one number. -->
+<script src="assets/listing-score.js?v=1"></script>
+<script src="assets/complete-listing.js?v=8"></script>
 <script src="assets/motion.js"></script>
 </body>
 </html>

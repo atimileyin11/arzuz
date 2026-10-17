@@ -44,7 +44,12 @@ const DOCS = {
   '07-unit-economics-ltv-cac.md': true,
 };
 
-function json(status, obj) {
+/* The shared failure vocabulary — the SAME file the page loads, so the
+   class in this body is the class assets/strategy.js reads, not a
+   second guess at the same status code. */
+const ApiErrors = require('../../assets/api-errors.js');
+
+function json(status, obj, kind) {
   return {
     statusCode: status,
     headers: {
@@ -52,7 +57,7 @@ function json(status, obj) {
       'Cache-Control': 'no-store',
       'X-Robots-Tag': 'noindex, nofollow',
     },
-    body: JSON.stringify(obj),
+    body: JSON.stringify(ApiErrors.wireBody(status, obj, kind)),
   };
 }
 
@@ -80,12 +85,18 @@ exports.handler = async function (event) {
 
   const user = await verifyToken(token);
   if (!user) {
-    return json(401, { error: 'Sign in to the Arzuz dashboard to read the strategy pack.' });
+    /* The dashboard holds a session, so a 401 is a token to renew. */
+    return json(401, { error: 'Sign in to the Arzuz dashboard to read the strategy pack.' }, 'expired');
   }
 
   const name = (event.queryStringParameters && event.queryStringParameters.name) || '';
   if (!Object.prototype.hasOwnProperty.call(DOCS, name)) {
-    return json(404, { error: 'Unknown strategy document.' });
+    /* 'not-ready', not 'rejected': the dashboard only ever asks for the
+       names it lists, so a 404 here means the file is not in this
+       deployment — which is what the admin pane says in its own words
+       ("This document is not in the deployment"). One class, one
+       meaning, both ends. */
+    return json(404, { error: 'Unknown strategy document.' }, 'not-ready');
   }
 
   let md;
@@ -96,7 +107,7 @@ exports.handler = async function (event) {
     );
   } catch (e) {
     console.error('[strategy-docs] missing from sandbox:', name, e && e.message);
-    return json(500, { error: 'Strategy document missing from deployment.' });
+    return json(500, { error: 'Strategy document missing from deployment.' }, 'not-ready');
   }
 
   return {

@@ -2458,3 +2458,194 @@ html.motion-ready [data-tilt].tilt-on::after {
     padding: 0 24px;
   }
 }
+
+/* ---------- the pre-render introduction ----------
+   register.html, owner-list.html and scout.html are forms: every word a
+   visitor reads there is drawn by assets/app.js after the page loads, so
+   the served HTML held one empty <div> and nothing else. A crawler that
+   does not run the form engine saw a blank document, and a page with no
+   text and no heading is a page Google will not index. The markup now
+   ships inside #form, and the form engine overwrites #form on its first
+   draw — so this is the introduction a visitor sees for the moment before
+   the form takes over, and the whole page a crawler sees if it never runs
+   the script. */
+.intro {
+  max-width: 720px;
+}
+
+.intro p {
+  font-size: 15.5px;
+  line-height: 1.62;
+  color: var(--mid);
+  margin-bottom: 14px;
+}
+
+.intro h2 {
+  margin-top: 26px;
+}
+
+.intro ul {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.intro li {
+  position: relative;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--mid);
+  padding: 9px 0 9px 26px;
+}
+
+.intro li::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 17px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--stamp);
+}
+
+.intro .ilinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin: 4px 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.intro .ilinks li {
+  padding: 0;
+}
+
+.intro .ilinks li::before {
+  display: none;
+}
+
+.intro .ilinks a {
+  display: inline-block;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--stamp);
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(107, 59, 167, 0.18);
+  background: rgba(107, 59, 167, 0.05);
+}
+
+/* The label that heads each group in the footer link hub. It is a <b>,
+   not a heading: the footer is navigation, and a page should keep one
+   <h1> and a real heading outline for its own content. */
+.flbl {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--mid);
+  opacity: .8;
+  align-self: center;
+}
+
+/* The h1 a form page owns. It sits above #form rather than inside it: the
+   form engine overwrites #form on its first draw, and the step question is
+   an <h2 class="qh">, so a heading inside the intro left the rendered page
+   with no <h1> at all — which is the document a crawler that runs
+   JavaScript actually reads. Sized just under a hero: it heads a form, not
+   a landing page. */
+.page-h1 {
+  font-size: clamp(26px, 5.4vw, 32px);
+  /* the top spacing the form used to get from .back's own padding */
+  padding-top: 24px;
+  margin-bottom: 0;
+}
+
+/* ---------- reading pages (.doc) ----------
+   safety.html, care.html, privacy.html and terms.html each carry their own
+   copy of these rules inline, and those copies still win on their own pages
+   (identical declarations, later in the document), so nothing here changes
+   them. Newer reading pages — rent-in-malete, hostels-near-kwasu — use this
+   shared block instead of a third and fourth copy. Consolidating the older
+   four is a separate change: half-doing it would leave two sources of truth
+   for the same page shell. */
+.doc {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 34px 20px 70px;
+}
+
+/* A reading page reveals itself quietly — a shorter, calmer rise than the
+   marketing pages get. (opacity, then transform) */
+html.motion-ready .doc > [data-rise] {
+  transition-duration: .5s, .62s;
+}
+
+.doc h1 {
+  font-family: var(--display);
+  font-size: clamp(28px, 5vw, 40px);
+  font-weight: 800;
+  letter-spacing: -.035em;
+  line-height: 1.08;
+  margin-bottom: 20px;
+}
+
+.doc h2 {
+  font-family: var(--display);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -.02em;
+  margin: 36px 0 12px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.doc h3 {
+  font-family: var(--display);
+  font-size: 17px;
+  font-weight: 600;
+  margin: 24px 0 8px;
+}
+
+.doc p {
+  font-size: 15.5px;
+  line-height: 1.65;
+  color: var(--body-c);
+  margin-bottom: 14px;
+}
+
+.doc ul,
+.doc ol {
+  margin: 0 0 16px 20px;
+}
+
+.doc li {
+  font-size: 15.5px;
+  line-height: 1.6;
+  color: var(--body-c);
+  margin-bottom: 8px;
+}
+
+.doc strong {
+  color: var(--ink);
+}
+
+.doc blockquote {
+  background: var(--surface);
+  border-left: 3px solid var(--stamp);
+  padding: 16px 20px;
+  border-radius: 0 7px 7px 0;
+  margin: 20px 0;
+}
+
+.doc blockquote p {
+  margin-bottom: 10px;
+}
+
+.doc a {
+  color: var(--stamp);
+  font-weight: 500;
+}

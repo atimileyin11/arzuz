@@ -5,6 +5,16 @@
 -- before browse.html existed; fresh installs get this from
 -- supabase-schema.sql automatically.)
 --
+-- RE-RUN THIS FILE after supabase-listings-updated-at.sql: the view
+-- below is dropped and recreated on every run, and that file adds the
+-- listings.updated_at column the sitemap reports as lastmod. Running
+-- it in this order is what exposes the new column — nothing else does.
+--
+-- Re-running it is ALSO what adds has_description, the flag the
+-- listings sitemap sizes a room with when it cannot ship the
+-- description itself. Until this file is run the sitemap drops that
+-- one signal and logs a line; it does not fail.
+--
 -- Safe to run more than once. It only ever ADDS things: any
 -- missing generated columns (no-ops when already present) and
 -- one view. It never changes or deletes existing data, columns
@@ -47,6 +57,8 @@ create view public_listings as
 select
   id,
   created_at,
+  updated_at,   -- the day the listing was last EDITED (supabase-listings-updated-at.sql),
+                -- which is what sitemap-listings.xml reports as its lastmod
   tier,
   listed_price_ngn,
   latitude,
@@ -56,6 +68,11 @@ select
   property_type,
   area,
   rooms,
+  -- Whether the owner wrote a description, WITHOUT shipping it: the
+  -- listings sitemap sizes a room with this, and a boolean is a few
+  -- bytes where the text is a paragraph times a thousand rows. It reads
+  -- the same two keys the room page reads (desc, then description).
+  (coalesce(nullif(payload ->> 'desc', ''), nullif(payload ->> 'description', '')) is not null) as has_description,
   payload - 'nm' - 'last' - 'ph' - 'who' - 'email' as payload
 from listings
 where status = 'active'

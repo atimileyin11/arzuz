@@ -46,6 +46,52 @@
       margin-bottom: 30px;
     }
 
+    /* The half of the page that answers a question: what the badges mean,
+       how to read a price, where Arzuz actually is. The board above is
+       rendered by the server (netlify/functions/browse.js) and arrives in
+       this document, so a crawler sees the rooms AND this. It sits below
+       the listings so a visitor only scrolls into it after the rooms. */
+    .bw-more {
+      margin-top: 46px;
+      padding-top: 30px;
+      border-top: 1px solid var(--line);
+    }
+    .bw-more h2 {
+      font-size: clamp(20px, 3.4vw, 24px);
+      margin: 26px 0 10px;
+    }
+    .bw-more h2:first-child { margin-top: 0; }
+    .bw-more p {
+      font-size: 15.5px;
+      line-height: 1.62;
+      color: var(--body-c);
+      max-width: 68ch;
+      margin-bottom: 12px;
+    }
+    .bw-more ul {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 12px;
+      max-width: 68ch;
+    }
+    .bw-more li {
+      position: relative;
+      font-size: 15.5px;
+      line-height: 1.6;
+      color: var(--body-c);
+      padding: 8px 0 8px 22px;
+    }
+    .bw-more li::before {
+      content: "";
+      position: absolute;
+      left: 2px;
+      top: 16px;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--stamp);
+    }
+
     /* honest empty state */
     .empty {
       background: var(--surface);
@@ -248,172 +294,71 @@
     <h1>Verified rooms near campus</h1>
     <p class="lede">Every listing below was checked before it appeared here — the badge on each photo says how far that check went. Prices are per session, and the walking time to KWASU is measured from the compound's dropped pin, not guessed.</p>
 
-    <div id="listings"><div class="empty" data-rise><div class="m"><span>az</span></div><h2>Loading…</h2><p>Fetching verified listings.</p></div></div>
+    <!-- The board. netlify/functions/browse.js swaps THIS ENTIRE LINE for
+         the rooms, finding it by the little marker comment below (see
+         assets/browse-card.js, which owns both the marker and the card
+         markup). The marker, the wording and the one-line shape are what
+         the swap depends on; the id is not. What this line says is the
+         honest state for a page with no server behind it (a static
+         preview): nothing is listed here yet. The function leaves it
+         alone when the database has no verified rooms, and replaces it
+         with the cards when it has. The marker is deliberately NOT
+         written in this comment: it would end the comment early and then
+         be mistaken for the holder line. -->
+    <div id="listings"><!--board--><div class="empty" data-rise><div class="m"><span>az</span></div><h2>No verified listings yet.</h2><p>We only show rooms that have been checked — nothing invented, nothing padded. The moment a verified property is ready, it appears here.</p><p>Want first pick when they go live? Register your need now — founding members get matched first.</p><div class="h-doors"><a class="h-btn h-p" href="/register">I’m looking for a room</a><a class="h-btn h-s" href="/list">I have a property</a></div></div></div>
 
     <p class="note" data-rise>
-      Arzuz does not collect rent, hold deposits or take payment. Contact goes through the Arzuz team —
-      the owner's number is never published. Interested in listing a property?
-      <a href="owner-list.html">Add yours here</a>. Looking rather than browsing?
-      <a href="register.html">Register your need</a> and get matched first.
+      Arzuz does not collect rent, hold deposits or charge you to view or contact a landlord. Contact
+      goes through the Arzuz team — the owner's number is never published. Interested in listing a property?
+      <a href="/list">Add yours here</a>. Looking rather than browsing?
+      <a href="/register">Register your need</a> and get matched first.
     </p>
+
+    <section class="bw-more">
+      <h2>What the badges mean</h2>
+      <p>Nothing appears above without a badge, and the badge is the honest answer to "how far did
+      you check?":</p>
+      <ul>
+        <li><b>Inspected</b> — someone from Arzuz stood in the room. The rent, the utilities and the
+        walking distance are all confirmed on site.</li>
+        <li><b>Community verified</b> — a tenant living in the building told us what they pay and
+        what actually works. The rent is real; nobody from Arzuz has been inside yet.</li>
+        <li><b>Unverified</b> — the owner listed it and we have not checked it. Treat the price as
+        the asking price, not the confirmed one.</li>
+      </ul>
+
+      <h2>How to read a listing</h2>
+      <p>Prices are for one session, not per month, and they are what the owner says they are
+      charging — Arzuz adds no agent fee on top. The walking time is measured from the pin the
+      owner dropped at the gate rather than estimated, so two rooms on the same street can honestly
+      show different numbers.</p>
+      <p>Contact goes through the Arzuz team. The owner's number is never published and neither is
+      yours. Arzuz takes no rent and holds no deposit — you pay the owner directly, and only after you
+      have seen the room. Renting costs you nothing on Arzuz; the only thing it sells is an optional
+      Care Pass for repairs.</p>
+
+      <h2>Where Arzuz is live</h2>
+      <p>Malete, the town outside the KWASU main campus in Kwara State, is the first location and
+the only one with listings today. If your campus is not here yet, <a href="/register">register
+the room you need</a> anyway — where the registrations come from is how the next town gets chosen.
+Own a property in Malete? <a href="/list">Listing it is free</a>.</p>
+    </section>
   </div>
 
   <script src="assets/config.js"></script>
-  <script src="assets/data.js"></script>
+  <script src="assets/api-errors.js?v=1"></script>
   <!-- A tagged link (?ref=…) must be remembered even when it lands on a
        page with no form: the visitor may reach register.html later in the
        same visit. See assets/attribution.js. -->
   <script src="assets/attribution.js"></script>
-  <script src="assets/arzuz-map.js?v=3"></script>
   <script src="assets/app.js"></script>
   <script src="assets/motion.js"></script>
   <script>
+  /* The board is RENDERED BY THE SERVER (netlify/functions/browse.js) and
+     arrives in this document. There is no fetch here on purpose: two
+     renderers of one card is one too many, and this page was the only
+     place on the site still reading public_listings from the browser. */
   (function(){
-    var c = window.ARZUZ_CONFIG || {};
-
-    /* KWASU main gate — the reference point for walking time */
-    var CAMPUS = { lat: 8.721, lng: 4.484 };
-
-    /* straight-line km */
-    function haversineKm(lat1, lng1, lat2, lng2){
-      var R = 6371, toRad = Math.PI / 180;
-      var dLat = (lat2 - lat1) * toRad, dLng = (lng2 - lng1) * toRad;
-      var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) *
-              Math.sin(dLng/2) * Math.sin(dLng/2);
-      return 2 * R * Math.asin(Math.sqrt(a));
-    }
-
-    /* measured walking time: path is longer than the straight line,
-       students walk ~4.5 km/h on campus roads */
-    function walkText(lat, lng){
-      if (!lat || !lng) return '';
-      var km = haversineKm(parseFloat(lat), parseFloat(lng), CAMPUS.lat, CAMPUS.lng) * 1.25;
-      var min = Math.round(km / 4.5 * 60);
-      if (min < 1) return 'On campus street';
-      if (min > 90) return '';
-      return '🚶 ≈ ' + min + ' min walk to KWASU';
-    }
-
-    function tierBadge(tier){
-      if (Number(tier) >= 2) return '<span class="h-badge b2" style="margin:0">Inspected</span>';
-      if (Number(tier) === 1) return '<span class="h-badge b1" style="margin:0">Community verified</span>';
-      return '<span class="h-badge b0" style="margin:0">Unverified</span>';
-    }
-
-    function esc(s){
-      if (s === null || s === undefined) return '';
-      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
-    }
-
-    function first(p, keys){
-      for (var i = 0; i < keys.length; i++){
-        if (p[keys[i]] !== undefined && p[keys[i]] !== null && p[keys[i]] !== '') return p[keys[i]];
-      }
-      return '';
-    }
-
-    function card(r){
-      var p = r.payload || {};
-      var name = first(p, ['prop_name']) || 'Unnamed property';
-      var area = first(p, ['ar']) || 'Malete';
-      var rent = Number(first(p, ['rent']) || 0);
-      var type = first(p, ['ty']) || '';
-      var rooms = first(p, ['rm']) || '';
-      var photo = first(p, ['photo']);
-      var ut = first(p, ['ut', 'utilities']) || [];
-      if (typeof ut === 'string') ut = ut.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
-      /* measured route beats the straight-line estimate when one is stored */
-      var walk = (typeof ArzuzMap !== 'undefined' && ArzuzMap.passage.walkChip(p.passage)) ||
-                 walkText(r.latitude || first(p, ['lat']), r.longitude || first(p, ['lng']));
-      var ref = r.id ? String(r.id).substring(0, 8) : '';
-      var vid = first(p, ['video', 'video_url']);
-      var nImg = 0, nVid = 0;
-      if (Array.isArray(p.media) && p.media.length) {
-        p.media.forEach(function(m){ if (m && m.url) { if (m.type === 'video') nVid++; else nImg++; } });
-      } else {
-        if (photo) nImg = 1;
-        if (vid) nVid = 1;
-      }
-      var chips =
-        (nImg > 1 ? '<span class="media-chip">📷 ' + nImg + ' photos</span>' : '') +
-        (nVid ? '<span class="media-chip">▶ Tour</span>' : '');
-      var wa = (c.SUPPORT_WHATSAPP || '').replace(/[^0-9]/g, '');
-      var msg = encodeURIComponent(
-        'Hi Arzuz! I saw "' + name + '" (' + area + ', ₦' + rent.toLocaleString() + ' per session, ref ' + ref +
-        ') on the browse page. Is it still available?'
-      );
-
-      return '<div class="card" data-tilt data-rise>' +
-        '<div class="ph">' + (photo ? '<img src="' + esc(photo) + '" alt="' + esc(name) + '" loading="lazy">' : '📷 Photo coming soon') +
-        (chips ? '<span class="media-chips">' + chips + '</span>' : '') +
-        '<span class="ph-cr">© Arzuz</span>' +
-        '<span class="badge">' + tierBadge(r.tier) + '</span></div>' +
-        '<div class="body">' +
-          '<h3>' + esc(name) + '</h3>' +
-          '<div class="area"><span>📍 ' + esc(area) + '</span>' + (type ? '<span>' + esc(type) + '</span>' : '') + (rooms ? '<span>' + esc(rooms) + '</span>' : '') + '</div>' +
-          '<div class="price">₦' + rent.toLocaleString() + '</div>' +
-          '<div class="per">per session</div>' +
-          (walk ? '<div class="walk">' + walk + '</div>' : '') +
-          (ut.length ? '<div class="amen">' + ut.slice(0, 4).map(function(u){ return '<span>' + esc(u) + '</span>'; }).join('') +
-            (ut.length > 4 ? '<span>+' + (ut.length - 4) + '</span>' : '') + '</div>' : '') +
-          '<div class="cta">' +
-            '<a class="primary" href="listing.html?id=' + encodeURIComponent(r.id || '') + '">View details</a>' +
-            '<a class="ghost" href="https://wa.me/' + wa + '?text=' + msg + '" target="_blank" rel="noopener noreferrer">Ask</a>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
-    }
-
-    var box = document.getElementById('listings');
-
-    function render(rows){
-      if (!rows.length){
-        box.innerHTML =
-          '<div class="empty" data-rise>' +
-            '<div class="m"><span>az</span></div>' +
-            '<h2>No verified listings yet.</h2>' +
-            '<p>We only show rooms that have been checked — nothing invented, nothing padded. ' +
-            'The moment a verified property is ready, it appears here.</p>' +
-            '<p>Want first pick when they go live? Register your need now — founding members get matched first.</p>' +
-            '<div class="h-doors">' +
-              '<a class="h-btn h-p" href="register.html">I’m looking for a room</a>' +
-              '<a class="h-btn h-s" href="owner-list.html">I have a property</a>' +
-            '</div>' +
-          '</div>';
-        return;
-      }
-      box.innerHTML = '<div class="grid">' + rows.map(card).join('') + '</div>';
-    }
-
-    if (!c.SUPABASE_URL || !c.SUPABASE_ANON_KEY){
-      render([]);
-      return;
-    }
-
-    var url = c.SUPABASE_URL.replace(/\/+$/, '') +
-      '/rest/v1/public_listings?select=*&order=created_at.desc';
-
-    fetch(url, {
-      headers: { 'apikey': c.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + c.SUPABASE_ANON_KEY }
-    })
-      .then(function(res){
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        return res.json();
-      })
-      .then(render)
-      .catch(function(err){
-        console.warn('[Arzuz] browse load failed:', err.message);
-        box.innerHTML =
-          '<div class="empty" data-rise>' +
-            '<div class="m"><span>az</span></div>' +
-            '<h2>Listings are warming up.</h2>' +
-            '<p>We could not load the listing board just now — it may be the connection. ' +
-            'Register your need and we will match you directly on WhatsApp meanwhile.</p>' +
-            '<div class="h-doors"><a class="h-btn h-p" href="register.html">Register your need</a></div>' +
-          '</div>';
-      });
-
     Arzuz.chrome('student');
     Arzuz.footer();
   })();

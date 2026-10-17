@@ -86,33 +86,37 @@ const UPLOAD_API =
   'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status';
 
 /* ------------------------------------------------------------
-   THE FAILURE VOCABULARY, WITHOUT REQUIRING THE SHARED MODULE
+   THE FAILURE VOCABULARY — THE SHARED ONE
 
    Every other function stamps its failures with
-   assets/api-errors.js so a page reads one class per failure. This
-   function does NOT require it, deliberately: when this was written
-   that module was not in the deployed tree at all — it is not in
-   git (`git ls-files assets/api-errors.js` matches nothing), it
-   exists only on the working copies of the functions being written
-   against it. A health check that cannot load its own dependency
-   answers 500 with a module-not-found, which is indistinguishable
-   from the outage it exists to diagnose: the one function whose job
-   is to say "this deployment is missing something" must not be the
-   one that is missing something.
+   assets/api-errors.js so a page reads one class per failure, and
+   this one is not the exception.
 
-   So the six class names and the { error, kind } shape are mirrored
-   below. The mirror is not a fork of the policy — the names are the
-   shared vocabulary and the test suite pins them, so when
-   api-errors.js does ship, the two agree rather than drift.
+   IT WAS ONE, DELIBERATELY, and the reason is worth keeping because
+   it is the reason the rule is safe to apply now. When the
+   standalone version was written, that module was not in git at all
+   — `git ls-files assets/api-errors.js` matched nothing — so a
+   health check that required it would have answered 500 with a
+   module-not-found, which reads exactly like the outage it exists
+   to diagnose. The one function whose job is to say "this
+   deployment is missing something" must not itself be missing
+   something.
 
-   SERVER-SIDE RULE (assets/api-errors.js#wireBody, mirrored): an
-   error body carries `error` plus a class; an explicit class is used
-   only when it is a name from the vocabulary; otherwise the class is
-   derived from the status, so a typo can never put a class on the
-   wire that no page can read. A success body has no `error` and is
-   returned untouched.
+   That premise expired when the module was committed. With the file
+   in the tree and nineteen functions already requiring it, a second
+   copy is only a second place for the six names to drift — and
+   scripts/test-api-errors.mjs refuses the exception it used to
+   grant, because an exemption nothing asserts is where a door
+   hides. scripts/test-youtube-url.mjs pins the require below, so
+   the copy cannot come back by accident.
+
+   kindForStatus() below is NOT a copy of that policy: it turns a
+   status into a word for a sentence a person reads. The wire form
+   itself — which class may go on the wire, and what happens to one
+   that may not — is the shared module's, called, not restated.
    ------------------------------------------------------------ */
-const KINDS = ['not-ready', 'expired', 'rejected', 'busy', 'offline', 'error'];
+const ApiErrors = require('../../assets/api-errors.js');
+const KINDS = ApiErrors.KINDS;
 
 function kindForStatus(status) {
   if (status === 429) return 'busy';
@@ -124,11 +128,7 @@ function kindForStatus(status) {
 }
 
 function wireBody(status, body, kind) {
-  if (!body || typeof body !== 'object' || !body.error) return body;
-  const named = KINDS.indexOf(body.kind) !== -1
-    ? body.kind
-    : (KINDS.indexOf(kind) !== -1 ? kind : null);
-  return Object.assign({}, body, { kind: named || kindForStatus(status) });
+  return ApiErrors.wireBody(status, body, kind);
 }
 
 function json(status, obj, kind) {

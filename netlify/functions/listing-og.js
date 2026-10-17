@@ -18,6 +18,14 @@
    twitter:image, <title>, meta description, canonical, and the
    <script type="application/ld+json" id="ldjson"> block.
 
+   THIS PAGE IS NOT A ROOM'S ADDRESS ANY MORE. A listing now lives at
+   /rooms/<slug> (netlify/functions/rooms.js), which serves the same
+   head tags AND the room in the body. /listing?id=<uuid> still
+   answers 200 so that links already out in the world — and scrapers
+   holding them — keep working, but its canonical and og:url now
+   point at /rooms/<slug>. Two URLs that each claim to be canonical
+   are two URLs competing for one room; this is the one that yields.
+
    Data source: public_listings — the one public read surface,
    anon key only, same as browse.html and listing.html. No owner
    names or phone numbers exist in that view; nothing new is
@@ -25,6 +33,30 @@
    card, which is exactly what listing.html itself shows ("This
    listing isn't live").
    ============================================================ */
+
+/* The address of a room is built by assets/listing-url.js, which the page,
+   the /rooms/<slug> function and the listings sitemap also use. It is read
+   the same defensive way as in rooms.js: in the deploy sandbox it sits next
+   to this function (netlify.toml included_files), in the repo two
+directories up. If it cannot be found the page falls back to its own
+   query-string address rather than failing — a bundling mistake must not
+   take the preview cards down. */
+function loadListingUrl() {
+  const path = require('path');
+  const candidates = [
+    path.join(__dirname, 'listing-url.js'),
+    path.join(__dirname, '..', '..', 'assets', 'listing-url.js'),
+    '/var/task/assets/listing-url.js'
+  ];
+  for (const candidate of candidates) {
+    try {
+      return require(candidate);
+    } catch (e) { /* try the next location */ }
+  }
+  return null;
+}
+
+const ArzuzListing = loadListingUrl();
 
 const SITE = 'https://arzuz.com';
 const GENERIC_IMAGE = SITE + '/assets/social/og-image.png';
@@ -163,7 +195,9 @@ function rewriteHead(html, listing) {
     (rent ? ngn(rent) + ' per session \u00B7 ' : '') +
     'Verified \u00B7 zero agent fees \u00B7 ' + area + ', near KWASU.';
   const img = absoluteUrl(firstPhotoUrl(p) || row.photo_url) || GENERIC_IMAGE;
-  const url = SITE + '/listing?id=' + row.id;
+  /* The canonical address of this room, not the address it was asked for. */
+  const room = (ArzuzListing && ArzuzListing.path(row)) || '';
+  const url = room ? SITE + room : SITE + '/listing?id=' + row.id;
 
   html = html.replace(/<title>[\s\S]*?<\/title>/, '<title>' + esc(title) + '</title>');
   html = html.replace(
@@ -185,15 +219,20 @@ function rewriteHead(html, listing) {
     ['name', 'twitter:image', img],
   ]);
 
-  /* Rebuild the placeholder JSON-LD with the real listing. */
-  const ld = {
-    '@context': 'https://schema.org',
-    '@type': 'Apartment',
-    name: name,
-    address: area,
-    image: img,
-    ...(rent ? { offers: { '@type': 'Offer', price: rent, priceCurrency: 'NGN' } } : {}),
-  };
+  /* Rebuild the placeholder JSON-LD with the real listing — from the same
+     builder the /rooms/<slug> function uses, so a scraper reading this
+     legacy address and a crawler reading the room's own address are told
+     the same thing (including the price and whether it is still vacant). */
+  const ld = ArzuzListing
+    ? ArzuzListing.schema(row, url)
+    : {
+        '@context': 'https://schema.org',
+        '@type': 'Apartment',
+        name: name,
+        address: area,
+        image: img,
+        ...(rent ? { offers: { '@type': 'Offer', price: rent, priceCurrency: 'NGN' } } : {}),
+      };
   html = html.replace(
     /<script type="application\/ld\+json" id="ldjson">[\s\S]*?<\/script>/,
     '<script type="application/ld+json" id="ldjson">' + JSON.stringify(ld) + '</script>'

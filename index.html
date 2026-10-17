@@ -28,7 +28,16 @@
 <!-- priceRange in the JSON-LD below must match BANDS in assets/data.js.
      Open-ended bands ("Under" / "Above") use a 0 sentinel; the quoted range
      spans the lowest real bound to the highest (currently under NGN 100,000
-     to above NGN 1,000,000). -->
+     to above NGN 1,000,000).
+
+     The WebSite node used to promise a SearchAction pointing at /register
+     with a `search_term_string` input. There is no site search on Arzuz and
+     never was, so the markup described a feature that does not exist — the
+     exact class of thing that shows up as an error the first time Search
+     Console looks at a new property. It is gone. In its place the graph now
+     names the organisation itself (who publishes this, what the logo is,
+     how to reach a human), because that is what an answer engine wants
+     before it will cite a site it has never seen before. -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -39,11 +48,31 @@
         "name": "Arzuz - Student Hostels & Accommodation",
         "url": "https://arzuz.com",
         "description": "Verified student hostels and off-campus housing, starting in Malete near KWASU, Kwara State, and expanding across Nigeria. Real prices, resident reviews, and zero agent fees.",
-        "potentialAction": {
-          "@type": "SearchAction",
-          "target": "https://arzuz.com/register",
-          "query-input": "required name=search_term_string"
-        }
+        "inLanguage": "en-NG",
+        "publisher": { "@id": "https://arzuz.com/#organization" }
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://arzuz.com/#organization",
+        "name": "Arzuz",
+        "url": "https://arzuz.com",
+        "description": "Arzuz matches students to verified hostels and rooms, starting in Malete near KWASU, Kwara State — real prices, no agent fees.",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://arzuz.com/assets/icons/icon-512.png",
+          "width": 512,
+          "height": 512
+        },
+        "email": "support@arzuz.com",
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "contactType": "customer support",
+          "email": "support@arzuz.com",
+          "telephone": "+2349024814771",
+          "areaServed": "NG",
+          "availableLanguage": "en"
+        },
+        "areaServed": { "@type": "Country", "name": "Nigeria" }
       },
       {
         "@type": "LocalBusiness",
@@ -69,6 +98,14 @@
             "name": "Nigeria"
           }
         ],
+        "parentOrganization": { "@id": "https://arzuz.com/#organization" },
+        "address": {
+          "@type": "PostalAddress",
+          "addressLocality": "Malete",
+          "addressRegion": "Kwara State",
+          "addressCountry": "NG"
+        },
+        "telephone": "+2349024814771",
         "serviceType": "Student Accommodation & Hostels",
         "priceRange": "Under ₦100,000 to above ₦1,000,000 per session"
       }
@@ -143,17 +180,97 @@
       min-width: 0;
     }
 
-    /* ---- the object: one stage, four plates at four depths ---- */
+    /* ---- the object: one composition, two scales ----
+
+       A sheet of paper — the compound plan — with the inspection panel
+       resting on it and the seal pressed over its top-right corner. Both
+       breakpoints share this structure and these placement rules; they
+       differ only in the values the two media queries set (--seal, --gutter
+       and the turns). That is the whole point: a plate's place is written
+       once and a breakpoint scales it, so the desktop scene and the phone
+       composition cannot drift apart as either one is edited.
+
+       The stage's padding IS the composition — it is the paper's bleed.
+       --seal-band is the strip of plan the seal sits in, derived from the
+       seal's own size so the two can never cross however either is scaled;
+       --gutter is the plan showing beside the panel; --foot the strip under
+       it. The panel is in flow between those gutters, so its height is the
+       object's height and no magic min-height is involved anywhere.
+
+       Padding rather than margins on the panel because a child's top margin
+       collapses out of this stage, which would drag the whole composition —
+       and every plate placed against it — down the page.
+
+       The whole story — what each plate is for, why the light comes from the
+       upper left, the numbers that keep the two scales in step and the house
+       rules — is in dev/hero-object.md. Read it before editing this. */
+    /* The four values the stage's padding is written in are registered here as
+       lengths, which is not decoration. An unregistered custom property keeps
+       its token stream, so a hand-set `--seal-over: 0` — the obvious way to
+       say "no overhang" — is not a length to anything reading it:
+       `calc(var(--gutter) + var(--seal-over))` stops parsing, and because that
+       padding used to be ONE declaration built from all four, the declaration
+       went invalid at computed-value time and the browser dropped the whole
+       composition's padding to zero. Registered, `0` is 0px here, and a value
+       that still is not a length falls back to the initial 0px instead of
+       poisoning everything that reads it. The padding below is written as four
+       longhands for the same reason: a browser that does not know @property
+       loses one edge to a bad value, never the object. */
+    @property --gutter    { syntax: '<length>'; inherits: true; initial-value: 0px; }
+    @property --seal-over { syntax: '<length>'; inherits: true; initial-value: 0px; }
+    @property --seal-band { syntax: '<length>'; inherits: true; initial-value: 0px; }
+    @property --foot      { syntax: '<length>'; inherits: true; initial-value: 0px; }
+
     .h-scene {
       position: relative;
       min-height: 0;
       perspective: 1500px;
-      perspective-origin: 62% 34%;
+      /* one vanishing point at both scales. The desktop's 62% served a scene
+         with the copy beside it, but this composition IS the column, and an
+         off-centre origin is what turns a small turn into a lopsided card —
+         the near edge eaten and the far edge overhanging. */
+      perspective-origin: 50% 40%;
+
+      --seal: 156px;                          /* the seal's diameter; its type, its rules and its ring follow it */
+      --gutter: 30px;                         /* plan showing beside the panel */
+      --seal-over: calc(var(--seal) * .1);    /* how far the seal crosses the paper's edge */
+      --seal-band: calc(var(--seal) + 8px);   /* the strip of plan above the panel */
+      --foot: calc(var(--seal) * .22);        /* plan showing under the panel */
+      /* The plates' turns. ONE light: the sheet faces one way, the card above
+         it is nearly parallel to it, and the seal is the single disc turned
+         in the hand. The desktop's paper rotateY(15deg) against a panel
+         rotateY(-13deg) was two objects facing away from each other. */
+      --paper-turn: rotateY(9deg) rotateX(2deg) rotateZ(-1deg);
+      --panel-turn: rotateY(5deg) rotateX(1deg);
+      --seal-turn: rotateY(-13deg) rotateX(10deg) rotateZ(-8deg);
+      --seal-in: rotateY(-26deg) rotateX(34deg) rotateZ(-8deg);
+      /* ONE light for the object, keyed from its upper left — the seal's own
+         glint sits at 30% 22% — so every shadow falls down and to the RIGHT
+         by this much. All three plates read their x-offset from it, which is
+         what stops a plate being re-lit on its own: the paper, the panel and
+         the seal cannot disagree about where the light is, and the phone
+         scale can shorten the throw without turning the light around. */
+      --lit: 16px;
     }
 
     .h-scene-stage {
-      position: absolute;
-      inset: 0;
+      position: relative;
+      /* the right pad carries --seal-over as well: the paper is inset by it
+         (see .h-blueprint) and the seal crosses the paper's edge by it, so
+         the two land together on the scene's own right edge — which is the
+         page gutter this column already sits in.
+
+         Four longhands rather than one shorthand, deliberately, and the same
+         four values in the same order: a shorthand is a single declaration,
+         so a value it cannot use takes the OTHER three edges down with it — a
+         unitless `--foot: 24` used to leave the stage with no padding at all
+         and the composition gone. Written this way the damage is the edge that
+         was named, which is what "derived" has to mean if a reader is allowed
+         to poke at one of these values. */
+      padding-top: var(--seal-band);
+      padding-right: calc(var(--gutter) + var(--seal-over));
+      padding-bottom: var(--foot);
+      padding-left: var(--gutter);
       transform-style: preserve-3d;
     }
 
@@ -179,67 +296,115 @@
       animation: auroraPulse 9s ease-in-out infinite;
     }
 
-    /* far plate — the plan a dropped pin sits on */
+    /* the paper — the compound plan the panel rests on and the seal is
+       pressed against. It fills the stage's bleed box, inset by --seal-over
+       on the right only, so the plan IS what the panel's gutters show and
+       the seal can cross its edge and still land inside the column. One
+       rectangle: there is no second outline to fall out of step with it. */
     .h-blueprint {
       position: absolute;
-      left: 0;
-      top: 2%;
-      width: 60%;
+      inset: 0 var(--seal-over) 0 0;
+      width: auto;
     }
 
     .h-blueprint-in {
       position: relative;
-      aspect-ratio: 5 / 4;
-      border-radius: 18px;
-      border: 1.5px dashed rgba(124, 58, 237, 0.32);
+      width: 100%;
+      height: 100%;
+      border-radius: 16px;
+      /* the frame and the grid are what make this a plan rather than a
+         rectangle drawn on the background: at 30% and 6% the sheet read as a
+         tinted box, which is the one thing the panel rests on. Both go a step
+         up, still far enough under the panel's own type to stay behind it. */
+      border: 1.5px dashed rgba(124, 58, 237, 0.40);
       background:
-        linear-gradient(rgba(124, 58, 237, 0.07) 1px, transparent 1px) 0 0 / 100% 22px,
-        linear-gradient(90deg, rgba(124, 58, 237, 0.07) 1px, transparent 1px) 0 0 / 22px 100%,
-        rgba(255, 253, 249, 0.55);
-      box-shadow: var(--bezel);
-      transform: rotateY(15deg) rotateZ(-2.4deg);
+        linear-gradient(rgba(124, 58, 237, 0.085) 1px, transparent 1px) 0 0 / 100% 24px,
+        linear-gradient(90deg, rgba(124, 58, 237, 0.085) 1px, transparent 1px) 0 0 / 24px 100%,
+        rgba(255, 253, 250, 0.72);
+      transform: var(--paper-turn);
+      /* a sheet lying on the page, said in one soft tinted shadow falling with
+         the light: the old plan had none of the card elevation, so it read as
+         a rectangle drawn on the background rather than as paper on it */
+      box-shadow:
+        var(--bezel),
+        var(--lit) 34px 60px -34px rgba(74, 40, 120, 0.45);
     }
 
     .h-bp-lbl {
       position: absolute;
-      left: 14px;
-      top: 11px;
+      left: 15px;
+      top: 12px;
       font-size: 10px;
       font-weight: 800;
       letter-spacing: .18em;
       text-transform: uppercase;
-      color: rgba(107, 59, 167, 0.7);
+      color: rgba(107, 59, 167, 0.66);
     }
 
+    /* the plan's one landmark: the gate the walk is measured from, drawn as a
+       ringed pin with its name under it. It used to be a bare dot whose halo
+       was the most saturated thing on the paper while meaning nothing, and it
+       sat at 44% of a sheet that is a different shape at each scale — now it
+       rests on the band's centre line at both. */
     .h-bp-pin {
       position: absolute;
       left: 46%;
-      top: 44%;
-      width: 13px;
-      height: 13px;
+      top: calc(var(--seal-band) / 2 - 8px);
+      width: 15px;
+      height: 15px;
+      transform: translateX(-50%);
+      border-radius: 50%;
+      border: 2px solid var(--stamp-vibrant);
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow:
+        0 0 0 6px rgba(124, 58, 237, 0.09),
+        calc(var(--lit) * .2) 5px 12px -3px rgba(124, 58, 237, 0.42);
+    }
+
+    .h-bp-pin::after {
+      content: "";
+      position: absolute;
+      inset: 3px;
       border-radius: 50%;
       background: var(--stamp-vibrant);
-      box-shadow:
-        0 0 0 5px rgba(124, 58, 237, 0.16),
-        0 0 0 12px rgba(124, 58, 237, 0.07),
-        0 6px 16px rgba(124, 58, 237, 0.45);
     }
 
-    /* the seal is positioned by the breakpoints below */
+    .h-bp-cap {
+      position: absolute;
+      left: 46%;
+      top: calc(var(--seal-band) / 2 + 13px);
+      transform: translateX(-50%);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      color: rgba(107, 59, 167, 0.5);
+    }
+
+    /* the seal: pressed over the plan's top-right corner, so the one plate
+       that is a stamped disc rather than a sheet is what breaks the paper's
+       rectangle. It crosses both edges by --seal-over: horizontally because
+       the PAPER is the thing inset by it (see .h-blueprint), so the disc hangs
+       past the sheet and the composition still ends on the page's gutter,
+       vertically because a stamp set on a corner is exactly the thing that
+       overshoots it. */
     .h-stampwrap {
       position: absolute;
+      top: calc(-1 * var(--seal-over));
       right: 0;
-      top: 0;
-      width: 212px;
-      height: 212px;
+      width: var(--seal);
+      height: var(--seal);
     }
 
-    /* near plate — what the stamp actually carries */
+    /* the panel: the four facts, resting on the paper. In flow between the
+       stage's own gutters, so its height is the object's height. */
     .h-ticketwrap {
-      position: absolute;
-      left: 3%;
-      bottom: 1%;
-      width: 80%;
+      position: relative;
+      left: auto;
+      right: auto;
+      bottom: auto;
+      width: auto;
+      margin: 0;
     }
 
     .h-ticket {
@@ -247,8 +412,17 @@
       padding: 19px 22px 15px;
       background: var(--plate);
       border: 1px solid var(--edge);
-      box-shadow: var(--bezel), var(--elev-3);
-      transform: rotateY(-13deg) rotateX(6deg);
+      transform: var(--panel-turn);
+      /* a card floating above the sheet: the shared elevation plus a tight
+         contact shadow, so the paper stays readable right up to the edge */
+      /* two shadows, because a card on a sheet casts two: a tight contact one
+         the width of the panel's own edge, and the wide one that lifts it off
+         the paper. Both fall with the light, so the card sits on the sheet
+         instead of hovering with a shadow of its own invention */
+      box-shadow:
+        var(--bezel),
+        calc(var(--lit) * .38) 3px 9px -3px rgba(24, 14, 40, 0.13),
+        var(--lit) 26px 50px -24px rgba(60, 30, 100, 0.45);
     }
 
     .h-ticket-hd {
@@ -451,8 +625,13 @@
       padding: 6px 0;
     }
 
-    /* the seal: minted rather than printed — a rim, a soft inner
-       falloff and a real cast shadow, all at a slight tilt */
+    /* the seal: minted rather than printed — a rim, a soft inner falloff, a
+       glint off its upper-left and a real cast shadow, all at a slight tilt.
+       Its type, its rules and its inner ring are sized from --seal, so the
+       phone's seal is the same seal smaller rather than a second one with
+       its own numbers; the clamp floors are where legibility stops scaling
+       (at 108px the old fixed 20px INSPECTED was wider than the ring it sits
+       in). */
     .h-stamp {
       position: relative;
       width: 100%;
@@ -470,22 +649,33 @@
       box-shadow:
         var(--bezel),
         inset 0 -8px 16px rgba(107, 59, 167, 0.14),
-        0 20px 44px -18px rgba(74, 40, 120, 0.5);
-      transform: rotateX(12deg) rotateY(-16deg) rotateZ(-8deg);
+        calc(var(--lit) * .62) 18px 36px -16px rgba(74, 40, 120, 0.5);
+      transform: var(--seal-turn);
       animation: coinIn 0.9s var(--ease-out-strong) 0.34s both;
+    }
+
+    /* the light: a glint off the disc's upper-left, so the seal is lit from
+       the same side every shadow on this object falls */
+    .h-stamp::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: radial-gradient(40% 36% at 30% 22%, rgba(255, 255, 255, 0.9), transparent 72%);
+      opacity: .8;
     }
 
     .h-stamp::after {
       content: "";
       position: absolute;
-      inset: 10px;
+      inset: clamp(6px, calc(var(--seal) * .057), 11px);
       border: 1.5px solid var(--stamp-vibrant);
       border-radius: 50%;
       opacity: .45;
     }
 
     .h-stamp b {
-      font-size: 11px;
+      font-size: clamp(9px, calc(var(--seal) * .0625), 12px);
       font-weight: 800;
       letter-spacing: .2em;
       display: block;
@@ -493,7 +683,10 @@
 
     .h-stamp strong {
       font-family: var(--display);
-      font-size: 27px;
+      /* .128 of the diameter is the widest the word can be and still sit
+         inside the inner ring: at .153 its ends rode over it at BOTH scales,
+         which is what made the seal read as cramped rather than minted */
+      font-size: clamp(13px, calc(var(--seal) * .128), 27px);
       font-weight: 800;
       letter-spacing: -.02em;
       display: block;
@@ -501,30 +694,33 @@
     }
 
     .h-stamp span {
-      font-size: 11px;
+      font-size: clamp(9px, calc(var(--seal) * .0625), 12px);
       letter-spacing: .14em;
       display: block;
       font-variant-numeric: tabular-nums;
     }
 
     .h-stamp hr {
-      width: 80px;
+      width: clamp(50px, calc(var(--seal) * .45), 80px);
       border: none;
       border-top: 1.5px solid var(--stamp-vibrant);
       opacity: .5;
       margin: 0;
     }
 
-    /* the seal turns to face the reader as it lands */
+    /* the seal turns to face the reader as it lands. One keyframe for both
+       scales: the turns are variables, so the phone lands on its own resting
+       angle instead of on a rotateX(12deg) chosen for a scene seen from
+       below — which on a phone read as a card falling over backwards. */
     @keyframes coinIn {
       0% {
         opacity: 0;
-        transform: rotateX(40deg) rotateY(-34deg) rotateZ(-8deg) scale(1.22);
+        transform: var(--seal-in) scale(1.18);
       }
 
       100% {
         opacity: 1;
-        transform: rotateX(12deg) rotateY(-16deg) rotateZ(-8deg) scale(1);
+        transform: var(--seal-turn) scale(1);
       }
     }
 
@@ -554,8 +750,13 @@
         max-width: none;
       }
 
+      /* the desktop scale: a bigger seal and a wider gutter. The band, the
+         overhang and the foot are all derived from --seal (see .h-scene), so
+         the two scales cannot disagree about the composition — there is
+         nothing here to keep in step with the phone but the seal itself. */
       .h-scene {
-        min-height: 486px;
+        --seal: 156px;
+        --gutter: 30px;
       }
     }
 
@@ -568,29 +769,84 @@
         padding-bottom: 56px;
       }
 
-      /* below the split, the object becomes one plate in that band — a
-         right-aligned seal, drawn whole (its lettering is centred, so a
-         bleed would slice the word in half) and never overlapping the copy
-         above it. */
+      /* Below the split the object is the same composition, scaled — the same
+         three plates in the same arrangement, laid out by the same rules,
+         because it IS the same rules. Only the sizes and the turns differ
+         here, and the band, the seal's overhang and the foot are derived from
+         --seal, so there is nothing in this block to keep in step with the
+         desktop scene beyond the seal's own size. Width is capped so a 900px
+         tablet does not stretch a four-row panel across the screen.
+
+         What cannot be shared is the depth: the motion layer writes each
+         plate's translateZ inline from data-z, and a depth offset belongs to a
+         scene with a pointer to move it. There is none here, so the offset
+         would survive only as a distortion — the panel magnified 5% out of a
+         313px box, the plan shrinking 2%, which is what ate the plan's
+         margin. The plates are pages in a stack on a phone, so the layer gets
+         no say in where they sit; the !important is because the value being
+         overridden is an inline style, not a rule. It covers the wrappers
+         only — the seal's own turn and the plan's turn sit on elements below
+         them and keep the scene's perspective. */
       .h-scene {
-        position: relative;
-        right: auto;
-        bottom: auto;
-        width: 140px;
-        height: 140px;
-        min-height: 0;
-        margin: 6px 0 0 auto;
+        --seal: 108px;
+        --gutter: 15px;
+        /* the small turn on the panel is the one thing that keeps a card on a
+           phone from reading as printed on the page, and a 9deg sheet in a
+           342px column would be a perspective drawing rather than paper */
+        --paper-turn: rotateY(3.5deg) rotateZ(-.8deg);
+        --panel-turn: rotateY(2.5deg);
+        --seal-turn: rotateZ(-7deg) rotateY(-9deg);
+        --seal-in: rotateZ(-7deg) rotateY(-24deg);
+        /* the same light at a shorter throw: a 152px-wide sheet casts a
+           narrower shadow than a 424px one, and a 16px offset here would
+           read as the whole composition leaning */
+        --lit: 8px;
+        max-width: 440px;
+        margin: 2px 0 0;
         pointer-events: none;
       }
 
+      .h-blueprint,
+      .h-stampwrap,
+      .h-ticketwrap {
+        transform: none !important;
+      }
+
+      /* the wash was drawn for a wide, dark hero and would tint the panel;
+         the paper's own tinted shadow is what lifts it off the page here */
+      .h-aurora {
+        display: none;
+      }
+
+      /* rows tightened the way the 760px block tightens the page's cards: less
+         padding and a narrower label column, so four facts stay on four lines
+         instead of eight */
+      .h-ticket {
+        padding: 17px 17px 13px;
+        /* the same two shadows as the desktop card, at this scale's lighter
+           elevation and with the light still falling to the right */
+        box-shadow:
+          var(--bezel),
+          calc(var(--lit) * .38) 2px 7px -2px rgba(24, 14, 40, 0.13),
+          var(--lit) 18px 36px -20px rgba(60, 30, 100, 0.42);
+      }
+
+      .h-ticket li {
+        gap: 11px;
+      }
+
+      .h-ticket li b {
+        min-width: 56px;
+      }
+
       /* The shared layer's scroll-driven drift is an entrance tied to a
-         timeline, and the plate is in flow here, so mobile gets one ambient
+         timeline, and the object is in flow here, so mobile keeps one ambient
          motion instead: a slow float that runs off the main thread. Its last
          frame is the resting transform, so the reduced-motion collapse lands
          flat rather than mid-drift. animation-timeline is reset explicitly
          because the shorthand does not always clear it. */
       .h-scene[data-drift] {
-        animation: stampFloat 7s ease-in-out infinite;
+        animation: stampFloat 8s ease-in-out infinite;
         animation-timeline: auto;
       }
 
@@ -601,29 +857,8 @@
         }
 
         50% {
-          transform: translate3d(0, -7px, 0);
+          transform: translate3d(0, -5px, 0);
         }
-      }
-
-      .h-blueprint,
-      .h-ticketwrap,
-      .h-aurora {
-        display: none;
-      }
-
-      .h-stampwrap {
-        right: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-      }
-
-      .h-stamp strong {
-        font-size: 21px;
-      }
-
-      .h-stamp hr {
-        width: 60px;
       }
 
       .h-doors {
@@ -1346,25 +1581,33 @@
         <p class="h-lede">Verified student housing, starting in Malete. Real prices, honest reviews from
           students who actually live there, and no agent fees.</p>
         <div class="h-doors">
-          <a class="h-btn h-p" href="register.html">I’m looking for a room<span class="h-btn-orb" aria-hidden="true">→</span></a>
-          <a class="h-btn h-s" href="browse.html">Browse verified rooms</a>
+          <a class="h-btn h-p" href="/register">I’m looking for a room<span class="h-btn-orb" aria-hidden="true">→</span></a>
+          <a class="h-btn h-s" href="/browse">Browse verified rooms</a>
         </div>
-        <p class="h-third"><a href="owner-list.html">I have a property</a> · <a href="scout.html">I already live somewhere. Register my building.</a></p>
+        <p class="h-third"><a href="/list">I have a property</a> · <a href="/roommates">I need a roommate to split with.</a> · <a href="/my-building">I already live somewhere. Register my building.</a></p>
       </div>
 
       <!-- The inspection object: a diagram of what our stamp carries, and
            labelled as exactly that. No price and no count is invented here.
            Every claim in it is set out in full under Verification below,
            so the object is one image to a screen reader rather than four
-           plates read out of order. -->
+           plates read out of order.
+
+           One composition at both scales: the plan is the paper, the panel
+           rests on it, the seal is pressed over its corner. The breakpoints
+           only scale it (see .h-scene) — there is no second arrangement to
+           keep in step. -->
       <div class="h-scene stage" data-scene data-drift role="img" aria-label="An Arzuz inspection stamp resting on a compound plan: water tested at the tap, power hours confirmed with residents, walking distance measured on foot, dated and signed by whoever inspected.">
         <div class="h-scene-stage p3d" data-scene-stage>
           <div class="h-aurora" data-depth="0.16"></div>
 
-          <div class="h-blueprint" data-depth="0.44" data-z="-70">
+          <!-- no data-z on the paper: it IS the plane the other two are
+               lifted off, so its own edges land on the column's edges -->
+          <div class="h-blueprint" data-depth="0.44">
             <div class="h-blueprint-in">
               <span class="h-bp-lbl">Compound plan</span>
               <span class="h-bp-pin"></span>
+              <span class="h-bp-cap">Gate</span>
             </div>
           </div>
 
@@ -1450,7 +1693,7 @@
       <h2 class="h-h2 rv">We show you what we know, and what we don’t.</h2>
       <p class="h-sub rv">A verification without a date is a claim, not a fact. Every stamp carries
         one, and every inspection carries the name of the person who did it.
-        <a href="safety.html">Your safety on Arzuz</a> explains what to do before and after a viewing.</p>
+        <a href="/safety">Your safety on Arzuz</a> explains what to do before and after a viewing.</p>
       <div class="h-tiers">
         <div class="h-tier rv" data-tilt>
           <span class="h-badge b0">Unverified</span>
@@ -1473,9 +1716,9 @@
       <div class="h-promise rv">
         <h3>If it does not match, we make it right.</h3>
         <p>Move into a property we inspected and find the water, power or security are not what we            said: we re-inspect within seven days, correct the listing publicly, and <a
-            href="care.html">Arzuz Care</a> is
+            href="/care">Arzuz Care</a> is
           free for your whole session. Nobody else in this market pays for their own mistake.
-          The full promise, including its limits, is in our <a href="terms.html">terms</a>.</p>
+          The full promise, including its limits, is in our <a href="/terms">terms</a>.</p>
       </div>
     </div>
   </section>
@@ -1497,7 +1740,7 @@
         <div class="h-tier faq-card rv" data-tilt>
           <h3>How do I get an agent-free hostel in Malete?</h3>
           <p>
-            Arzuz connects KWASU students directly with verified property managers and vetted compound caretakers. You view verified photos, inspection notes, and GPS coordinates without paying inspection or middleman fees. Read <a href="safety.html">how we keep you safe</a> while you view.
+            Arzuz connects KWASU students directly with verified property managers and vetted compound caretakers. You view verified photos, inspection notes, and GPS coordinates without paying inspection or middleman fees. Read <a href="/safety">how we keep you safe</a> while you view.
           </p>
         </div>
 
@@ -1519,19 +1762,20 @@
       <p class="rv">Students who register now get matched first. Properties listed before launch go
         live on day one, get verified at no cost, and appear above later listings.</p>
       <div class="h-doors rv" style="animation:none;opacity:1">
-        <a class="h-btn h-p" href="register.html">I’m looking for a room</a>
-        <a class="h-btn h-s" href="owner-list.html">I have a property</a>
+        <a class="h-btn h-p" href="/register">I’m looking for a room</a>
+        <a class="h-btn h-s" href="/list">I have a property</a>
       </div>
     </div>
   </section>
 
   <script src="assets/config.js"></script>
+  <script src="assets/api-errors.js?v=1"></script>
   <script src="assets/data.js"></script>
   <!-- Tagged campaign links often land on the homepage first; capture the
        tag here so the registration that follows is still attributable. -->
   <script src="assets/attribution.js"></script>
   <script src="assets/notify.js"></script>
-  <script src="assets/submit.js?v=3"></script>
+  <script src="assets/submit.js?v=4"></script>
   <script src="assets/app.js"></script>
   <script src="assets/motion.js"></script>
   <script>
@@ -1670,6 +1914,17 @@
     })();
 
     Arzuz.footer();
+  </script>
+<script>/* dev-only harness boot — the homepage's own boot check, localhost only
+   (see dev/page-harness-boot.js). Every reveal target is hidden until
+   assets/motion.js adds html.motion-ready, and the page's inline boot needs
+   Arzuz and the register in assets/data.js, so a script request lost between the
+   page being sent and the parser running it is completely silent. This is how a
+   dev server that dropped one hears about it: one reload, then the page is left
+   exactly as it is. It looks; it never mocks or stubs anything; it never ships. */
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '0.0.0.0') {
+      document.write('<script src="dev/page-harness-boot.js"><' + '/script>');
+  }
   </script>
 </body>
 

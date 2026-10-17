@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Arzuz Care — what is covered, and what it costs — Arzuz</title>
-  <meta name="description" content="Arzuz Care is an optional repair service for the session: bulbs, taps, locks and small leaks. Covered and not-covered lists published in full, with the price stated upfront.">
+  <meta name="description" content="Arzuz Care is an optional repair service: bulbs, taps, locks and small leaks. The covered and not-covered lists are published in full, price included.">
   <link rel="canonical" href="https://arzuz.com/care">
         <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
   <meta property="og:title" content="Arzuz Care — repairs covered, price upfront — Arzuz">
@@ -116,6 +116,22 @@
       font-size: 14.5px
     }
 
+    /* The buy link sits inside the price box because that is where the
+       decision is made; it goes to the one page that can take a payment,
+       where the published terms are shown again before anything is
+       charged. */
+    .pricebox .buy {
+      display: inline-block;
+      margin-top: 12px;
+      font-weight: 700;
+      font-size: 14.5px;
+      padding: 10px 16px;
+      border-radius: 8px;
+      background: var(--ink);
+      color: #fff;
+      text-decoration: none
+    }
+
     /* covered / not-covered lists */
     .covbox h3 {
       font-family: var(--display);
@@ -173,6 +189,7 @@
       <div class="p">&#8358;20,000 for the session</div>
       <p>Optional. You choose whether to add it — never automatically, never folded into your rent.
         Cancel before the session starts for a full refund.</p>
+      <a class="buy" href="/care-pass">Buy a Care Pass</a>
     </div>
 
     <div class="covbox" data-rise>
@@ -213,18 +230,19 @@
       materially not as we described: an operator re-inspects within <strong>7 days</strong> (not the
       verifier who filed the original report), the listing is corrected publicly, and <strong>Arzuz
       Care is free for the remainder of your session</strong> — or any Care fee you paid is refunded
-      in full. The full promise and its limits are in <a href="terms.html">section 7 of our terms</a>.</p>
+      in full. The full promise and its limits are in <a href="/terms">section 7 of our terms</a>.</p>
 
     <hr />
 
     <p class="note" data-rise>Care is not insurance, and it is not a substitute for the landlord's own repair
       obligations under your tenancy. The covered list, the not-covered list and the call-out limit
-      on this page form part of the <a href="terms.html">Arzuz terms</a>. Something not covered but
+      on this page form part of the <a href="/terms">Arzuz terms</a>. Something not covered but
       broken? Tell us anyway — it goes into the record for your compound.</p>
   </div>
   <script src="assets/config.js"></script>
+  <script src="assets/api-errors.js?v=1"></script>
   <script src="assets/data.js"></script>
-  <script src="assets/submit.js?v=3"></script>
+  <script src="assets/submit.js?v=4"></script>
   <script src="assets/app.js"></script>
   <script src="assets/motion.js"></script>
   <script>Arzuz.chrome(null); Arzuz.footer();</script>

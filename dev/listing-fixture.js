@@ -2,14 +2,25 @@
    Arzuz listing page — offline data fixture (DEV ONLY)
 
    Loaded only by dev/listing-harness.html, which is loaded by
-   dev/listing-harness.html → scripts/test-listing-render.mjs.
-   Nothing in listing.html references this file, so it cannot
-   reach production.
+   scripts/test-listing-render.mjs. Nothing in listing.html
+   references this file, so it cannot reach production.
+
+   The cases are GENERATED, not written out
+   ----------------------------------------
+   `MATRIX` declares every state each field the page resolves can be
+   in, and each case declares the (field · state) pairs it is there to
+   exercise. `buildRow()` builds the row FROM those declarations, so a
+   case cannot describe data it does not carry; `plan()` publishes the
+   matrix, the pairs and the records, and `violations()` says out loud
+   when a pair does not hold, when two pairs collide on one field, or
+   when a declared cell has no case. scripts/test-fixture-plans.mjs
+   asserts all of that on every push; the switcher marks the fixture
+   red in the page if it is ever inconsistent.
 
    What it does
    ------------
      1. Replaces window.fetch so every Supabase call is answered
-        from the dataset below. It is the source of every
+        from the generated dataset. It is the source of every
         response, so it performs no network write at all — it is
         safe to point at the real project.
      2. Records every intercepted call, every console error, every
@@ -20,13 +31,13 @@
         can flip cases on the real page and look at them.
 
    Cases are also readable from Node, with no DOM:
-     const CASES = vm.runInNewContext(SRC + '; ARZUZ_LISTING_FIXTURE')
+     const FX = vm.runInNewContext(SRC + '; ARZUZ_LISTING_FIXTURE')
    ============================================================ */
 
 (function (global) {
   'use strict';
 
-  /* ---------- the datasets ---------- */
+  /* ---------- the values the builders draw on ---------- */
 
   /* six local files exist under assets/ — recycle them so the fixture
      never triggers a 404 that would muddy the console/error capture */
@@ -59,187 +70,539 @@
     return bits.join('\n\n');
   })();
 
-  var CASES = {
+  var UTILITIES_40 = (function () {
+    var out = [];
+    for (var i = 1; i <= 40; i++) out.push('Amenity number ' + i + ' with a fairly long label');
+    return out;
+  })();
 
-    /* ---- the control: what the design was built against ---- */
-    demo: {
-      label: 'Demo data',
-      note: 'the happy path — everything filled in, three photos',
-      row: {
-        id: 'fx-demo-0001',
-        tier: 2,
-        latitude: 8.7113,
-        longitude: 4.4697,
-        payload: {
-          prop_name: 'Ilorin Close Self-Contain',
-          ty: 'Self-contain',
-          rent: '185000',
-          ar: 'Malete',
-          rm: '1 room',
-          neg: 'Negotiable on a full-session payment',
-          ut: ['Borehole water', 'NEPA connection', 'Prepaid meter', 'Security / gateman'],
-          desc: 'A quiet self-contain on Ilorin Close, two minutes past the second gate. New tiles, ' +
-                'a private bathroom and a prepaid meter so you only pay for what you use.\n' +
-                'The compound is fenced with a working gate and the caretaker lives on site.',
-          split_ok: false,
-          media: gallery(3),
-          passage: {
-            landmark: 'Beside the blue mosque, brown double gate.',
-            gate: 'The left gate — the right one is bolted.',
-            floor: 'First floor, room 3.',
-            steps: [
-              { text: 'From the KWASU main gate, walk south past the filling station.' },
-              { text: 'Turn right at the mosque; the compound is 40m down.', lat: 8.7109, lng: 4.4692 }
-            ]
-          }
-        }
-      }
+  var STEPS_12 = (function () {
+    var out = [];
+    for (var i = 1; i <= 12; i++) {
+      out.push({ text: 'Step ' + i + ': keep walking past the kiosk and turn at the fence.',
+                 lat: 8.71 + i / 1000, lng: 4.469 + i / 1000 });
+    }
+    return out;
+  })();
+
+  var DEMO_DESC = 'A quiet self-contain on Ilorin Close, two minutes past the second gate. New tiles, ' +
+    'a private bathroom and a prepaid meter so you only pay for what you use.\n' +
+    'The compound is fenced with a working gate and the caretaker lives on site.';
+
+  /* ---------- the matrix ----------------------------------------
+     FIELD → the states that field is resolved in. This is the list the
+     coverage check uses: every cell below must be exercised by at least
+     one case, and every pair a case declares must hold in the row that
+     case builds. */
+  var MATRIX = {
+    payload:   ['present', 'absent'],
+    name:      ['present', 'absent', 'empty', 'unbroken', 'exotic', 'huge'],
+    type:      ['present', 'absent', 'empty', 'long', 'exotic'],
+    rent:      ['present', 'absent', 'empty', 'formatted', 'zero', 'huge', 'junk'],
+    area:      ['present', 'absent', 'empty', 'exotic'],
+    rooms:     ['present', 'absent', 'empty', 'zero', 'huge'],
+    neg:       ['present', 'absent', 'empty', 'long', 'short'],
+    utilities: ['present', 'absent', 'empty', 'junk', 'huge', 'exotic', 'duplicate'],
+    desc:      ['present', 'absent', 'empty', 'huge', 'hostile', 'exotic'],
+    media:     ['present', 'single', 'absent', 'empty', 'junk', 'huge', 'exotic'],
+    passage:   ['present', 'absent', 'empty', 'junk', 'huge'],
+    pin:       ['present', 'absent', 'halfset', 'empty', 'wrongtype'],
+    tier:      ['one', 'two', 'high', 'absent', 'empty', 'wrongtype'],
+    split:     ['present', 'absent', 'true', 'wrongtype']
+  };
+
+  /* WHERE the page reads each field from — the same keys listing.html
+     resolves (payload first, then the row itself for the pin and tier). */
+  var READ = {
+    payload:   function (row) { return row.payload; },
+    name:      function (row) { return (row.payload || {}).prop_name; },
+    type:      function (row) { return (row.payload || {}).ty; },
+    rent:      function (row) { return (row.payload || {}).rent; },
+    area:      function (row) { return (row.payload || {}).ar; },
+    rooms:     function (row) {
+      var p = row.payload || {};
+      return (has(p, 'rm') || has(p, 'units') || has(p, 'avail'))
+        ? { rm: p.rm, units: p.units, avail: p.avail } : undefined;
     },
-
-    /* ---- the aggressive mix: several realistic failures in one row ---- */
-    worst: {
-      label: 'Worst case',
-      note: 'unbroken long name, formatted rent, ' +
-            'blank/number entries in ut, half-filled media entries, multi-script text, a long ' +
-            'negotiable note, an unformatted long name',
-      row: {
-        id: 'fx-worst-0001',
-        /* an unparseable tier must still read as a badge, never as "NaN" */
-        tier: 'verified',
-        latitude: 8.7113,
-        longitude: null,
-        payload: {
-          /* no maximum length is enforced anywhere in the dashboard or in
-             the column, so this is what an owner who types in caps with no
-             spaces produces — and nothing can break it */
-          prop_name: 'OLUWASEUNBABATUNDEADEGOKEMEMORIALSTUDENTLODGEANDSUITESSMALETE',
-          ty: 'Face-me-I-face-you, self-contained bathroom, shared kitchen',
-          /* a formatted price — what a hand-edited row or a CSV import looks like */
-          rent: '150,000',
-          ar: 'Àgọ́ Ọ̀jọ̀',
-          rm: '',
-          neg: 'Copies of the tenancy agreement, the receipts and a signed inventory list are required ' +
-               'before the keys change hands, and the landlord prefers a full-session payment upfront',
-          ut: ['Borehole water', '', null, 42, 'Prepaid meter',
-               'Standby generator with an automatic changeover switch',
-               'Security / gateman on duty every night including weekends'],
-          desc: DESC_LONG,
-          split_ok: 'yes',
-          /* half-filled media entries: one with no url at all, one with no type,
-             one video url that is not a YouTube link */
-          media: [
-            { type: 'image', url: '', label: 'empty url' },
-            { url: IMGS[1] },
-            { type: 'video', url: 'https://example.com/not-a-video.mp4', label: 'Uploaded tour' },
-            { type: 'image', url: IMGS[2], label: 'Third' }
-          ],
-          passage: {
-            landmark: 'Mobil filling station عند التقاطع, opposite the second gate',
-            gate: 42,
-            floor: null,
-            steps: [null, { text: '   ' }, { text: 'Turn right at the mosque', lat: 'x', lng: 'y' },
-                    'Go past the yellow kiosk and the compound is the third gate on the left']
-          }
-        }
-      }
+    neg:       function (row) { return (row.payload || {}).neg; },
+    utilities: function (row) { return (row.payload || {}).ut !== undefined && (row.payload || {}).ut !== null && (row.payload || {}).ut !== ''
+      ? (row.payload || {}).ut : (row.payload || {}).utilities; },
+    desc:      function (row) { return (row.payload || {}).desc; },
+    media:     function (row) { return (row.payload || {}).media; },
+    passage:   function (row) { return (row.payload || {}).passage; },
+    pin:       function (row) {
+      return (has(row, 'latitude') || has(row, 'longitude'))
+        ? { latitude: row.latitude, longitude: row.longitude } : undefined;
     },
+    tier:      function (row) { return row.tier; },
+    split:     function (row) { return (row.payload || {}).split_ok; }
+  };
 
-    /* ---- a half-set pin: latitude but no longitude ---- */
-    halfpos: {
-      label: 'Latitude only',
-      note: 'a pin was started and never finished — lat set, lng empty',
-      row: {
-        id: 'fx-halfpos-0001',
-        tier: 1,
-        latitude: 8.7113,
-        longitude: '',
-        payload: {
-          prop_name: 'Adebayo Lodge',
-          ty: 'Self-contain',
-          rent: '170000',
-          ar: 'Malete',
-          ut: ['Borehole water'],
-          desc: 'Pin was dropped but the longitude never saved.',
-          media: gallery(2)
-        }
-      }
+  /* ---------- the states ---------------------------------------- */
+
+  var ABSENT = { absent: true };                 /* "this key is not there at all" */
+  var has = (row, k) => Object.prototype.hasOwnProperty.call(row, k);
+  var isEmptyish = v =>
+    v === '' ||
+    (Array.isArray(v) && v.length === 0) ||
+    (v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0);
+
+  /* What each state MEANS, in one place, so the fixture and any consumer
+     read the same definition. `v` is what READ[field] returns; the field is
+     passed in because "empty" means three different things (an absent
+     payload, a pin with no numbers in it, a rooms line with no text). */
+  var STATE_TEST = {
+    present:   function (v, field) {
+      if (field === 'payload') return v !== undefined && v !== null;
+      if (field === 'pin') return !!v && isFinite(parseFloat(v.latitude)) && isFinite(parseFloat(v.longitude));
+      if (field === 'rooms') return !!v && typeof v.rm === 'string' && v.rm.trim() !== '';
+      return v !== undefined && v !== null && !isEmptyish(v) && !(v && v.absent);
     },
-
-    /* ---- no payload at all ---- */
-    empty: {
-      label: 'Empty',
-      note: 'no payload key, no media, no pin — every optional field absent',
-      row: {
-        id: 'fx-empty-0001'
+    absent:    function (v) { return v === undefined || (v && v.absent); },
+    empty:     function (v, field) {
+      if (v === undefined || v === null) return false;
+      if (field === 'pin') {
+        return (v.latitude === '' || v.latitude === null || v.latitude === undefined) &&
+               (v.longitude === '' || v.longitude === null || v.longitude === undefined);
       }
+      if (field === 'rooms') return v.rm === '';
+      return isEmptyish(v);
     },
-
-    /* ---- exactly one of everything ---- */
-    one: {
-      label: 'One item',
-      note: 'a single photo, a single feature — every count is 1',
-      row: {
-        id: 'fx-one-0001',
-        tier: 1,
-        latitude: 8.7113,
-        longitude: 4.4697,
-        payload: {
-          prop_name: 'Jo Lodge',
-          ty: 'Hostel bunk',
-          rent: '95000',
-          ar: 'Malete',
-          ut: ['Borehole water'],
-          desc: 'One room, one photo.',
-          media: [{ type: 'image', url: IMGS[0], label: 'Cover photo' }]
-        }
-      }
+    unbroken:  v => typeof v === 'string' && !/\s/.test(v) && v.length >= 40,
+    /* a value that carries its own length, either way */
+    long:      function (v, field) {
+      if (field === 'neg') return typeof v === 'string' && v.length >= 100;
+      return typeof v === 'string' && v.length >= 30;
     },
-
-    /* ---- the realistic upper bound ---- */
-    huge: {
-      label: '1,000-row scale list',
-      note: '50 media items, 40 features, a 12-step passage, a nine-figure rent and a very long description',
-      row: {
-        id: 'fx-huge-0001',
-        tier: 3,
-        latitude: 8.7113,
-        longitude: 4.4697,
-        payload: {
-          prop_name: 'Grand Imperial Student Village Phase 2 Annex Extension',
-          ty: 'Face-me-I-face-you',
-          rent: '123456789',
-          ar: 'Malete',
-          rm: '40 rooms available',
-          neg: 'No',
-          ut: (function () {
-            var out = [];
-            for (var i = 1; i <= 40; i++) out.push('Amenity number ' + i + ' with a fairly long label');
-            return out;
-          })(),
-          desc: DESC_LONG + '\n\n' + DESC_LONG,
-          split_ok: true,
-          media: gallery(49).concat([{ type: 'video', url: TOUR, label: 'Video tour' }]),
-          passage: {
-            landmark: 'At the junction by the big mast, brown and cream building.',
-            gate: 'Second gate on the right after the mast.',
-            floor: 'Block C, first floor.',
-            steps: (function () {
-              var out = [];
-              for (var i = 1; i <= 12; i++) {
-                out.push({ text: 'Step ' + i + ': keep walking past the kiosk and turn at the fence.',
-                           lat: 8.71 + i / 1000, lng: 4.469 + i / 1000 });
-              }
-              return out;
-            })()
-          }
-        }
+    short:     v => typeof v === 'string' && v.trim() !== '' && !/\s/.test(v) && v.length <= 12,
+    hostile:   v => /<script|["']/.test(String(v)),
+    /* non-Latin text, wherever it sits: a string, or a label inside a list
+       of media objects (the gallery is the field that carries it there) */
+    exotic:    function (v) {
+      var s = (v !== null && typeof v === 'object') ? JSON.stringify(v) : String(v);
+      return /[^\u0000-\u024F]/.test(s) || /[\u00C0-\u024F]/.test(s);
+    },
+    huge:      function (v, field) {
+      if (field === 'name') return typeof v === 'string' && v.length >= 40;
+      if (field === 'rent') return Number(String(v).replace(/[^0-9]/g, '')) >= 99999999;
+      if (field === 'rooms') return !!v && Number(v.units) >= 40;
+      if (field === 'passage') return !!v && Array.isArray(v.steps) && v.steps.length >= 12;
+      if (Array.isArray(v)) return v.length >= 40;
+      if (typeof v === 'string') return v.length >= 1000;
+      return false;
+    },
+    formatted: v => typeof v === 'string' && /[0-9]/.test(v) && /[^0-9]/.test(v),
+    junk:      function (v, field) {
+      if (field === 'utilities') return Array.isArray(v) && v.some(it => typeof it !== 'string' || it.trim() === '');
+      if (field === 'media') return Array.isArray(v) && v.some(it => !it || !it.url);
+      if (field === 'passage') {
+        return !!v && (!Array.isArray(v.steps) ||
+          v.steps.some(s => !s || typeof s === 'string' || !String(s.text || '').trim()));
       }
+      if (field === 'rent') return typeof v === 'string' && !/[0-9]/.test(v);
+      return false;
+    },
+    zero:      function (v, field) {
+      if (field === 'rooms') return !!v && Number(v.units) === 0;
+      return String(v).trim() !== '' && Number(String(v).replace(/[^0-9.]/g, '')) === 0;
+    },
+    single:    v => Array.isArray(v) && v.length === 1,
+    duplicate: v => Array.isArray(v) && new Set(v.map(s => String(s).toLowerCase().trim())).size < v.length,
+    halfset:   v => !!v && !!v.latitude && (v.longitude === '' || v.longitude === null || v.longitude === undefined),
+    true:      function (v, field) { return field === 'split' && v === true; },
+    /* the badge has three branches, so tier is three cells, not one */
+    one:       function (v, field) { return field === 'tier' && Number(v) === 1; },
+    two:       function (v, field) { return field === 'tier' && Number(v) === 2; },
+    high:      function (v, field) { return field === 'tier' && Number(v) >= 3; },
+    wrongtype: function (v, field) {
+      if (field === 'pin') return !!v && (!isFinite(parseFloat(v.latitude)) || !isFinite(parseFloat(v.longitude)));
+      if (field === 'split') return typeof v === 'string' && v !== '';
+      if (field === 'tier') return typeof v === 'string' && v !== '' && !/^[0-9]+$/.test(v);
+      return false;
     }
   };
 
-  var ORDER = ['demo', 'worst', 'halfpos', 'empty', 'one', 'huge'];
+  /* ---------- the builders ---------------------------------------
+     One value per (field · state). A case is a list of pairs, and its row
+     is assembled from these — the declaration IS the data. */
+  var B = {
+    payload: {
+      present: () => ({}),
+      absent: () => ABSENT
+    },
+    name: {
+      present: () => 'Ilorin Close Self-Contain',
+      absent: () => ABSENT,
+      empty: () => '',
+      unbroken: () => 'OLUWASEUNBABATUNDEADEGOKEMEMORIALSTUDENTLODGEANDSUITESSMALETE',
+      exotic: () => 'Ọ̀pẹ́ Ọ̀gá Students Lodge 🏠',
+      huge: () => 'Grand Imperial Student Village Phase 2 Annex Extension'
+    },
+    type: {
+      present: () => 'Self-contain',
+      absent: () => ABSENT,
+      empty: () => '',
+      long: () => 'Face-me-I-face-you, self-contained bathroom, shared kitchen',
+      exotic: () => 'غرفة ذاتية — Self-contain 🏠'
+    },
+    rent: {
+      present: () => '185000',
+      absent: () => ABSENT,
+      empty: () => '',
+      formatted: () => '150,000',
+      zero: () => '0',
+      huge: () => '123456789',
+      junk: () => 'Call for price'
+    },
+    area: {
+      present: () => 'Malete',
+      absent: () => ABSENT,
+      empty: () => '',
+      exotic: () => 'Àgọ́ Ọ̀jọ̀'
+    },
+    rooms: {
+      present: () => ({ rm: '1 room', units: 1, avail: 'vacant' }),
+      absent: () => ABSENT,
+      empty: () => ({ rm: '', units: null, avail: '' }),
+      zero: () => ({ rm: 'Fully occupied', units: 0, avail: 'occupied' }),
+      huge: () => ({ rm: '40 rooms available', units: 40, avail: 'vacant' })
+    },
+    neg: {
+      present: () => 'Negotiable on a full-session payment',
+      absent: () => ABSENT,
+      empty: () => '',
+      long: () => 'Copies of the tenancy agreement, the receipts and a signed inventory list are required ' +
+                   'before the keys change hands, and the landlord prefers a full-session payment upfront',
+      short: () => 'No'
+    },
+    utilities: {
+      present: () => ['Borehole water', 'NEPA connection', 'Prepaid meter', 'Security / gateman'],
+      absent: () => ABSENT,
+      empty: () => [],
+      junk: () => ['Borehole water', '', null, 42, 'Prepaid meter',
+        'Standby generator with an automatic changeover switch',
+        'Security / gateman on duty every night including weekends'],
+      huge: () => UTILITIES_40,
+      exotic: () => ['سخان ماء', 'Ọ̀pẹ́ borehole 🏠', 'Borehole water'],
+      duplicate: () => ['Borehole water', 'borehole water', 'NEPA connection']
+    },
+    desc: {
+      present: () => DEMO_DESC,
+      absent: () => ABSENT,
+      empty: () => '',
+      huge: () => DESC_LONG + '\n\n' + DESC_LONG,
+      hostile: () => DESC_LONG,
+      exotic: () => 'شقة هادئة قرب البوابة، مياه جارية وعداد مسبق الدفع. 🏠\n' +
+                    'Ọ̀pẹ́ Lodge — the caretaker lives on site and speaks Yoruba and Arabic.'
+    },
+    media: {
+      present: () => gallery(3),
+      single: () => [{ type: 'image', url: IMGS[0], label: 'Cover photo' }],
+      absent: () => ABSENT,
+      empty: () => [],
+      junk: () => [
+        { type: 'image', url: '', label: 'empty url' },
+        { url: IMGS[1] },
+        { type: 'video', url: 'https://example.com/not-a-video.mp4', label: 'Uploaded tour' },
+        { type: 'image', url: IMGS[2], label: 'Third' }
+      ],
+      huge: () => gallery(49).concat([{ type: 'video', url: TOUR, label: 'Video tour' }]),
+      exotic: () => [
+        { type: 'image', url: IMGS[3] + '?rtl=1', label: 'الصورة الأولى' },
+        { type: 'image', url: IMGS[4] + '?emoji=1', label: 'Ọ̀pẹ́ 🏠' },
+        { type: 'video', url: 'https://youtu.be/aqz-KE-bpKQ?si=Xk3r9Wq1ZvLmNpQr', label: 'جولة بالفيديو' }
+      ]
+    },
+    passage: {
+      present: () => ({
+        landmark: 'Beside the blue mosque, brown double gate.',
+        gate: 'The left gate — the right one is bolted.',
+        floor: 'First floor, room 3.',
+        steps: [
+          { text: 'From the KWASU main gate, walk south past the filling station.' },
+          { text: 'Turn right at the mosque; the compound is 40m down.', lat: 8.7109, lng: 4.4692 }
+        ]
+      }),
+      absent: () => ABSENT,
+      empty: () => ({}),
+      junk: () => ({
+        landmark: 'Mobil filling station عند التقاطع, opposite the second gate',
+        gate: 42,
+        floor: null,
+        steps: [null, { text: '   ' }, { text: 'Turn right at the mosque', lat: 'x', lng: 'y' },
+                'Go past the yellow kiosk and the compound is the third gate on the left']
+      }),
+      huge: () => ({
+        landmark: 'At the junction by the big mast, brown and cream building.',
+        gate: 'Second gate on the right after the mast.',
+        floor: 'Block C, first floor.',
+        steps: STEPS_12
+      })
+    },
+    pin: {
+      present: () => ({ latitude: 8.7113, longitude: 4.4697 }),
+      absent: () => ABSENT,
+      halfset: () => ({ latitude: 8.7113, longitude: '' }),
+      empty: () => ({ latitude: '', longitude: '' }),
+      wrongtype: () => ({ latitude: 'x', longitude: 'y' })
+    },
+    /* the badge has three branches (>=2 · 1 · anything else), so the three
+       numbers are three cells rather than one "present" */
+    tier: {
+      one: () => 1,
+      two: () => 2,
+      high: () => 3,
+      absent: () => ABSENT,
+      empty: () => '',
+      wrongtype: () => 'verified'
+    },
+    split: {
+      present: () => false,
+      absent: () => ABSENT,
+      true: () => true,
+      wrongtype: () => 'yes'
+    }
+  };
 
-  var API = { cases: CASES, order: ORDER, images: IMGS, tour: TOUR };
+  /* a fallback so a case can name any cell of the matrix without another
+     pair in the same case colliding with it */
+  var PAYLOAD_KEY = {
+    name: 'prop_name', type: 'ty', rent: 'rent', area: 'ar', rooms: null, neg: 'neg',
+    utilities: null, desc: 'desc', media: 'media', passage: 'passage', split: 'split_ok'
+  };
+
+  function buildRow(pairs) {
+    var row = { id: 'fx-generated-0001' };
+    var payload = {};
+    var hasPayload = pairs.some(p => p[0] === 'payload');
+    pairs.forEach(function (pair) {
+      var field = pair[0], state = pair[1];
+      var val = B[field][state](field);
+      if (field === 'payload') { if (val === ABSENT) payload = null; return; }
+      if (val === ABSENT) return;
+      if (field === 'pin') { row.latitude = val.latitude; row.longitude = val.longitude; return; }
+      if (field === 'tier') { row.tier = val; return; }
+      if (field === 'rooms') { payload.rm = val.rm; payload.units = val.units; payload.avail = val.avail; return; }
+      if (field === 'utilities') { payload.ut = val; payload.utilities = []; return; }
+      if (field === 'media') {
+        payload.media = val;
+        /* the page falls back to photo/video when media is missing or empty —
+           that fallback is the state being exercised, so it is declared as one */
+        if (state === 'absent' || state === 'empty') {
+          payload.photo = IMGS[0];
+          payload.video = '';
+          payload.video_url = '';
+        }
+        return;
+      }
+      var key = PAYLOAD_KEY[field];
+      if (key) payload[key] = val;
+    });
+    if (hasPayload && payload === null) return row;      /* the empty case: no payload key at all */
+    row.payload = payload;
+    return row;
+  }
+
+  /* ---------- the cases ------------------------------------------
+     Each one declares the pairs it is there to exercise. `worst` and
+     `huge` keep the values they have always had (they are quoted in
+     dev/admin-test-report.md and driven by test-all's fault modes). */
+  var CASE_DEFS = {
+
+    demo: {
+      label: 'Demo data',
+      note: 'the happy path — everything filled in, three photos',
+      pairs: [
+        ['payload', 'present'], ['name', 'present'], ['type', 'present'], ['rent', 'present'],
+        ['area', 'present'], ['rooms', 'present'], ['neg', 'present'], ['utilities', 'present'],
+        ['desc', 'present'], ['media', 'present'], ['passage', 'present'], ['pin', 'present'],
+        ['tier', 'two'], ['split', 'present']
+      ]
+    },
+
+    worst: {
+      label: 'Worst case',
+      note: 'unbroken long name, formatted rent, blank/number entries in ut, half-filled media ' +
+            'entries, multi-script text, a long negotiable note, an unparseable tier',
+      pairs: [
+        ['payload', 'present'], ['name', 'unbroken'], ['type', 'long'], ['rent', 'formatted'],
+        ['area', 'exotic'], ['rooms', 'empty'], ['neg', 'long'], ['utilities', 'junk'],
+        ['desc', 'hostile'], ['media', 'junk'], ['passage', 'junk'], ['pin', 'halfset'],
+        ['tier', 'wrongtype'], ['split', 'wrongtype']
+      ]
+    },
+
+    halfpos: {
+      label: 'Latitude only',
+      note: 'a pin was started and never finished — lat set, lng empty',
+      pairs: [
+        ['payload', 'present'], ['name', 'present'], ['type', 'present'], ['rent', 'present'],
+        ['area', 'present'], ['utilities', 'present'], ['desc', 'present'], ['media', 'present'],
+        ['pin', 'halfset'], ['tier', 'one']
+      ]
+    },
+
+    empty: {
+      label: 'Empty',
+      note: 'no payload key, no media, no pin — every optional field absent',
+      pairs: [
+        ['payload', 'absent'], ['name', 'absent'], ['type', 'absent'], ['rent', 'absent'],
+        ['area', 'absent'], ['rooms', 'absent'], ['neg', 'absent'], ['utilities', 'absent'],
+        ['desc', 'absent'], ['media', 'absent'], ['passage', 'absent'], ['pin', 'absent'],
+        ['tier', 'absent']
+      ]
+    },
+
+    one: {
+      label: 'One item',
+      note: 'a single photo, a single feature — every count is 1',
+      pairs: [
+        ['payload', 'present'], ['name', 'present'], ['type', 'present'], ['rent', 'present'],
+        ['area', 'present'], ['rooms', 'present'], ['utilities', 'present'], ['desc', 'present'],
+        ['media', 'single'], ['pin', 'present'], ['tier', 'one']
+      ]
+    },
+
+    huge: {
+      label: '1,000-row scale list',
+      note: '50 media items, 40 features, a 12-step passage, a nine-figure rent and a very long description',
+      pairs: [
+        ['payload', 'present'], ['name', 'huge'], ['type', 'long'], ['rent', 'huge'],
+        ['area', 'present'], ['rooms', 'huge'], ['neg', 'short'], ['utilities', 'huge'],
+        ['desc', 'huge'], ['media', 'huge'], ['passage', 'huge'], ['pin', 'present'],
+        ['tier', 'high'], ['split', 'true']
+      ]
+    },
+
+    exotic: {
+      label: 'RTL + emoji',
+      note: 'a non-Latin name, type, area, description and gallery labels, rent 0, and a youtu.be share link',
+      pairs: [
+        ['payload', 'present'], ['name', 'exotic'], ['type', 'exotic'], ['rent', 'zero'],
+        ['media', 'exotic'], ['utilities', 'exotic'], ['desc', 'exotic'], ['pin', 'present']
+      ]
+    },
+
+    shapes: {
+      label: 'Empty shapes',
+      note: 'keys present but empty — empty strings, empty lists, half-filled forms',
+      pairs: [
+        ['payload', 'present'], ['name', 'empty'], ['type', 'empty'], ['rent', 'empty'],
+        ['area', 'empty'], ['rooms', 'zero'], ['neg', 'empty'], ['utilities', 'empty'],
+        ['desc', 'empty'], ['media', 'absent'], ['passage', 'empty'], ['pin', 'empty'],
+        ['tier', 'empty'], ['split', 'absent']
+      ]
+    },
+
+    oddities: {
+      label: 'Odd shapes',
+      note: 'values of the wrong type, a duplicate amenity, and a list with no photo at all',
+      pairs: [
+        ['payload', 'present'], ['name', 'present'], ['rent', 'junk'], ['utilities', 'duplicate'],
+        ['desc', 'present'], ['media', 'empty'], ['passage', 'absent'], ['pin', 'wrongtype'],
+        ['tier', 'one']
+      ]
+    }
+  };
+
+  var ORDER = ['demo', 'worst', 'halfpos', 'empty', 'one', 'huge', 'exotic', 'shapes', 'oddities'];
+
+  /* ---------- the assembled fixture ---------- */
+
+  var CASES = {};
+  ORDER.forEach(function (key) {
+    var def = CASE_DEFS[key];
+    var row = buildRow(def.pairs);
+    row.id = 'fx-' + key + '-0001';
+    CASES[key] = {
+      label: def.label,
+      note: def.note,
+      pairs: def.pairs,
+      row: row
+    };
+  });
+
+  /* ---------- the records, checkable from Node and from the page ---------- */
+
+  function covered(matrixOnly) {
+    var seen = {};
+    ORDER.forEach(function (key) {
+      CASE_DEFS[key].pairs.forEach(function (p) { seen[p[0] + '·' + p[1]] = key; });
+    });
+    return seen;
+  }
+
+  /* Every pair a case declares must hold in the row it built; no two pairs
+     of one case may collide on the same field; every declared cell must be
+     exercised; and no pair may name a cell the matrix does not declare. */
+  function violations() {
+    var out = [];
+    var seen = covered();
+
+    ORDER.forEach(function (key) {
+      var def = CASE_DEFS[key], row = CASES[key].row;
+      var byField = {};
+      def.pairs.forEach(function (p) {
+        var field = p[0], state = p[1];
+        if (!MATRIX[field] || MATRIX[field].indexOf(state) === -1) {
+          out.push(key + ': ' + field + '·' + state + ' is not a cell of the matrix');
+        }
+        if (byField[field]) {
+          out.push(key + ': ' + field + ' is declared twice (' + byField[field] + ' and ' + state + ')');
+        }
+        byField[field] = state;
+
+        var v = READ[field](row);
+        var test = STATE_TEST[state];
+        if (!test) { out.push(key + ': no test for state "' + state + '"'); return; }
+        if (!test(v, field)) {
+          out.push(key + ': claims ' + field + '·' + state + ' but the row does not hold it (' +
+            JSON.stringify(v === undefined ? null : v).slice(0, 60) + ')');
+        }
+      });
+      if (def.pairs.length !== (CASES[key].pairs || []).length) {
+        out.push(key + ': the case record lost its pairs');
+      }
+    });
+
+    Object.keys(MATRIX).forEach(function (field) {
+      MATRIX[field].forEach(function (state) {
+        if (!seen[field + '·' + state]) out.push('no case exercises ' + field + '·' + state);
+      });
+    });
+    return out;
+  }
+
+  var API = {
+    cases: CASES,
+    order: ORDER,
+    images: IMGS,
+    tour: TOUR,
+    matrix: MATRIX,
+    states: STATE_TEST,
+    read: READ,
+    plan: function () {
+      return {
+        fields: Object.keys(MATRIX),
+        matrix: MATRIX,
+        cells: Object.keys(MATRIX).reduce(function (n, f) { return n + MATRIX[f].length; }, 0),
+        coverage: covered(),
+        cases: ORDER.map(function (key) {
+          return {
+            key: key,
+            label: CASES[key].label,
+            note: CASES[key].note,
+            id: CASES[key].row.id,
+            pairs: CASES[key].pairs.map(function (p) { return { field: p[0], state: p[1] }; })
+          };
+        }),
+        violations: violations()
+      };
+    },
+    holds: function (key, field, state) {
+      return !!STATE_TEST[state] && !!STATE_TEST[state](READ[field](CASES[key].row), field);
+    }
+  };
   global.ARZUZ_LISTING_FIXTURE = API;
 
   /* Node reads the datasets and stops here. */
@@ -259,7 +622,8 @@
     overflow: null,
     thumbsPositioned: null,
     contentChars: 0,
-    errorShown: null
+    errorShown: null,
+    fixtureViolations: null
   };
 
   function diag() {
@@ -405,6 +769,18 @@
 
   /* -- the switcher: dev chrome, not part of the design under test -- */
   function switcher() {
+    /* the fixture's own consistency check, on screen: a broken pairing must
+       not look like a page bug */
+    try {
+      var bad = violations();
+      DIAG.fixtureViolations = bad.length ? bad : null;
+      diag();
+      if (bad.length) global.console.error('[listing-fixture] ' + bad.length +
+        ' violation(s): ' + bad.slice(0, 4).join(' · '));
+    } catch (e) {
+      global.console.error('[listing-fixture] violations() threw: ' + e.message);
+    }
+
     var bar = document.createElement('div');
     bar.setAttribute('data-fx-chrome', '1');
     bar.style.cssText = 'position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:2147483647;' +
@@ -420,7 +796,8 @@
       var a = document.createElement('a');
       a.href = '?case=' + k;
       a.textContent = CASES[k].label;
-      a.title = CASES[k].note;
+      a.title = CASES[k].note + '  ·  exercises ' +
+        CASES[k].pairs.map(function (p) { return p[0] + '·' + p[1]; }).join(', ');
       a.setAttribute('data-fx-case', k);
       a.style.cssText = 'text-decoration:none;padding:6px 11px;border-radius:999px;' +
         (on ? 'background:#fff;color:#111827;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.16)'
