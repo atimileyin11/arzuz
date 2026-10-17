@@ -355,11 +355,13 @@ submission lost — both are caught before students are told the form is live.
 > `scripts/test-api-errors.mjs` — an exemption that is now ASSERTED rather than trusted, since a
 > module that calls one of the four timers is a door nobody has given a class to — and
 > `test:verify-queue` is in `ORDER` in `dev/run-tests.mjs`, so the suite that proves the queue's own
-> clock and ordering now runs in the gate. A full `npm test` on this tree reports **25 of 25 suites
+> clock and ordering now runs in the gate. A full `npm test` on this tree reports **27 of 27 suites
 > passed, nothing failed**: `test:api-errors` 101/101, `test:verify-queue` 59/59, `sql:guards`
 > 108/108, `sql:proof` 302/302, `test:admin` 572/572, and the submission confirmation's browser
 > suite (`scripts/test-confirm-render.mjs`, 9 door answers of which 3 are held for a retry) 233/233.
-> The table below still holds this pass's per-row numbers, which are older than these.
+> `npm run sql:mutate` reports **16 of 16 held, 13 mutations each caught on a healthy tree**, the two
+> newest of which break guards in `supabase-verification-queue.sql`. The table below still holds this
+> pass's per-row numbers, which are older than these.
 
 | Suite | Result | What it covers for this work |
 | --- | --- | --- |
