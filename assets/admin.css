@@ -389,6 +389,37 @@ body.side-open .side-scrim { opacity: 1; pointer-events: auto; }
 }
 .topbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
+/* The hourly check's one line, under the topbar.
+
+   A dot is the only colour: green when every check was accepted inside
+   the ninety-minute grace, amber when one is stale, refused or was
+   never recorded. The sentence is the endpoint's own — this block
+   styles it and decides nothing, so there is one definition of "stale"
+   and it lives beside the all-clear that uses the same number. */
+.health-line {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 10px 20px 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--atext3);
+}
+.health-line[hidden] { display: none; }
+.health-line .health-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--atext3);
+  transform: translateY(-1px);
+}
+.health-line.ok .health-dot { background: var(--aok); }
+.health-line.warn .health-dot { background: var(--awarn); }
+.health-line .health-text { min-width: 0; }
+
 .dash-wrap { max-width: 1240px; margin: 0 auto; padding: 22px 20px 90px; }
 
 /* ---------------- 6. Overview ---------------- */

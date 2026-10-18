@@ -39,13 +39,18 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { probeDatabase } = require('../netlify/functions/lib/database-probe.js');
+const { probePaystack, probeTelegram } = require('../netlify/functions/lib/credential-probes.js');
 const { recoveryFrom, GRACE_MS } = require('../netlify/functions/lib/health-state.js');
 const health = require('../netlify/functions/database-health.js');
+const notify = require('../netlify/functions/notify.js');
 
 const PROJECT = 'https://standin.supabase.co';
 const SITE = 'https://arzuz.test';
 const TRUE_KEY = 'sb_secret_TESTONLY_the_one_project_knows_4d1a';
 const OTHER_KEY = 'sb_secret_TESTONLY_a_stale_one_9f2b';
+const PAYSTACK_KEY = 'sk_test_TESTONLY_paystack_4d1a';
+const TELEGRAM_TOKEN = 'stand-in-token';
+const CHAT_ID = '-1000000000000';
 
 let pass = 0;
 const failures = [];
@@ -76,9 +81,25 @@ const world = {
   projectDown: false,
   siteDown: false,
   requests: [],
+  /* how the other two providers answer */
+  paystackMode: 'refuses',  // refuses | blind
+  paystackStatus: 200,
+  paystackDown: false,
+  botMode: 'refuses',       // refuses | blind
+  telegramDown: false,
+  chatUnknown: false,
+  probes: [],
+  dropped: [],
+  mail: [],
+  /* alerts that reached Telegram (bodies), and the order of events */
   telegram: [],
-  /* the marker the healthy hour keeps: null = no row yet */
+  /* the marker the healthy hour keeps: null = no row yet. `marker` is the
+     DATABASE’s timestamp and `checks` holds the other two, so a test that
+     only cares about the database still reads like it used to. */
   marker: null,
+  checks: {},
+  failing: {},
+  legacyMarker: null,
   stateMissing: false,
   writes: [],
   events: [],
@@ -94,14 +115,58 @@ function resp(status, obj, type) {
   };
 }
 
+/* Telegram: getMe and getChat are PROBES; only sendMessage is an alert.
+   A refused token drops the send exactly as the real API does, which is
+   the case the email fallback exists for. */
+function telegramAnswer(u, init) {
+  const after = u.slice(u.indexOf('/bot') + 4);
+  const cut = after.indexOf('/');
+  const token = after.slice(0, cut);
+  const method = after.slice(cut + 1).split('?')[0];
+  world.probes.push('telegram:' + method);
+
+  if (world.telegramDown) throw new Error('ETIMEDOUT api.telegram.org');
+  const known = world.botMode === 'blind' || token === TELEGRAM_TOKEN;
+  if (!known) {
+    if (method === 'sendMessage') world.dropped.push('sendMessage');
+    return resp(401, { ok: false, error_code: 401, description: 'Unauthorized' });
+  }
+  if (method === 'sendMessage') {
+    world.telegram.push(init.body ? String(init.body) : '');
+    world.events.push('alert');
+    return resp(200, { ok: true, result: {} });
+  }
+  if (method === 'getMe') return resp(200, { ok: true, result: { id: 1, is_bot: true, username: 'standin_bot' } });
+  if (method === 'getChat') {
+    if (world.chatUnknown) return resp(400, { ok: false, error_code: 400, description: 'Bad Request: chat not found' });
+    return resp(200, { ok: true, result: { id: Number(CHAT_ID) } });
+  }
+  return resp(404, { ok: false, error_code: 404, description: 'Not Found' });
+}
+
+/* Paystack: a balance read, with the same tamper rule. */
+function paystackAnswer(u, init) {
+  world.probes.push('paystack');
+  if (world.paystackDown) throw new Error('ENOTFOUND api.paystack.co');
+  if (world.paystackStatus !== 200) return resp(world.paystackStatus, { status: false, message: 'nope' });
+
+  const auth = String((init.headers && (init.headers.Authorization || init.headers.authorization)) || '');
+  const key = auth.replace(/^Bearer\s+/i, '');
+  const known = world.paystackMode === 'blind' || key === PAYSTACK_KEY;
+  if (!known) return resp(401, { status: false, message: 'Invalid key' });
+  return resp(200, { status: true, data: [{ currency: 'NGN', balance: 0 }] });
+}
+
 global.fetch = async function (url, init = {}) {
   const u = String(url);
   world.requests.push(u + ' ' + String((init.headers && (init.headers.apikey || '')) || '').slice(0, 12));
 
-  if (u.indexOf('api.telegram.org') !== -1) {
-    world.telegram.push(init.body ? String(init.body) : '');
-    world.events.push('alert');
-    return resp(200, { ok: true });
+  if (u.indexOf('api.telegram.org') !== -1) return telegramAnswer(u, init);
+  if (u.indexOf('api.paystack.co') !== -1) return paystackAnswer(u, init);
+
+  if (u.indexOf('api.resend.com') !== -1) {
+    try { world.mail.push(JSON.parse(String(init.body || '{}'))); } catch (_) { world.mail.push({}); }
+    return resp(200, { id: 'standin-mail' });
   }
 
   if (u.indexOf(PROJECT + '/rest/v1/') !== -1) {
@@ -122,13 +187,24 @@ global.fetch = async function (url, init = {}) {
       world.events.push('mark');
       try {
         const row = JSON.parse(String(init.body || '[]'))[0];
-        world.marker = (row && row.value && row.value.last_ok_at) || null;
+        const value = (row && row.value) || {};
+        world.checks = (value.checks && typeof value.checks === 'object') ? value.checks : {};
+        world.failing = (value.failing && typeof value.failing === 'object') ? value.failing : {};
+        world.marker = world.checks.database || value.last_ok_at || null;
       } catch (_) { /* leave the marker alone */ }
       return resp(201, '');
     }
     if (isMarkerRead) {
-      return resp(200, world.marker === null ? [] :
-        [{ key: 'ops_database_health', value: { last_ok_at: world.marker } }]);
+      if (world.legacyMarker) {
+        return resp(200, [{ key: 'ops_database_health', value: { last_ok_at: world.legacyMarker } }]);
+      }
+      const value = { checks: Object.assign({}, world.checks), failing: Object.assign({}, world.failing) };
+      if (world.marker) {
+        value.checks.database = world.marker;
+        value.last_ok_at = world.marker;
+      }
+      const empty = !Object.keys(value.checks).length && !Object.keys(value.failing).length;
+      return resp(200, empty ? [] : [{ key: 'ops_database_health', value: value }]);
     }
 
     return resp(200, [{ key: 'care_pass_price_kobo' }]);
@@ -151,11 +227,27 @@ function reset(over) {
   world.projectDown = false;
   world.siteDown = false;
   world.requests = [];
+  world.paystackMode = 'refuses';
+  world.paystackStatus = 200;
+  world.paystackDown = false;
+  world.botMode = 'refuses';
+  world.telegramDown = false;
+  world.chatUnknown = false;
+  world.probes = [];
+  world.dropped = [];
+  world.mail = [];
   world.telegram = [];
   world.marker = null;
+  world.checks = {};
+  world.failing = {};
+  world.legacyMarker = null;
   world.stateMissing = false;
   world.writes = [];
   world.events = [];
+  /* The alert ceiling is per instance and per minute, and this suite
+     files more than a real outage ever would. Cleared so a test about
+     the FIRST message is not measuring the ceiling. */
+  notify.resetServerAlertBudget();
   world.finance = { status: 503, body: { error: 'The Care Pass is not on sale yet', kind: 'not-ready' } };
   world.care = { status: 404, body: { error: 'We do not recognise that Care link. Open it exactly as it arrived.', kind: 'rejected' } };
   Object.assign(world, over || {});
@@ -266,11 +358,23 @@ await check('with no key at all there is no request, and the stage says so', asy
 
 console.log('\ndatabase-health \u2014 what a person is told\n');
 
-const TELEGRAM = { TELEGRAM_BOT_TOKEN: 'stand-in-token', TELEGRAM_CHAT_ID: 'stand-in-chat' };
+const TELEGRAM = {
+  TELEGRAM_BOT_TOKEN: TELEGRAM_TOKEN,
+  TELEGRAM_CHAT_ID: CHAT_ID,
+  PAYSTACK_SECRET_KEY: PAYSTACK_KEY,
+};
 
-async function runHandler(env) {
+/* Every handler run gets all three credentials set, because that is the
+   deploy this suite is describing. Pass `{ NAME: null }` to describe a
+   deploy that does not have one. */
+async function runHandler(over) {
+  const o = over || {};
   const saved = {};
-  Object.keys(TELEGRAM).forEach((k) => { saved[k] = process.env[k]; process.env[k] = TELEGRAM[k]; });
+  Object.keys(TELEGRAM).forEach((k) => {
+    saved[k] = process.env[k];
+    if (Object.prototype.hasOwnProperty.call(o, k) && o[k] === null) delete process.env[k];
+    else process.env[k] = Object.prototype.hasOwnProperty.call(o, k) ? o[k] : TELEGRAM[k];
+  });
   try {
     const res = await health.handler();
     return { res: res, threw: null };
@@ -374,15 +478,38 @@ async function withProject(key, fn) {
 
 const hoursAgo = (h) => new Date(Date.now() - h * 3600 * 1000).toISOString();
 
-await check('the boundary is TWO missed hours: exactly two says nothing, two hours and a second does', async () => {
+await check('the boundary is past one interval: exactly ninety minutes says nothing, a second over does', async () => {
   const now = new Date('2026-10-18T12:00:00Z');
   const at = (ms) => new Date(now.getTime() - ms);
   const edge = recoveryFrom({ known: true, lastOkAt: at(GRACE_MS) }, now);
   const over = recoveryFrom({ known: true, lastOkAt: at(GRACE_MS + 1000) }, now);
   const blind = recoveryFrom({ known: false, reason: 'no table' }, now);
-  if (edge.send !== false) return 'a two-hour gap fired an all-clear';
+  if (edge.send !== false) return 'a ninety-minute gap fired an all-clear';
   if (over.send !== true) return 'a real gap did not fire';
   if (blind.send !== false || !blind.reason) return 'an unknown state invented a recovery: ' + JSON.stringify(blind);
+  return true;
+});
+
+/* The shortest real outage, which the first threshold missed: healthy at
+   10:00, refused at 11:00 (the alert lands), fixed, green at 12:00 — a
+   gap of just under two hours because the next run lands a few minutes
+   early. One whole run was missed, and the team must hear that it ended.
+   1.9h is deliberate: it sits between the ninety-minute threshold and
+   the two hours the first version used, so a "two missed hours" rule
+   stays silent here and is caught. */
+await check('a ONE-RUN outage \u2014 one whole hourly check missed \u2014 still gets its all-clear', async () => {
+  reset({ marker: hoursAgo(1.9) });
+  const out = await withProject(TRUE_KEY, () => runHandler());
+  if (out.threw) return 'the recovery run threw: ' + out.threw.message;
+  if (world.telegram.length !== 1) return 'the shortest outage ended in silence: ' + world.telegram.length + ' messages';
+  return /reach its database again/.test(world.telegram[0]) ? true : world.telegram[0].slice(0, 200);
+});
+
+await check('a run that is half an hour late is not an outage', async () => {
+  reset({ marker: hoursAgo(1.4) });
+  const out = await withProject(TRUE_KEY, () => runHandler());
+  if (out.threw) return out.threw.message;
+  if (world.telegram.length) return 'a late run was announced as a recovery: ' + world.telegram[0].slice(0, 160);
   return true;
 });
 
@@ -453,6 +580,182 @@ await check('the marker read and write never carry the key in their URL, and the
   const stateRequests = world.requests.filter((r) => r.indexOf('ops_database_health') !== -1 || /finance_config\?on_conflict/.test(r));
   if (stateRequests.some((r) => r.indexOf('TESTONLY') !== -1)) return 'a key reached a request line: ' + stateRequests.join(' | ');
   return world.telegram.every((t) => t.indexOf('TESTONLY') === -1) ? true : 'a key reached a message';
+});
+
+/* ---------------- Paystack and Telegram, asked directly ---------------- */
+
+console.log('\ndatabase-health \u2014 the two credentials the build gate only asks once\n');
+
+await check('a Paystack key the account accepts is green, and a tampered copy is refused', async () => {
+  reset();
+  const out = await probePaystack({ key: PAYSTACK_KEY });
+  if (out.ok !== true) return JSON.stringify(out);
+  const asks = world.probes.filter((p) => p === 'paystack').length;
+  return asks === 2 ? true : 'it asked Paystack ' + asks + ' time(s), not twice';
+});
+
+await check('a 403 is the ACCOUNT, not a paste error, and the report says so', async () => {
+  reset({ paystackStatus: 403 });
+  const out = await probePaystack({ key: PAYSTACK_KEY });
+  if (out.ok !== false || out.stage !== 'paystack-account') return JSON.stringify(out);
+  return /account/i.test(out.message) && /dashboard/i.test(out.message) ? true : out.message;
+});
+
+await check('Paystack answering a TAMPERED key is "probe" \u2014 that green would prove nothing', async () => {
+  reset({ paystackMode: 'blind' });
+  const out = await probePaystack({ key: PAYSTACK_KEY });
+  return out.ok === false && out.stage === 'paystack-probe' ? true : JSON.stringify(out);
+});
+
+await check('a bot that answers getMe and can see the chat is green \u2014 and nothing is sent', async () => {
+  reset();
+  const out = await probeTelegram({ token: TELEGRAM_TOKEN, chatId: CHAT_ID });
+  if (out.ok !== true) return JSON.stringify(out);
+  if (world.telegram.length) return 'the probe messaged the team';
+  return world.probes.indexOf('telegram:sendMessage') === -1 ? true : 'it called sendMessage';
+});
+
+await check('a bot that cannot see the alert chat is the CHAT stage, not the token', async () => {
+  reset({ chatUnknown: true });
+  const out = await probeTelegram({ token: TELEGRAM_TOKEN, chatId: CHAT_ID });
+  if (out.ok !== false || out.stage !== 'telegram-chat') return JSON.stringify(out);
+  return /token is fine/i.test(out.message) ? true : out.message;
+});
+
+await check('a refused bot token is the token stage, and says every alert is dropped', async () => {
+  reset();
+  const out = await probeTelegram({ token: 'a-token-telegram-never-issued', chatId: CHAT_ID });
+  if (out.ok !== false || out.stage !== 'telegram-token') return JSON.stringify(out);
+  return /every alert/i.test(out.message) ? true : out.message;
+});
+
+/* ---------------- the hour, with a dead checkout or a silent pager ---------------- */
+
+console.log('\ndatabase-health \u2014 the credentials after a deploy\n');
+
+await check('a refused Paystack key FAILS the hour, pages once, and names the checkout', async () => {
+  reset();
+  const out = await withProject(TRUE_KEY, () => runHandler({ PAYSTACK_SECRET_KEY: 'sk_test_a_key_that_was_rotated' }));
+  if (!out.threw) return 'the hour reported success with the checkout dead';
+  if (world.telegram.length !== 1) return 'sent ' + world.telegram.length + ' alerts, not 1';
+  const text = world.telegram[0];
+  if (!/Care Pass checkout cannot take a payment/.test(text)) return 'the alert does not say what broke: ' + text.slice(0, 200);
+  if (!/paystack-refused/.test(out.threw.message)) return 'the thrown error does not name the check: ' + out.threw.message;
+  return text.indexOf('sk_test_a_key_that_was_rotated') === -1 ? true : 'THE KEY IS IN THE ALERT';
+});
+
+await check('the Paystack alert names the three causes and the repair', async () => {
+  reset();
+  await withProject(TRUE_KEY, () => runHandler({ PAYSTACK_SECRET_KEY: 'sk_test_a_key_that_was_rotated' }));
+  const text = world.telegram[0] || '';
+  if (!/pk_/.test(text)) return 'it does not name a public key in the secret slot';
+  if (!/TEST key/i.test(text)) return 'it does not name a test key left in a live deploy';
+  if (!/ROTATED/.test(text)) return 'it does not name a rotated key';
+  return /REDEPLOY/.test(text) ? true : 'it does not say the fix needs a redeploy';
+});
+
+await check('a Paystack recovery after three hours sends ONE all-clear, and the next hour is silent', async () => {
+  reset({ marker: hoursAgo(0.5), checks: { paystack: hoursAgo(3), telegram: hoursAgo(0.5) } });
+  const out = await withProject(TRUE_KEY, () => runHandler());
+  if (out.threw) return 'the recovery run threw: ' + out.threw.message;
+  if (world.telegram.length !== 1) return 'sent ' + world.telegram.length + ' messages, not 1';
+  const text = world.telegram[0];
+  if (!/Paystack accepts its key again/.test(text)) return 'the notice does not name what came back: ' + text.slice(0, 200);
+  if (!/3 hours/.test(text)) return 'the notice does not say how long: ' + text.slice(0, 240);
+  if (!/"recovering":\["paystack"\]/.test(String(out.res && out.res.body))) return 'the body does not report which check: ' + String(out.res && out.res.body);
+
+  const second = await withProject(TRUE_KEY, () => runHandler());
+  if (second.threw) return second.threw.message;
+  return world.telegram.length === 1 ? true : 'the next healthy hour repeated the all-clear';
+});
+
+await check('a healthy check is still recorded while another credential is down \u2014 so it cannot fake a recovery later', async () => {
+  const stale = hoursAgo(0.5);
+  reset({ marker: hoursAgo(0.5), checks: { paystack: stale, telegram: hoursAgo(0.5) } });
+  const out = await withProject(TRUE_KEY, () => runHandler({ PAYSTACK_SECRET_KEY: 'sk_test_a_key_that_was_rotated' }));
+  if (!out.threw) return 'the hour reported success with the checkout dead';
+  if (world.telegram.length !== 1) return 'sent ' + world.telegram.length + ' messages, not the one failure alert';
+  if (!world.checks.database) return 'the database lost its timestamp during a Paystack outage';
+  if (!world.checks.telegram) return 'Telegram lost its timestamp during a Paystack outage';
+  return world.checks.paystack === stale ? true : 'the FAILING check was marked healthy: ' + world.checks.paystack;
+});
+
+await check('a dead bot token cannot page by Telegram, so that alert goes by email', async () => {
+  reset({ marker: hoursAgo(0.5), checks: { paystack: hoursAgo(0.5), telegram: hoursAgo(0.5) } });
+  process.env.ARZUZ_ALERT_EMAIL = 'ops@arzuz.test';
+  process.env.RESEND_API_KEY = 're_TESTONLY_ops_alert_key';
+  try {
+    const out = await withProject(TRUE_KEY, () => runHandler({ TELEGRAM_BOT_TOKEN: 'a-token-telegram-refused' }));
+    if (!out.threw) return 'the hour reported success with the pager dead';
+    if (world.telegram.length) return 'a refused token still delivered a message';
+    if (world.mail.length !== 1) return 'it did not fall back to email (' + world.mail.length + ' attempts)';
+    const mail = world.mail[0];
+    if (!/pager is silent/i.test(String(mail.subject))) return 'the subject does not say what broke: ' + mail.subject;
+    if (!/telegram-token/.test(String(mail.text))) return 'the email does not name the stage: ' + String(mail.text).slice(0, 200);
+    return /every alert/i.test(String(mail.text)) ? true : 'the email does not say what it costs';
+  } finally {
+    delete process.env.ARZUZ_ALERT_EMAIL;
+    delete process.env.RESEND_API_KEY;
+  }
+});
+
+await check('a chat the bot cannot see is caught even though the token works', async () => {
+  reset({ marker: hoursAgo(0.5), checks: { telegram: hoursAgo(0.5) }, chatUnknown: true });
+  const out = await withProject(TRUE_KEY, () => runHandler());
+  if (!out.threw) return 'the hour reported success with no reachable destination';
+  return /telegram-chat/.test(out.threw.message) ? true : out.threw.message;
+});
+
+await check('all three coming back in one hour is ONE notice naming all three', async () => {
+  reset({ marker: hoursAgo(3), checks: { paystack: hoursAgo(3), telegram: hoursAgo(3) } });
+  const out = await withProject(TRUE_KEY, () => runHandler());
+  if (out.threw) return out.threw.message;
+  if (world.telegram.length !== 1) return 'a total recovery sent ' + world.telegram.length + ' messages, not 1';
+  const text = world.telegram[0];
+  const named = /database/.test(text) && /paystack/.test(text) && /telegram/.test(text);
+  return named && /3 checks are answering again/.test(text) ? true : text.slice(0, 300);
+});
+
+await check('a deploy with no Paystack key is skipped, not paged, and never recorded as healthy', async () => {
+  reset({ marker: hoursAgo(0.5) });
+  const out = await withProject(TRUE_KEY, () => runHandler({ PAYSTACK_SECRET_KEY: null }));
+  if (out.threw) return 'an absent optional key failed the hour: ' + out.threw.message;
+  if (world.telegram.length) return 'it paged about a key that is not set';
+  if (world.probes.indexOf('paystack') !== -1) return 'it asked Paystack with no key';
+  if (world.checks.paystack) return 'an absent credential was recorded as healthy';
+  return /"paystack":"not-set"/.test(String(out.res && out.res.body)) ? true : String(out.res && out.res.body);
+});
+
+await check('a failing credential records WHEN IT STARTED, once per outage', async () => {
+  reset({ marker: hoursAgo(0.5) });
+  const first = await withProject(TRUE_KEY, () => runHandler({ PAYSTACK_SECRET_KEY: 'sk_test_a_key_that_was_rotated' }));
+  if (!first.threw) return 'the hour reported success with the checkout dead';
+  if (!world.failing.paystack) return 'the first refusal was not remembered: ' + JSON.stringify(world.failing);
+  const started = world.failing.paystack;
+
+  const second = await withProject(TRUE_KEY, () => runHandler({ PAYSTACK_SECRET_KEY: 'sk_test_a_key_that_was_rotated' }));
+  if (!second.threw) return 'the second failing hour reported success';
+  return world.failing.paystack === started ? true : 'the start moved, which would shorten every notice';
+});
+
+await check('a credential that was ALREADY failing when this shipped still gets an all-clear', async () => {
+  reset({ marker: hoursAgo(0.5), failing: { paystack: hoursAgo(4) } });
+  const out = await withProject(TRUE_KEY, () => runHandler());
+  if (out.threw) return out.threw.message;
+  if (world.telegram.length !== 1) return 'a pre-existing outage ended in silence: ' + world.telegram.length + ' messages';
+  const text = world.telegram[0];
+  if (!/Paystack accepts its key again/.test(text)) return 'the notice does not name the check: ' + text.slice(0, 200);
+  if (!/first refusal/i.test(text)) return 'it claims a last accepted check that never happened: ' + text.slice(0, 260);
+  if (!/4 hours/.test(text)) return 'the notice does not say how long: ' + text.slice(0, 300);
+  return !world.failing.paystack ? true : 'the failure was not cleared by the success';
+});
+
+await check('an old-shape marker (last_ok_at only) is read as the database\u2019s timestamp', async () => {
+  reset({ legacyMarker: hoursAgo(3) });
+  const out = await withProject(TRUE_KEY, () => runHandler());
+  if (out.threw) return out.threw.message;
+  if (world.telegram.length !== 1) return 'the old shape lost the gap: ' + world.telegram.length + ' messages';
+  return /reach its database again/.test(world.telegram[0]) ? true : world.telegram[0].slice(0, 200);
 });
 
 /* ------------------------------------------------------------ */

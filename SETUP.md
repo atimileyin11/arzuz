@@ -164,6 +164,7 @@ Set `ENV` to `'test'` while you are trying things out. Every view in the databas
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | From @BotFather. Alerts go out through `/api/notify` with it |
 | `TELEGRAM_CHAT_ID` | Yours. Get it from the admin dashboard → Auto-Detect Chat ID |
+| `ARZUZ_ALERT_EMAIL` (optional) | Where the hourly health check sends its alert when the bot token itself is refused. Email is the only channel left when the pager is the broken thing; without it that one failure is in the function log only |
 | `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` / `CLOUDINARY_CLOUD_NAME` | Signed photo uploads (and video fallback) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `YOUTUBE_REFRESH_TOKEN` | Video tour uploads to an unlisted YouTube video — one-time setup, next section |
 | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | The service-role key — server only. Powers Settings → Team (create users, set roles) **and `/api/waitlist`, the public submission door**. Without it the Team panel shows the manual-fallback instructions and every public form holds its submission in the browser instead of writing it — since `supabase-close-public-inserts.sql` there is no second path | |
@@ -172,6 +173,15 @@ Set `ENV` to `'test'` while you are trying things out. Every view in the databas
 | `OPENWA_WEBHOOK_SECRET` | The secret on the OpenWA webhook that posts to `/api/wa-inbound` — the same value OpenWA signs each delivery with. The only thing that makes a worker's reply trustworthy: without it the function refuses every request rather than reading an unsigned one. See Step 4b-3 |
 | `RESEND_API_KEY` | Email for those same notices, **and the status page's second channel** — the code a student can have sent to the address on their file when they have changed their number or when WhatsApp is down. Advised rather than required: without it the decision still goes out on WhatsApp, the claim's own record says the email was not sent, and `/status` simply stops offering the email option. Until your domain is verified in Resend, their shared sender only delivers **to your own account address**, and the refusal is passed through rather than swallowed. One refusal it cannot leave a trace of: an `/status` request made **by email** on a deploy with no mail provider is refused before a code is minted, so the Support Desk's code history has no row for it and says so (LAUNCH-READINESS.md §6, risk 5) |
 | `ARZUZ_MAIL_FROM` | Optional. The verified sender, e.g. `Arzuz Care <care@arzuz.com>`. Defaults to that address when unset |
+
+**The hourly check is also readable without being paged.** `/admin` carries one line under the
+header: the last accepted hour for the database, the Paystack key and the Telegram token. It is
+printed from `/api/health-summary`, which reads the same marker the scheduled run writes — so the
+line and the alerts cannot disagree about what "stale" means. A check with no recorded hour is
+shown as never accepted, and an unreadable marker says so; the line is never green on a state
+nobody confirmed. No extra variable: the marker lives in `finance_config`, read with
+`SUPABASE_SERVICE_ROLE_KEY`. The first line appears after the first scheduled run, so run
+`supabase-finance.sql` before expecting one.
 
 ### Step 4b-1 — Paystack (the money core, ~10 minutes)
 

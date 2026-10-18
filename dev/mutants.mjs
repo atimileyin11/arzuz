@@ -411,6 +411,16 @@ export const MUTANTS = [
       + 'Waved through, the pager is silent and the site looks healthy.',
   },
   {
+    id: 'the-shortest-outage-ends-in-silence',
+    file: 'netlify/functions/lib/health-state.js',
+    suite: 'test:db-health',
+    find: 'const GRACE_MS = 90 * 60 * 1000;',
+    replace: 'const GRACE_MS = 2 * 60 * 60 * 1000;',
+    why: 'The shortest real outage is one missed run: healthy 10:00, refused 11:00, '
+      + 'fixed, green 12:00. At two hours that gap is not greater than the threshold, '
+      + 'so the alert is the last thing the team hears — the exact silence the notice exists to end.',
+  },
+  {
     id: 'no-all-clear-after-a-gap',
     file: 'netlify/functions/lib/health-state.js',
     suite: 'test:db-health',
@@ -441,10 +451,70 @@ export const MUTANTS = [
     id: 'the-alert-does-not-say-what-to-fix',
     file: 'netlify/functions/database-health.js',
     suite: 'test:db-health',
-    find: "    (HELP[probe.stage] || 'Check the deploy\\'s Supabase variables in Netlify.') + '\\n\\n' +",
-    replace: "    '' + '\\n\\n' +",
+    find: 'HELP[probe.stage]',
+    replace: "''",
     why: 'The stage alone does not tell anybody what to do at 11pm. The repair sentence is '
       + 'the half of the alert that ends the outage.',
+  },
+  {
+    id: 'a-recovered-credential-is-never-announced',
+    file: 'netlify/functions/database-health.js',
+    suite: 'test:db-health',
+    find: '    const rec = recoveryForState(previous, c.name, now);',
+    replace: "    const rec = c.name === 'database' ? recoveryForState(previous, c.name, now) : { send: false };",
+    why: 'A Paystack key that was refused and then replaced is exactly the outage whose END the team '
+      + 'cannot see: the build passes, the checkout works, and the last message they received still '
+      + 'says it does not.',
+  },
+  {
+    id: 'an-outage-that-started-before-the-probe-never-ends',
+    file: 'netlify/functions/lib/health-state.js',
+    suite: 'test:db-health',
+    find: 'if (CHECKS.indexOf(name) !== -1 && !failing[name]) failing[name] = at.toISOString();',
+    replace: 'if (false) failing[name] = at.toISOString();',
+    why: 'A credential that is already broken on the first deploy has never passed, so without '
+      + 'the first-refusal record its recovery has no gap to measure — the team is paged every '
+      + 'hour and then hears nothing when it is finally fixed.',
+  },
+  {
+    id: 'a-stale-hour-reads-as-this-hour',
+    file: 'netlify/functions/lib/health-summary.js',
+    suite: 'test:health-summary',
+    find: 'const stale = !!at && gapMs > GRACE_MS;',
+    replace: 'const stale = false;',
+    why: 'The line is the only place a person sees the state without being paged. A mark from '
+      + 'three hours ago printed without the staleness fact reads as "fine" at six in the evening, '
+      + 'which is the false confidence the whole hourly probe exists to end.',
+  },
+  {
+    id: 'a-refusal-hidden-by-the-grace',
+    file: 'netlify/functions/lib/health-summary.js',
+    suite: 'test:health-summary',
+    find: 'const refusing = !!(since && (!at || since.getTime() > at.getTime()));',
+    replace: 'const refusing = false;',
+    why: 'A check refused at 14:10 after passing at 13:50 is inside the ninety-minute grace, so its '
+      + 'last accepted hour still looks fresh. Without the refusal comparison the dashboard prints '
+      + 'green through a live outage — the one hour the alert may already have been missed.',
+  },
+  {
+    id: 'a-dead-pager-pages-nobody',
+    file: 'netlify/functions/database-health.js',
+    suite: 'test:db-health',
+    find: 'if (!sent && telegramDead) {',
+    replace: 'if (!sent && false) {',
+    why: 'When the bot token is the broken credential, sendAlert is the dead channel. Without the '
+      + 'fallback, that one outage is reported only to a log nobody opens — which is the silent '
+      + 'pager this probe exists to end.',
+  },
+  {
+    id: 'a-long-outage-of-one-check-erases-another',
+    file: 'netlify/functions/database-health.js',
+    suite: 'test:db-health',
+    find: 'const healthy = checks.filter((c) => c.probe.ok === true && !c.probe.skipped).map((c) => c.name);',
+    replace: 'const healthy = failing.length ? [] : checks.filter((c) => c.probe.ok === true && !c.probe.skipped).map((c) => c.name);',
+    why: 'Writing markers only on fully green hours leaves the database and pager timestamps stale '
+      + 'through a long Paystack outage, so the hour Paystack returns they are announced as '
+      + 'RECOVERED too — two all-clears for an outage that never touched them.',
   },
   {
     id: 'a-revoked-code-never-switches-off',

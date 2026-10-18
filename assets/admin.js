@@ -48,7 +48,10 @@
        has been typed while it is open, and { done: <the grant's own
        answer> } once the server has opened the plan and handed back
        the student's private link. */
-    careGrant: null
+    careGrant: null,
+    /* The hourly check's one line: the endpoint's own sentence and its
+       level, kept so every repaint prints the same reading. */
+    health: { data: null, error: null, busy: false, readAt: 0 }
   };
 
   function esc(str) {
@@ -1060,6 +1063,11 @@
          page holds can be minutes old */
       renderVerifyQueue();
     }
+
+    /* The hourly line is global, so it is re-read on every navigation —
+       throttled inside loadHealth, because a click-through is faster
+       than the probe behind it. */
+    loadHealth();
   }
 
   window.addEventListener('hashchange', renderRoute);
@@ -1541,6 +1549,11 @@
   function fetchData() {
     if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) return;
     state.feedsMissing = false;
+    /* Beside the data reads, because it answers a different question
+       and must not hold them up: what did the hourly check last
+       ACCEPT? Forced, because this is a sign-in or a Refresh press and
+       both ask for the reading as it is now. */
+    loadHealth(true);
     var role = currentRole();
     ArzuzAuth.headers().then(function (h) {
       var promises = TABLES.map(function (tbl) {
@@ -1605,6 +1618,95 @@
       else if (window.console) console.warn('[Arzuz Admin] fetch failed:', err && (err.detail || err.message));
     });
   }
+
+  /* ================= 3c. The hourly check, in one line =================
+
+     THE QUESTION THIS ANSWERS
+
+       The scheduled probe writes down when each credential last passed
+       (netlify/functions/lib/health-state.js) and announces recoveries.
+       Until this line existed, the only way to learn that state was to
+       be paged — which tells you it broke, never that it is fine.
+
+     WHAT IT PRINTS, AND WHAT IT REFUSES TO PRINT
+
+       One line, from POST /api/health-summary: the last accepted hour for
+       the database, the Paystack key and the Telegram token. The page does
+       not judge staleness, absence or refusal — the endpoint composes the
+       sentence with the SAME ninety-minute grace the all-clear uses, so
+       the two can never disagree. A check with no recorded hour is said to
+       have none; an unreadable marker is said to be unreadable. Neither is
+       painted green.
+
+     A DASHBOARD IS LEFT OPEN ON A WALL
+
+       A line loaded at 9am that still says "14:00" at midnight is worse
+       than no line. So it is re-read whenever the tab comes back or a
+       section is opened (throttled to a minute), on sign-in, and on
+       Refresh. The sentence itself carries the time it was READ, so a
+       page nobody has touched since goes visibly old rather than quietly
+       wrong.
+     ============================================================ */
+
+  function loadHealth(force) {
+    if (state.health.busy) return;
+    if (!(window.ArzuzAuth && ArzuzAuth.signedIn && ArzuzAuth.signedIn())) return;
+    /* Navigating between sections asks again, but no more than once a
+       minute: a dashboard is clicked through far faster than the probe
+       behind this writes, and the answer cannot change in between. */
+    if (!force && state.health.readAt && (Date.now() - state.health.readAt) < 60000) return;
+    state.health.readAt = Date.now();
+    state.health.busy = true;
+    ArzuzAuth.headers().then(function (h) {
+      return fetch('/api/health-summary', {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, h),
+        body: '{}'
+      });
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (body) {
+        if (r.status === 401) throw new Error('Your session has expired — sign in again.');
+        if (!r.ok) throw apiErr(r, body);
+        state.health.data = body;
+        state.health.error = null;
+      });
+    }).catch(function (err) {
+      /* Quiet on purpose: this line is a convenience, and a console
+         warning here would be the only trace of a probe that is fine but
+         an endpoint that is not deployed yet. The line itself says so. */
+      state.health.error = err;
+    }).then(function () {
+      state.health.busy = false;
+      renderHealthLine();
+    });
+  }
+
+  function renderHealthLine() {
+    var el = $('healthLine'), text = $('healthText');
+    if (!el || !text) return;
+
+    var level = 'warn';
+    var line;
+    if (state.health.error) {
+      line = 'Hourly checks — could not be read: ' +
+        ((state.health.error && state.health.error.message) || 'no answer') + '.';
+    } else if (state.health.data) {
+      level = state.health.data.level === 'ok' ? 'ok' : 'warn';
+      line = state.health.data.line || 'Hourly checks — the answer carried no reading.';
+    } else {
+      /* Nothing has been asked yet. The placeholder in admin.html stays
+         hidden rather than claiming a reading nobody has. */
+      return;
+    }
+
+    el.className = 'health-line ' + level;
+    text.textContent = line;
+    el.hidden = false;
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) loadHealth(true);
+  });
 
   /* ================= 4. Overview ================= */
 

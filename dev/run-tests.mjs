@@ -106,6 +106,11 @@ const ORDER = [
      on the site writes through is TRIED against the project, and the
      probe must be able to see a refusal or its green means nothing */
   'test:db-health',
+  /* the same memory, read the way the dashboard reads it: the one line
+     the team sees without being paged. Pure Node — a stand-in marker and
+     a stand-in session, so it costs nothing and pins every sentence that
+     can turn "cannot confirm" into a green. */
+  'test:health-summary',
   /* the runner's own detector, which must be able to fire: a watcher
      that never reports anything looks exactly like a quiet tree */
   'test:tree-watch',

@@ -150,6 +150,28 @@ async function testRole(role) {
   check('boot: no console errors', () => sb.consoleErrors.length === 0 ? true : sb.consoleErrors.join(' | '));
   check('boot: gate hidden (session accepted)', () => !sb.registry.gateModal || !sb.registry.gateModal._cl || !sb.registry.gateModal._cl.contains('open') || 'gate still open');
 
+  /* --- the hourly check's one line ---
+
+     WHAT THIS ASSERTS, AND WHAT IT DELIBERATELY DOES NOT. It asserts the
+     WIRING: the line starts hidden, is revealed by the answer, prints the
+     endpoint's own sentence, and takes the dot's level from the same
+     answer. It does not recompute staleness here — that sentence is
+     composed and asserted in dev/health-summary-test.mjs against the real
+     summariser, and a second opinion in this harness is exactly the
+     drift the line exists to avoid. */
+  check('the hourly check: the line is printed from /api/health-summary', () => {
+    const el = $('healthLine');
+    const t = text('healthText');
+    if (!el) return 'no #healthLine in the dashboard';
+    if (el.hidden !== false) return 'the line is still hidden after the answer';
+    if (String(el.className).indexOf('health-line') === -1) return 'no health-line class: ' + el.className;
+    if (String(el.className).indexOf('ok') === -1) return 'the dot level is ' + el.className;
+    if (t.indexOf('Hourly checks \u2014 ') !== 0) return 'the line reads: ' + t.slice(0, 90);
+    const missing = ['Database', 'Paystack', 'Telegram', 'UTC'].filter(n => t.indexOf(n) === -1);
+    if (missing.length) return 'no ' + missing.join(', ') + ' in: ' + t.slice(0, 140);
+    return true;
+  });
+
   /* --- nav gating ---
 
      ALL FIVE ROLES. The map below is the same five lists as ROLE_SECTIONS

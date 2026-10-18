@@ -846,6 +846,25 @@
     /* --- Netlify functions (relative routes) --- */
     if (url.indexOf('/api/notify') === 0) return respondLater(handleNotify(body));
     if (url.indexOf('/api/team') === 0) return respondLater(handleTeam(body));
+
+    /* The hourly check's one line (netlify/functions/health-summary.js).
+       Canned on purpose: the sentence is composed and asserted in
+       dev/health-summary-test.mjs against the real summariser, and a
+       second copy of that logic here would be the drift the line exists
+       to avoid. This stub exists so the dashboard's PRINTING of it is
+       exercised — hidden until the answer arrives, then text and level. */
+    if (url.indexOf('/api/health-summary') === 0) {
+      var hm = new Date().toISOString().slice(11, 16) + ' UTC';
+      return respondLater(resp({
+        ok: true,
+        level: 'ok',
+        line: 'Hourly checks \u2014 Database ' + hm + ' \u00b7 Paystack ' + hm + ' \u00b7 Telegram ' + hm +
+          ' \u2014 all accepted within the last 90 minutes.',
+        checks: [],
+        graceMinutes: 90,
+        generatedAt: new Date().toISOString()
+      }));
+    }
     if (url.indexOf('/api/cloudinary-sign') === 0) {
       return respondLater(errResp(503, { error: 'Uploads are not mocked — paste direct media URLs in mock mode.' }));
     }

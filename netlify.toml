@@ -53,7 +53,8 @@
 [functions."upload-health"]
   schedule = "*/30 * * * *"
 
-# EVERY HOUR, ON THE HOUR: can this deploy still reach its database?
+# EVERY HOUR, ON THE HOUR: can this deploy still do the three things that
+# pay and page?
 # The failure this catches ran for an afternoon — SUPABASE_SERVICE_ROLE_KEY
 # SET and refused by Supabase (rotated upstream, or an anon key in the
 # service slot), so every form, the Care panel and the checkout answered
@@ -64,13 +65,27 @@
 # key cannot report a green one — then calls /api/finance and
 # /api/care-credit, because the key can be right and the deploy wrong.
 #
+# The same hour asks the other two providers the build gate only asks at
+# build time: Paystack GET /balance with the secret key (a refused 401 =
+# every Care Pass checkout answering 502), and Telegram getMe then getChat
+# (a dead token, or a bot that cannot see the alert chat, is a silent
+# pager). Absence warns at build time and is skipped here; a REFUSED value
+# pages, because the deploy looks healthy while it is not.
+#
+# When Telegram itself is the failing check, sendAlert is the dead
+# channel: that one alert falls back to email if ARZUZ_ALERT_EMAIL is set
+# (optional — without it the stage is in the function log only).
+#
 # It says nothing while everything is fine, so a recovery used to happen in
 # silence: the last message the team got was "broken". Each healthy hour now
-# records ONE timestamp (lib/health-state.js, a single ops_database_health row
-# in finance_config — the one key/value table this key can write without a new
-# migration) and a healthy run that finds a gap over two hours sends exactly
-# one all-clear with the last healthy time. A failing hour writes nothing, so
-# the gap survives and the notice cannot fire twice for one outage.
+# records ONE timestamp PER CHECK (lib/health-state.js, a single
+# ops_database_health row in finance_config — the one key/value table this
+# key can write without a new migration) and a check that finds a gap over
+# ninety minutes is announced. Checks that came back in the same hour share
+# ONE message, so a total outage is one notice. A failing check's timestamp
+# is left alone, so its gap survives and the notice cannot fire twice for
+# one outage; the checks that DID pass still record theirs, so a long
+# Paystack outage cannot invent a database recovery later.
 #
 # A missing schedule here is silent: the function still deploys, it
 # just never runs. That is the same class of failure it exists to

@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
 <link rel="stylesheet" href="assets/arzuz.css">
-<link rel="stylesheet" href="assets/admin.css?v=15">
+<link rel="stylesheet" href="assets/admin.css?v=16">
 <link rel="stylesheet" href="assets/video.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
@@ -75,6 +75,18 @@
       <button class="btn-inline" id="btnRefresh"><span data-icon="refresh"></span> Refresh</button>
     </div>
   </header>
+
+  <!-- The hourly check, as one line.
+
+       Printed from POST /api/health-summary, which reads the marker the
+       scheduled probe writes. It is a READING, not an alert: the times are
+       each check's last ACCEPTED hour, and a stale or refused one is named
+       as such. Hidden until the first answer arrives, so a signed-out load
+       cannot imply a state nobody checked. -->
+  <div class="health-line" id="healthLine" role="status" aria-live="polite" hidden>
+    <span class="health-dot" aria-hidden="true"></span>
+    <span class="health-text" id="healthText">Reading the hourly check&hellip;</span>
+  </div>
 
   <div class="dash-wrap">
 
@@ -960,7 +972,7 @@
      netlify/functions/rooms.js requires it, so a check added here
      reaches every surface at once. -->
 <script src="assets/verification-badge.js?v=1"></script>
-<script src="assets/admin.js?v=31"></script>
+<script src="assets/admin.js?v=32"></script>
 <script>
 /* shell-only wiring that has no place in admin.js */
 (function(){

@@ -35,6 +35,7 @@
     "test:upload-sign": "node dev/cloudinary-sign-test.mjs",
     "test:upload-probe": "node dev/upload-probe-test.mjs",
     "test:db-health": "node dev/database-health-test.mjs",
+    "test:health-summary": "node dev/health-summary-test.mjs",
     "smoke:upload": "node scripts/smoke-upload.mjs",
     "test:tree-watch": "node dev/tree-watch-test.mjs",
     "mutate": "node dev/mutate.mjs",
