@@ -221,9 +221,12 @@ function completeness(row) { return Score.completeness(row); }
 function freshness(row, now) { return Score.freshness(row, now); }
 function signals(row, now) { return Score.signals(row, now); }
 
+/* An hour of edge cache with a day of stale-while-revalidate: a traffic
+   spike revalidates in the background instead of stampeding PostgREST,
+   and a slow database never turns the sitemap itself into a 503 wave. */
 const HEAD = {
   'Content-Type': 'application/xml; charset=utf-8',
-  'Cache-Control': 'public, max-age=3600'
+  'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400'
 };
 
 exports.handler = async function () {

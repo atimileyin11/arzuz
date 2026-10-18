@@ -118,6 +118,9 @@ const ORDER = [
   'test:care-live',
   'test:draft-errors',
   'test:api-errors',  'test:waitlist',
+  /* the outbox drain, which is the other end of the same save the door
+     answers — so it runs beside it rather than at the bottom */
+  'test:alert-outbox',
   /* the status page, which is the other end of the same reference the
      door hands out — so it runs beside it rather than at the bottom */
   'test:status',

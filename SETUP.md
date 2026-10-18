@@ -116,6 +116,16 @@ the label and the wording switch to live automatically.
    **Care is not live until that has run *and* the site has been deployed.** `npm run care:live`
    checks both (plus `/my-care.html`) against the live site and database and names whichever layer
    is missing; nothing local can see the difference.
+
+   Expecting a crowd — a radio mention, a school-wide broadcast? Run `supabase-phone-tail.sql`
+   (the duplicate check answers from one indexed row instead of scanning fifty per submit) and
+   `supabase-alert-outbox.sql` (announcements queue beside the row and go out on a schedule with
+   retries, instead of one Telegram call per submitter). Both are additive and safe to run twice, and
+   the site behaves exactly as before until they are run — just slower per submit and unretried per
+   alert. Past a few hundred submits a day, also switch pooled connections on: Supabase → Project
+   Settings → Database → **Supavisor / connection pooling**, and use the pooler host for anything
+   that opens many short connections. The functions already reuse one HTTPS round trip per job;
+   pooling is what keeps a spike from spending the database's connection budget instead.
 3. Press **Run**
 
 You should see *Success. No rows returned.*

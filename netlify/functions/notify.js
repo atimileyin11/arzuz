@@ -22,9 +22,14 @@
    Telegram. Values from the form are HTML-escaped and length-capped.
    ============================================================ */
 
+/* The shared send ceiling lives in lib/alert-throttle.js: the database
+   first (one counter however many instances Netlify runs), this
+   instance's memory when the database cannot answer. The numbers below
+   are the ceilings themselves — unchanged by the move. */
+const AlertThrottle = require('./lib/alert-throttle.js');
+
 const RATE_WINDOW_MS = 60_000;
 const MAX_SENDS_PER_WINDOW = 30;
-const recentSends = [];   // best-effort, per function instance
 
 /* roommate_profiles is the handover table: when the matcher is down the
    roommate page posts the questionnaire through the waitlist door under
@@ -55,12 +60,12 @@ function json(statusCode, body, kind) {
   };
 }
 
-function rateLimited() {
-  const now = Date.now();
-  while (recentSends.length && now - recentSends[0] > RATE_WINDOW_MS) recentSends.shift();
-  if (recentSends.length >= MAX_SENDS_PER_WINDOW) return true;
-  recentSends.push(now);
-  return false;
+/* The public endpoint's ceiling, shared across instances. Answered
+   asynchronously because the shared counter is a round trip; a
+   counter that cannot answer falls back to memory inside allowSend,
+   so this never throws and the endpoint keeps its old shape. */
+async function rateLimited() {
+  return !(await AlertThrottle.allowSend({ key: 'notify-http', windowSeconds: 60, max: MAX_SENDS_PER_WINDOW }));
 }
 
 /* Telegram messages go as HTML so student-typed text can never
@@ -198,16 +203,6 @@ const SERVER_ALERT_WINDOW_MS = 60_000;
 const MAX_SERVER_ALERTS_PER_WINDOW = 30;
 const recentServerAlerts = [];
 
-function serverAlertLimited() {
-  const now = Date.now();
-  while (recentServerAlerts.length && now - recentServerAlerts[0] > SERVER_ALERT_WINDOW_MS) {
-    recentServerAlerts.shift();
-  }
-  if (recentServerAlerts.length >= MAX_SERVER_ALERTS_PER_WINDOW) return true;
-  recentServerAlerts.push(now);
-  return false;
-}
-
 /* ------------------------------------------------------------
    sendAlert — the server-side door to the same bot.
 
@@ -228,8 +223,9 @@ async function sendAlert(text) {
      fill its function logs with errors. */
   if (!token || !chatId) return false;
   /* Checked after the token, so a site without Telegram never consumes
-     the budget — only a real send counts against it. */
-  if (serverAlertLimited()) {
+     the budget — only a real send counts against it. Shared across
+     instances through alert_throttle(); memory when it cannot answer. */
+  if (!(await AlertThrottle.allowSend({ key: 'telegram', windowSeconds: 60, max: MAX_SERVER_ALERTS_PER_WINDOW }))) {
     console.error('[notify] server alert dropped: more than ' + MAX_SERVER_ALERTS_PER_WINDOW + ' in a minute');
     return false;
   }
@@ -398,7 +394,7 @@ exports.handler = async function (event) {
     }, 'not-ready');
   }
 
-  if (rateLimited()) {
+  if (await rateLimited()) {
     return json(429, { error: 'Too many alerts in the last minute — try again shortly.' });
   }
 
@@ -442,11 +438,18 @@ exports.handler = async function (event) {
 exports.sendAlert = sendAlert;
 exports.esc = esc;
 exports.MAX_SERVER_ALERTS_PER_WINDOW = MAX_SERVER_ALERTS_PER_WINDOW;
-/* The window is per function instance and per minute. A suite files thirty
+/* The window is shared across instances and per minute. A suite files thirty
    claims in one second, which spends the budget honestly — and then a test
    about the FIRST alert a job sends would be measuring the ceiling instead
-   of the message. Clearing it lets that test start from a quiet minute. */
-exports.resetServerAlertBudget = function () { recentServerAlerts.length = 0; };
+   of the message. Clearing it lets that test start from a quiet minute.
+   Clears both counters: the legacy per-instance one and the shared
+   throttle's memory fallback, so a reset is a quiet minute whichever
+   path the last send took. */
+exports.resetServerAlertBudget = function () {
+  recentServerAlerts.length = 0;
+  AlertThrottle.clearMem();
+};
+exports.formatMessage = formatMessage;
 exports.sendEmail = sendEmail;
 exports.emailConfig = emailConfig;
 exports.mailDeliverable = mailDeliverable;

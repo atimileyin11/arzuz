@@ -1103,6 +1103,16 @@ const FUNCTION_FILES = readdirSync(FN_DIR).filter((f) => f.endsWith('.js'));
     new: if a page ever starts calling it, this list is the thing that will
     be wrong, and the assertion below is what says so.
 
+    alert-drain.js is the same third kind: the outbox's quarter-hour clock,
+    scheduled in netlify.toml, with no route a page fetches — a scheduled
+    function answers 403 to external requests before its code runs, so
+    there is nobody to read a class even if one were stamped. Its answers
+    are log lines (`counts`, `not-configured`, `degraded`), and the fact
+    worth telling a person about — which announcements never went out —
+    stays in alert_outbox itself, where the next tick and the team can
+    both read it. If a page ever starts calling it, THIS paragraph is
+    what will be wrong, and the check below is the thing that says so.
+
     The exemption is from the WIRE form, and from nothing else: that clock
     classifies the failures it reports with THIS module like every page and
     every other function does (the class travels in its alert and in its
@@ -1144,7 +1154,7 @@ const FUNCTION_FILES = readdirSync(FN_DIR).filter((f) => f.endsWith('.js'));
     and stamps the build's own failure, not a door's. */
 const NO_JSON = ['listing-og.js', 'video-embed.js', 'roommate-digest.js',
   'rooms.js', 'listings-sitemap.js', 'browse.js', 'claims-aging.js', 'claims-digest.js',
-  'verification-aging.js', 'upload-health.js', 'database-health.js'];
+  'verification-aging.js', 'upload-health.js', 'database-health.js', 'alert-drain.js'];
 
 check('every function that answers JSON stamps its failures with the shared class', () => {
   const guilty = FUNCTION_FILES.filter((f) => !NO_JSON.includes(f)

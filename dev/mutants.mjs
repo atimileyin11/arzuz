@@ -536,4 +536,15 @@ export const MUTANTS = [
       + 'books: without it a claim is filed where the cost of the repair has '
       + 'nowhere to post.',
   },
+  {
+    id: 'a-dead-letter-never-rests',
+    file: 'netlify/functions/alert-drain.js',
+    suite: 'test:alert-outbox',
+    find: '  const rested = attempts >= MAX_ATTEMPTS;',
+    replace: '  const rested = false;',
+    why: 'Eight failed attempts is the drain admitting Telegram will not answer '
+      + 'and leaving the row as a readable failure. Never resting retries a dead '
+      + 'announcement for ever, and every tick spends the shared ceiling on rows '
+      + 'that cannot send instead of the ones that can.',
+  },
 ];

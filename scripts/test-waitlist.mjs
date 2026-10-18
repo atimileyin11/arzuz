@@ -61,6 +61,12 @@ const state = {
   rows: [],
   existing: null,
   existingAfter: null,
+  /* The phone_tail fast path answers from its own fixture, so a test
+     about the fifty-row scan is not accidentally proved by the index —
+     and the race test below still races instead of being settled early
+     by a tail hit it never meant to seed. */
+  tailExisting: null,
+  tailFails: false,
   lookups: 0,
   insertStatus: 201,
   ref: 'ARZ-S-1111-2222-3333',
@@ -73,6 +79,8 @@ function reset(over) {
   state.rows = [];
   state.existing = null;
   state.existingAfter = null;
+  state.tailExisting = null;
+  state.tailFails = false;
   state.lookups = 0;
   state.insertStatus = 201;
   state.ref = 'ARZ-S-1111-2222-3333';
@@ -98,6 +106,15 @@ global.fetch = async function (url, init = {}) {
     state.rows.push({ table: insert[1], row: body, prefer: (init.headers || {}).Prefer || '' });
     if (state.insertStatus >= 400) return resp(state.insertStatus, { message: 'the stand-in refused', code: '23505' });
     return resp(201, [{ ref: state.ref, follow_up_status: 'new' }]);
+  }
+
+  /* The indexed tail lookup answers first and from its own fixture. A
+     database that predates supabase-phone-tail.sql has no such column
+     and refuses — tailFails models exactly that, so the fallback scan
+     below is what gets exercised. */
+  if (new RegExp('/rest/v1/' + TABLE + '\\?').test(u) && method === 'GET' && u.indexOf('phone_tail=eq.') !== -1) {
+    if (state.tailFails) return resp(400, { message: 'column "phone_tail" does not exist', code: '42703' });
+    return resp(200, state.tailExisting || []);
   }
 
   if (new RegExp('/rest/v1/' + TABLE + '\\?').test(u) && method === 'GET') {
@@ -502,7 +519,7 @@ await t('a retry of the same attempt returns the reference it already has', asyn
 });
 
 await t('the same person filling it in again is told where they already are, not refused', async () => {
-  reset({ existing: [{ ref: 'ARZ-S-DDDD-EEEE-FFFF', follow_up_status: 'new', payload: { phone: '08031234567' } }] });
+  reset({ tailExisting: [{ ref: 'ARZ-S-DDDD-EEEE-FFFF', follow_up_status: 'new' }] });
   const res = await waitlist.handler(event({ form: 'demand_records', answers: STUDENT }));
   const body = parsed(res);
   assert.equal(res.statusCode, 200);
@@ -510,12 +527,27 @@ await t('the same person filling it in again is told where they already are, not
   assert.equal(body.ref, 'ARZ-S-DDDD-EEEE-FFFF');
   assert.match(body.note, /already on the list/);
   assert.equal(state.rows.length, 0);
+  assert.equal(state.lookups, 0, 'the indexed tail answered — the fifty-row scan never ran');
 });
 
 await t('and the same number written another way is still the same person', async () => {
-  reset({ existing: [{ ref: 'ARZ-S-DDDD-EEEE-FFFF', payload: { phone: '2348031234567' } }] });
+  reset({ tailExisting: [{ ref: 'ARZ-S-DDDD-EEEE-FFFF' }] });
   const res = await waitlist.handler(event({ form: 'demand_records', answers: STUDENT }));
   assert.equal(parsed(res).duplicate, true, '+234 and a leading zero are the same subscriber');
+});
+
+await t('a database without the tail column still dedupes by scanning', async () => {
+  reset({
+    tailFails: true,
+    existing: [{ ref: 'ARZ-S-DDDD-EEEE-FFFF', follow_up_status: 'new', payload: { phone: '08031234567' } }],
+  });
+  const res = await waitlist.handler(event({ form: 'demand_records', answers: STUDENT }));
+  const body = parsed(res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(body.duplicate, true);
+  assert.equal(body.ref, 'ARZ-S-DDDD-EEEE-FFFF');
+  assert.equal(state.rows.length, 0);
+  assert.equal(state.lookups, 1, 'the refused tail fell back to exactly one scan');
 });
 
 /* The row that won the race. A REAL-SHAPED reference, not an

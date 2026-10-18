@@ -93,6 +93,20 @@
 [functions."database-health"]
   schedule = "0 * * * *"
 
+# EVERY QUARTER HOUR: send what the waitlist door queued. The browser
+# used to announce a save that only it knew about, so a closed page
+# left a saved row with nobody told. The door now queues the
+# announcement in alert_outbox beside the row (supabase-alert-outbox.sql)
+# and this drain delivers it with retries and the shared ceiling —
+# fifteen minutes is the oldest an announcement waits.
+#
+# A missing schedule here is silent: the function still deploys, rows
+# queue, and nothing ever sends them. That is the same class of failure
+# the other schedules above document, which is why the line is not left
+# to memory.
+[functions."alert-drain"]
+  schedule = "*/15 * * * *"
+
 [functions."roommate-digest"]
   schedule = "0 6 * * *"
 
@@ -381,6 +395,25 @@
 # here is a public URL rather than a private one.
 [[redirects]]
   from = "/supabase-verification-evidence.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+# The duplicate-check fast path: which column the tail lives in and the
+# trigger that keeps it honest. Same rule as every other supabase-*.sql
+# — scripts/test-deploy-guards.mjs fails the build if a new one is ever
+# added without it.
+[[redirects]]
+  from = "/supabase-phone-tail.sql"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+# The alert outbox and the shared send throttle (see below). Same rule —
+# it names the retry table and the per-minute ceilings, which is the map
+# these rules exist to keep off the public web.
+[[redirects]]
+  from = "/supabase-alert-outbox.sql"
   to   = "/404.html"
   status = 404
   force = true

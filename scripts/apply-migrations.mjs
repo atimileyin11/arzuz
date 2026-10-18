@@ -63,6 +63,13 @@ const PLAN = [
      the two — its own guard says so */
   ['supabase-verification-rpc.sql', 'verification_shift, verification_decision — the rpc the queue calls'],
   ['supabase-verification-evidence.sql', 'listing_evidence, public_listing_checks'],
+  /* resilience: the duplicate-check fast path (phone_tail + trigger +
+     index on the five public tables) and the alert outbox with the
+     shared send throttle. Both additive; the door and the drain fall
+     back gracefully until they are run, but every submit pays the
+     fifty-row scan and every alert is unretried until they are. */
+  ['supabase-phone-tail.sql', 'phone_tail on the five public tables'],
+  ['supabase-alert-outbox.sql', 'alert_outbox, alert_send_log, alert_throttle()'],
 ];
 
 const LOCKDOWN = ['supabase-close-public-inserts.sql', 'revokes anon INSERT on the five public tables'];

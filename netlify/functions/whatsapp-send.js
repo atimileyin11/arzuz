@@ -34,8 +34,13 @@
    written. */
 const ApiErrors = require('../../assets/api-errors.js');
 
-// Simple in-memory rate-limit cache (per function instance)
-const recentSends = new Map();
+/* One send ceiling per subscriber, shared across instances through
+   alert_throttle() (lib/alert-throttle.js) with this instance's memory
+   as the fallback — the same move notify.js made, for the same reason:
+   Netlify runs as many instances as it likes, so a per-instance map is
+   a limit per instance. */
+const AlertThrottle = require('./lib/alert-throttle.js');
+
 const RATE_LIMIT_MS = 60_000; // one message per phone per 60 seconds
 
 /* ------------------------------------------------------------
@@ -82,6 +87,16 @@ async function sendText(to, text) {
   }
   if (!jidOk(to)) return { ok: false, reason: 'bad-jid' };
 
+  /* Deliberately NO ceiling here, though the page door below has one.
+     Every caller of this door is a server function announcing a decision
+     it already committed (claims.js) — a coverage decision and a dispute
+     resolution for the same student within one minute are both real, and
+     a send refused here would read in the trail as a failed notice for
+     a decision that stands. A runaway caller is a bug, and silently
+     dropping its messages would hide the bug behind 'rate-limited'
+     rows. Flood protection lives where the untrusted caller is: the
+     page door's shared per-phone ceiling above, and OpenWA's own. */
+
   const endpoint = cfg.url + '/api/sessions/' + cfg.session + '/messages/send-text';
   try {
     const response = await fetch(endpoint, {
@@ -99,13 +114,28 @@ async function sendText(to, text) {
       return { ok: false, reason: 'openwa-' + response.status };
     }
 
-    recentSends.set(String(to).split('@')[0], Date.now());
     console.log('[whatsapp-send] Message sent to', String(to).split('@')[0]);
     return { ok: true, reason: 'sent' };
   } catch (err) {
     console.error('[whatsapp-send] Network error:', err.message);
     return { ok: false, reason: 'unreachable' };
   }
+}
+
+/* The shared per-phone ceiling, checked before the OpenWA round trip so
+   a repeated tap spends a database row instead of a message. Memory is
+   still consulted first — a tap twice in five seconds should never cost
+   a round trip — and the shared counter second, so two instances serving
+   the same subscriber alternate instead of doubling. Never throws: a
+   ceiling that cannot answer is spent from memory, and a send refused by
+   its own guard would be the confirmation that never arrives. */
+async function phoneAllowed(phone, max) {
+  const ceiling = max > 0 ? max : 1;
+  /* Memory first: a double-tap seconds apart should never cost a round
+     trip. The shared counter second, so two instances serving the same
+     subscriber alternate instead of doubling. */
+  if (!AlertThrottle.memAllowed('wa-mem:' + phone, RATE_LIMIT_MS, ceiling)) return false;
+  return AlertThrottle.allowSend({ key: 'wa:' + phone, windowSeconds: 60, max: ceiling });
 }
 
 /* ------------------------------------------------------------
@@ -138,10 +168,9 @@ exports.handler = async function (event) {
     return { statusCode: 400, body: JSON.stringify(ApiErrors.wireBody(400, { error: 'Invalid WhatsApp JID format. Expected 234XXXXXXXXXX@s.whatsapp.net' })) };
   }
 
-  // Rate limiting — one message per phone per minute
+  // Rate limiting — one message per phone per minute, shared across instances
   const phone = String(to).split('@')[0];
-  const now = Date.now();
-  if (recentSends.has(phone) && now - recentSends.get(phone) < RATE_LIMIT_MS) {
+  if (!(await phoneAllowed(phone))) {
     return { statusCode: 429, body: JSON.stringify(ApiErrors.wireBody(429, { error: 'Rate limited — try again in a minute' })) };
   }
 

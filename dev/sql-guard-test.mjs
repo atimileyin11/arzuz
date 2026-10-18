@@ -154,6 +154,8 @@ const GUARDED = [
   'supabase-status-codes.sql',
   'supabase-status-history.sql',
   'supabase-close-public-inserts.sql',
+  'supabase-phone-tail.sql',
+  'supabase-alert-outbox.sql',
 ];
 const ROLE_MODEL = 'supabase-team-roles.sql';
 
@@ -569,6 +571,24 @@ const EXPECTED = [
     fragment: 'Run supabase-waitlist-launch.sql before this file',
     missing: 'public.waitlist_ref_registry',
   },
+
+  /* The resilience pair. Both extend tables other files create, so both
+     guard on an empty database the way the launch file does: name the
+     file that creates the tables, not the migration that happens to be
+     nearest. Neither has a second guard — there is no role model to
+     check and no predecessor migration to demand. */
+  {
+    key: 'tail.schema',
+    file: 'supabase-phone-tail.sql',
+    fragment: 'A waitlist table is missing. Run supabase-schema.sql first',
+    missing: 'demand_records / listings',
+  },
+  {
+    key: 'outbox.schema',
+    file: 'supabase-alert-outbox.sql',
+    fragment: 'demand_records is missing. Run supabase-schema.sql first',
+    missing: 'demand_records',
+  },
 ];
 
 /* ------------------------------------------------------------
@@ -651,6 +671,25 @@ const SENTINEL = {
     label: 'the surviving anon insert grant',
     sql: `select (case when to_regclass('public.demand_records') is null then 0
                       else (not has_table_privilege('anon', 'demand_records', 'insert'))::int end)`,
+    want: 0,
+  },
+  'supabase-phone-tail.sql': {
+    /* The column is added after the guard, so finding it absent is the
+       rollback. Asked on demand_records alone: one table proves the
+       ALTERs never ran, and five near-identical queries would prove
+       nothing five times. */
+    label: 'the phone_tail column',
+    sql: `select count(*)::int from information_schema.columns
+           where table_schema = 'public' and table_name = 'demand_records'
+             and column_name = 'phone_tail'`,
+    want: 0,
+  },
+  'supabase-alert-outbox.sql': {
+    /* Created after the guard, so finding it gone is the rollback and
+       not merely an untaken branch — the same shape as the waitlist
+       file's registry sentinel. */
+    label: 'the alert_outbox table',
+    sql: `select (to_regclass('public.alert_outbox') is not null)::int`,
     want: 0,
   },
   'supabase-verification-rpc.sql': {
@@ -957,6 +996,20 @@ await rung(
 await rung(
   'status-history on a database without the code table \u2192 names supabase-status-codes.sql',
   null, 'supabase-status-history.sql', guard('desk.codes')
+);
+
+/* rung 1e-3 — the resilience pair on the same empty database. The tail
+   file extends the waitlist tables and the outbox names the tables it
+   announces, so both have to refuse an install with nothing in it — and
+   name supabase-schema.sql, the file that creates them, rather than any
+   migration that merely adds to them. */
+await rung(
+  'phone-tail on an empty database \u2192 "Run supabase-schema.sql first"',
+  null, 'supabase-phone-tail.sql', guard('tail.schema')
+);
+await rung(
+  'alert-outbox on an empty database \u2192 "Run supabase-schema.sql first"',
+  null, 'supabase-alert-outbox.sql', guard('outbox.schema')
 );
 
 /* rung 1f - the SHIFT on the same empty database. Stage 2 of the

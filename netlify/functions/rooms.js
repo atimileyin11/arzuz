@@ -414,9 +414,13 @@ function rewriteHead(html, row, canonicalUrl, checks) {
 
 /* ---------- handler ---------- */
 
+/* A minute of edge cache would stampede the database under a traffic
+   spike; stale-while-revalidate keeps the re-render off the critical
+   path for whoever arrives first after it expires — same pattern as
+   browse.js. */
 const HEAD = {
   'Content-Type': 'text/html; charset=utf-8',
-  'Cache-Control': 'public, max-age=300'
+  'Cache-Control': 'public, max-age=300, stale-while-revalidate=600'
 };
 
 /* Permanent: this room has a different address now, or never had this one.

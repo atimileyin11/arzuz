@@ -20,6 +20,7 @@
     "test:draft-errors": "node scripts/test-draft-errors.mjs",
     "test:api-errors": "node scripts/test-api-errors.mjs",
     "test:waitlist": "node scripts/test-waitlist.mjs",
+    "test:alert-outbox": "node scripts/test-alert-outbox.mjs",
     "test:status": "node scripts/test-status.mjs",
     "test:deploy-key": "node scripts/test-deploy-key.mjs",
     "deploy:key": "node scripts/require-service-key.mjs --require",

@@ -339,20 +339,47 @@ async function findExisting(cfgv, table, clientRef, phone) {
 
   const digits = phoneDigits(phone);
   if (digits.length >= 10) {
+    /* THE FAST PATH — one indexed row, not fifty. phone_tail holds the
+       last ten digits beside the row, kept by the trigger in
+       supabase-phone-tail.sql, which is the same identity the scan
+       below compares ("0803 123 4567" and "2348031234567" are the
+       same subscriber either way), so the two cannot disagree about
+       who is who. A database that predates the migration has no such
+       column and answers an error — which is caught, and the scan
+       below runs exactly as before. A fast path that answered empty is
+       trusted: the trigger backfilled every legacy row, so an empty
+       answer means nobody with this number, not a column that is
+       behind. */
+    const tail = digits.slice(-10);
+    try {
+      const fast = await sb(cfgv,
+        table + '?select=ref,follow_up_status&phone_tail=eq.' +
+        encodeURIComponent(tail) + '&limit=1');
+      if (fast && fast.length && fast[0].ref) {
+        return { row: fast[0], how: 'phone' };
+      }
+      return null;
+    } catch (err) {
+      /* No phone_tail on this database — the fifty-row scan below is
+         the behaviour, not the fallback prize. Logged once per call
+         at warn because a deploy that never runs the migration pays
+         the scan on every submit while looking healthy. */
+      console.warn('[waitlist] phone_tail unavailable on', table, '— scanning:',
+        err && (err.code || err.status || err.message));
+    }
     /* The stored phone is the typed value, so the comparison is made on
        the digits of the last ten — "0803 123 4567" and "2348031234567"
        are the same person, and a dedupe that misses that is a dedupe
        that mails a student twice. PostgREST cannot express a
-       digits-only comparison, so the match is on the last ten digits
-       with a LIKE on the tail, which is index-assisted enough for a
-       table this size and exact for the normalisation this site uses. */
-    const tail = digits.slice(-10);
+       digits-only comparison, so the last fifty rows are read and the
+       tails compared here. Slow under a spike, exact always — which is
+       why it is the fallback and no longer the plan. */
     const check = await sb(cfgv,
       table + '?select=ref,follow_up_status,payload' +
       '&created_at=gte.' + encodeURIComponent(new Date(Date.now() - 86400000).toISOString()) +
       '&order=created_at.desc&limit=50');
     const found = (check || []).find((r) => r && r.ref &&
-      phoneDigits((r.payload && (r.payload.phone || r.payload.ph)) || '').slice(-10) === tail);
+      phoneDigits((r.payload && (r.payload.phone || r.payload.ph || r.payload.owner_phone)) || '').slice(-10) === tail);
     if (found) return { row: found, how: 'phone' };
   }
 
@@ -618,18 +645,46 @@ exports.handler = async function (event) {
   console.log('[waitlist] accepted', form.label, '→', saved.ref,
     'via', row.source, verdict.degraded ? '(throttle degraded)' : '');
 
+  /* ---- the announcement, queued beside the row ----
+     The browser used to tell /api/notify only after this answer, so a
+     closed page or a Telegram blink left a saved row with nobody told.
+     The outbox row is written here instead, and the scheduled drain
+     (netlify/functions/alert-drain.js) delivers it with retries.
+     Best-effort and awaited: a failed queue write is logged and the
+     submission still succeeds — an alert that did not get queued is a
+     missing message, while a submission refused over an alert is a
+     lost student. Duplicates never reach this line, so nobody is
+     announced twice for one decision. */
+  await enqueueAlert(cfgv, form.table, saved.ref, consolidated);
+
   return json(200, {
     ok: true,
     duplicate: false,
     ref: saved.ref,
     follow_up_status: saved.follow_up_status || 'new',
   });
-};
+};/* The outbox write, as its own function so the one promise it makes is
+   visible: it never rejects. Anything the database answers — a table
+   that predates the migration, a hiccup — is a log line, because the
+   row it announces is already safe. */
+async function enqueueAlert(cfgv, table, ref, payload) {
+  try {
+    await sb(cfgv, 'alert_outbox', {
+      method: 'POST',
+      body: JSON.stringify({ table_name: table, ref, payload: payload || {} }),
+    });
+  } catch (err) {
+    console.error('[waitlist] outbox enqueue failed on', table,
+      '— the row is saved, the alert is not queued:',
+      err && (err.code || err.status || err.message));
+  }
+}
 
 /* Exported for scripts/test-waitlist.mjs, which drives the handler with
    synthetic events and asserts the refusals above — because a validator
    nobody has ever seen refuse anything is a validator that does not
    work. */
+
 exports.FORMS = FORMS;
 exports.CONSENT_TEXT = CONSENT_TEXT;
 exports.looksLikePhone = looksLikePhone;
