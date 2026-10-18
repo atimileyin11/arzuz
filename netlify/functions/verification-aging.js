@@ -120,6 +120,36 @@ function broken(err) {
   };
 }
 
+/* OPS-ALERT COOLDOWN — why the team stopped getting one message an hour.
+
+   A run that cannot read the queue fails the same way every hour until
+   somebody runs the missing migration, and every one of those runs used
+   to page Telegram — twenty-four identical "the deploy is missing
+   something" messages a day, which is how a channel gets muted and the
+   one different message nobody reads. The log line above still fires
+   every run; the PHONE only fires when the failure is new or the last
+   reminder about this exact failure is old: 24h for a not-ready (a file
+   nobody has run will still be un-run tomorrow), 6h for the transient
+   kinds (an outage that lasts all day deserves a second page).
+
+   The key carries the operator's own line, not just the class: a
+   migration that is still missing is the same failure, but a refusal
+   that moved from one table to another is a new one and must speak.
+   Per function instance, like the rate ceiling in notify.js — a cold
+   instance pages once, which bounds a day of identical failures to a
+   handful instead of two dozen. */
+var lastOpsAlertAt = {};
+function opsAlertCooldownMs(kind) {
+  return kind === 'not-ready' ? 24 * 3600 * 1000 : 6 * 3600 * 1000;
+}
+function opsAlertDue(key, kind, now) {
+  var at = now || Date.now();
+  var last = lastOpsAlertAt[key] || 0;
+  if (at - last < opsAlertCooldownMs(kind)) return false;
+  lastOpsAlertAt[key] = at;
+  return true;
+}
+
 /* The distinct classes a run hit, in the order it hit them: 'rejected' and
    'offline' send a person to two different places, and a message that named
    only the first would hide the other. */
@@ -297,11 +327,21 @@ exports.handler = async function () {
        migration nobody has run, an error is a bad minute. */
     const trouble = broken(err);
     console.error('[verification-aging] could not read the queue (' + trouble.kind + '):', trouble.detail);
+    /* The log above fires every run; the phone fires only for a new
+       failure or an old reminder (see the cooldown above). An hourly
+       page about the same un-run migration is how the channel gets
+       muted — and nothing here is lost: the listings are still
+       in the dashboard, and the next run tries the read again. */
+    var alertKey = 'queue-unreadable:' + trouble.kind + ':' + String(trouble.detail || '').slice(0, 120);
     try {
-      await sendAlert('⚠️ <b>The verification clock could not read the queue</b>\n\n' +
-        '<b>' + esc(trouble.kind, 40) + '</b> — ' + esc(trouble.action, 200) + '\n' +
-        esc(trouble.detail, 240) +
-        '\n\nNobody is being told about listings that are late until this is fixed.');
+      if (opsAlertDue(alertKey, trouble.kind)) {
+        await sendAlert('⚠️ <b>The verification clock could not read the queue</b>\n\n' +
+          '<b>' + esc(trouble.kind, 40) + '</b> — ' + esc(trouble.action, 200) + '\n' +
+          esc(trouble.detail, 240) +
+          '\n\nNobody is being told about listings that are late until this is fixed.');
+      } else {
+        console.error('[verification-aging] telegram reminder suppressed — same failure, still inside its cooldown');
+      }
     } catch (e) { /* nothing left to do: the log above carries it */ }
     return done('queue-unreadable', null, [], null, trouble.kind);
   }
@@ -320,13 +360,22 @@ exports.handler = async function () {
      quiet about itself, because nobody is watching the dashboard. */
   if (!sent.nudged && !sent.reclaimed && sent.failed.length) {
     const classes = kindsOf(sent.failed);
+    /* Same cooldown as the unreadable queue above: the message repeats
+       every hour until the write is accepted, so the phone hears it on
+       a new failure or an old reminder — never hourly. */
+    var writeKey = 'trail-write-failed:' + classes + ':' +
+      String((sent.failed[0] && sent.failed[0].detail) || '').slice(0, 120);
     try {
-      await sendAlert('\u26a0\ufe0f <b>The verification clock could not write to the trail</b>\n\n' +
-        '<b>' + esc(classes, 80) + '</b> — ' +
-        esc(WHAT_TO_DO[sent.failed[0].kind] || 'the database refused every write', 200) + '\n' +
-        esc(sent.failed.map((f) => f.ref + ': ' + f.detail).join('; '), 300) +
-        '\n\nEvery listing below is late and nobody has been told, and this will repeat every hour ' +
-        'until the database accepts the write.');
+      if (opsAlertDue(writeKey, sent.failed[0].kind)) {
+        await sendAlert('\u26a0\ufe0f <b>The verification clock could not write to the trail</b>\n\n' +
+          '<b>' + esc(classes, 80) + '</b> — ' +
+          esc(WHAT_TO_DO[sent.failed[0].kind] || 'the database refused every write', 200) + '\n' +
+          esc(sent.failed.map((f) => f.ref + ': ' + f.detail).join('; '), 300) +
+          '\n\nEvery listing below is late and nobody has been told, and this will repeat every hour ' +
+          'until the database accepts the write.');
+      } else {
+        console.error('[verification-aging] telegram reminder suppressed — same write failure, still inside its cooldown');
+      }
     } catch (err) {
       const also = broken(err);
       console.error('[verification-aging] could not write the trail AND could not alert (' + also.kind + '):', also.detail);
@@ -376,3 +425,7 @@ exports.POLICY = POLICY;
 exports.broken = broken;
 exports.kindsOf = kindsOf;
 exports.WHAT_TO_DO = WHAT_TO_DO;
+/* The cooldown, resettable so the suite can prove the second identical
+   failure stays quiet without waiting a day between runs. */
+exports.opsAlertDue = opsAlertDue;
+exports._resetOpsAlerts = function () { lastOpsAlertAt = {}; };

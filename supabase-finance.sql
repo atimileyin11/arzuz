@@ -330,6 +330,37 @@ create index if not exists idx_referral_codes_owner on referral_codes (owner_ref
 
 
 -- ------------------------------------------------------------
+-- 5c. referral_clicks — personal links are countable, not just usable
+--   A personal share link is /register?ref=<code>, and the Growth view
+--   already counts the registrations that carry it. What it cannot see
+--   is the visits that did not convert — so a referrer whose link was
+--   opened forty times and converted nobody reads the same as one who
+--   was never shared at all. This table is the top of that funnel.
+--
+--   Written ONLY by the service role (netlify/functions/finance.js
+--   action `referral_click`, fired once per session by
+--   assets/referral-click.js). A click is never rewarded and never
+--   identifies the visitor: code + moment + truncated agent, no phone,
+--   no name, no address. RLS is enabled with NO client policies, the
+--   same posture as payments and the ledger — a browser that could
+--   write its own clicks could invent its own funnel.
+-- ------------------------------------------------------------
+
+create table if not exists referral_clicks (
+  id         uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  code       text not null references referral_codes(code),
+  user_agent text,
+  env        text default 'production'
+);
+
+create index if not exists idx_referral_clicks_code    on referral_clicks (code);
+create index if not exists idx_referral_clicks_created on referral_clicks (created_at desc);
+
+alter table referral_clicks enable row level security;
+
+
+-- ------------------------------------------------------------
 -- 6. COVERAGE ON THE PLAN — the pass is a term, not a wallet
 --   care_plans already carries starts_at/ends_at and amount_ngn. These
 --   columns record WHAT WAS BOUGHT: which terms version, the coverage

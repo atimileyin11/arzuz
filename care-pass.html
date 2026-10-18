@@ -24,6 +24,7 @@
   <meta name="twitter:image" content="https://arzuz.com/assets/social/og-image.png">
   <meta name="twitter:image:alt" content="Arzuz — verified student hostels, zero agent fees">
   <link rel="stylesheet" href="assets/arzuz.css">
+  <link rel="stylesheet" href="assets/share.css">
   <style>
     /* The reading column care.html and my-care.html use, so a customer
        moving between the three pages is never re-learning a layout. */
@@ -263,11 +264,15 @@
   <script src="assets/config.js"></script>
   <script src="assets/api-errors.js?v=1"></script>
   <script src="assets/data.js"></script>
+  <script src="assets/attribution.js"></script>
   <script src="assets/submit.js?v=4"></script>
+  <script src="assets/share.js"></script>
+  <script src="assets/referral-card.js"></script>
+  <script src="assets/referral-click.js"></script>
   <script src="assets/app.js"></script>
   <script src="assets/motion.js"></script>
   <script src="assets/care-pass.js"></script>
-  <script>Arzuz.chrome(null); Arzuz.footer();</script>
+  <script>Arzuz.chrome(null); Arzuz.footer(); if (window.ArzuzReferralClick) ArzuzReferralClick.boot();</script>
 </body>
 
 </html>

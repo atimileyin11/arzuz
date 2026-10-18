@@ -27,8 +27,8 @@
   <meta name="twitter:image:alt" content="Arzuz — verified student hostels, zero agent fees">
 <!-- priceRange in the JSON-LD below must match BANDS in assets/data.js.
      Open-ended bands ("Under" / "Above") use a 0 sentinel; the quoted range
-     spans the lowest real bound to the highest (currently under NGN 100,000
-     to above NGN 1,000,000).
+     spans the lowest real bound to the highest (currently under NGN 150,000
+     to above NGN 1,200,000).
 
      The WebSite node used to promise a SearchAction pointing at /register
      with a `search_term_string` input. There is no site search on Arzuz and
@@ -107,7 +107,7 @@
         },
         "telephone": "+2349024814771",
         "serviceType": "Student Accommodation & Hostels",
-        "priceRange": "Under ₦100,000 to above ₦1,000,000 per session"
+        "priceRange": "Under ₦150,000 to above ₦1,200,000 per session"
       }
     ]
   }
@@ -1542,7 +1542,7 @@
         "name": "How much is a hostel in Malete?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Registered student budgets for Malete run from under 100,000 naira to above 1,000,000 naira per academic session. The largest group of students registering for this session can pay between 100,000 and 150,000 naira, and most budgets sit between 100,000 and 300,000 naira."
+          "text": "Registered student budgets for Malete run from under 150,000 naira to above 1,200,000 naira per academic session, all in for the session. The largest group of students registering for this session can pay between 150,000 and 200,000 naira, and most budgets sit between 150,000 and 300,000 naira."
         }
       },
       {
@@ -1733,7 +1733,7 @@
         <div class="h-tier faq-card rv" data-tilt>
           <h3>How much is a hostel in Malete?</h3>
           <p>
-            Registered student budgets for Malete run from under <strong id="faqLo">&#8358;100,000</strong> to above <strong id="faqHi">&#8358;1,000,000</strong> per academic session. The largest group of students registering for this session can pay between <strong id="faqMidLo">&#8358;100,000</strong> and <strong id="faqMidHi">&#8358;150,000</strong>, and most budgets sit between &#8358;100,000 and &#8358;300,000.
+            Registered student budgets for Malete run from under <strong id="faqLo">&#8358;150,000</strong> to above <strong id="faqHi">&#8358;1,200,000</strong> per academic session, all in. The largest group of students registering for this session can pay between <strong id="faqMidLo">&#8358;150,000</strong> and <strong id="faqMidHi">&#8358;200,000</strong>, and most budgets sit between &#8358;150,000 and &#8358;300,000.
           </p>
         </div>
 
@@ -1847,9 +1847,9 @@
         el.classList.toggle('lit', +el.dataset.lo >= p - 50000 && +el.dataset.lo < p);
       });
       const note = document.getElementById('note');
-      if (p >= 1000000) {
-        note.innerHTML = `Very few registered students can afford this. Most registered budgets sit between <b style="color:#C4B5FD">₦100,000 and ₦300,000</b>.`;
-      } else if (p <= 100000) {
+      if (p >= 1200000) {
+        note.innerHTML = `Very few registered students can afford this. Most registered budgets sit between <b style="color:#C4B5FD">₦150,000 and ₦300,000</b>.`;
+      } else if (p <= 150000) {
         note.textContent = 'Almost every student in the register can afford a room at this price.';
       } else {
         note.innerHTML = `<b style="color:#C4B5FD">${r} registered students</b> can afford this number.`;

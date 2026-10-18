@@ -648,7 +648,9 @@ function specifics(name, page, exp) {
   const t = (n, ok, note) => out.push({ name: n, ok: !!ok, note: ok ? '' : (note || '') });
 
   const title = textOf(content, /<h1>([\s\S]*?)<\/h1>/);
-  const badge = textOf(content, /class="h-badge[^"]*">([^<]*)</);
+  /* The badge carries a title attribute with the sentence behind it (stage 3),
+     so the class is never the last attribute — read the text, not the tag. */
+  const badge = textOf(content, /class="h-badge[^"]*"[^>]*>([^<]*)</);
   const price = textOf(content, /class="ld-price">([^<]*)</);
 
   t('title', title === exp.title, 'got "' + title + '"');

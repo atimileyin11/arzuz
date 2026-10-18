@@ -150,6 +150,7 @@ const GUARDED = [
   'supabase-waitlist-launch.sql',
   'supabase-verification-rpc.sql',
   'supabase-verification-queue.sql',
+  'supabase-verification-evidence.sql',
   'supabase-status-codes.sql',
   'supabase-status-history.sql',
   'supabase-close-public-inserts.sql',
@@ -414,6 +415,63 @@ const EXPECTED = [
     missing: 'listings.assigned_to / verified_at / verified_by',
   },
 
+  /* STAGE 3, supabase-verification-evidence.sql: what the visit SAW. Its
+     three preflights are the queue file's prerequisites PLUS the queue
+     file and the RPC itself — the trail and the decision it calls are
+     both its dependencies, and naming the wrong one sends an operator to
+     the wrong file. */
+  {
+    key: 'evidence.schema',
+    file: 'supabase-verification-evidence.sql',
+    fragment: 'public.listings is missing. Run supabase-schema.sql first',
+    missing: 'public.listings',
+  },
+  {
+    key: 'evidence.role',
+    file: 'supabase-verification-evidence.sql',
+    fragment: 'public.arzuz_role() is missing. Run supabase-team-roles.sql',
+    missing: 'public.arzuz_role()',
+  },
+  {
+    key: 'evidence.shift',
+    file: 'supabase-verification-evidence.sql',
+    fragment: 'The verification shift is missing. Run supabase-verification-queue.sql',
+    missing: 'verification_events + listing_verify()',
+  },
+
+  /* And its four refusals, which are the whole reason an "Inspected"
+     badge can be trusted: who may record a visit at all, that the row is
+     real, that a visit HAS checks, and that every check is one the
+     public badge can name. Driven in section 4e against the real chain. */
+  {
+    key: 'evidence.who',
+    file: 'supabase-verification-evidence.sql',
+    fragment: 'may not record a visit',
+    missing: 'a verification or admin claim',
+    kind: 'argument',
+  },
+  {
+    key: 'evidence.exists',
+    file: 'supabase-verification-evidence.sql',
+    fragment: 'listing_attest: no listing with id',
+    missing: 'a listing that exists',
+    kind: 'argument',
+  },
+  {
+    key: 'evidence.checks',
+    file: 'supabase-verification-evidence.sql',
+    fragment: 'a visit records between 1 and 8 checks',
+    missing: 'at least one check',
+    kind: 'argument',
+  },
+  {
+    key: 'evidence.kind',
+    file: 'supabase-verification-evidence.sql',
+    fragment: 'is not a check we can publish',
+    missing: 'a named check',
+    kind: 'argument',
+  },
+
   /* And the eleven refusals inside its four functions, which are the whole
      reason a claim can be trusted: who may read the shift at all, who may
      take a listing, that the row is real, that it has not been decided,
@@ -616,6 +674,20 @@ const SENTINEL = {
                    where n.nspname = 'public'
                      and p.proname in ('arzuz_actor', 'verification_queue', 'listing_take',
                                        'listing_release', 'verification_nudge')))`,
+    want: 0,
+  },
+  'supabase-verification-evidence.sql': {
+    /* Everything this file builds sits below its preflight, so on any rung
+       where the guard fires the table, the public view and the function
+       must all be absent. Asked as one count for the same reason the
+       shift's is: a table written without the function that fills it — or
+       the reverse — would be half a layer, and a rung that let half of it
+       through proves nothing. */
+    label: 'the evidence (listing_evidence + its view + listing_attest)',
+    sql: `select ((to_regclass('public.listing_evidence') is not null)::int
+               + (to_regclass('public.public_listing_checks') is not null)::int
+               + (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                   where n.nspname = 'public' and p.proname = 'listing_attest'))`,
     want: 0,
   },
   'supabase-status-codes.sql': {
@@ -895,6 +967,14 @@ await rung(
   null, 'supabase-verification-queue.sql', guard('shift.schema')
 );
 
+/* rung 1g - STAGE 3 on the same empty database. Its first guard is the
+   table the whole layer is about, so it has to name the file that
+   creates it rather than the two it also depends on. */
+await rung(
+  'verification-evidence on an empty database → "Run supabase-schema.sql first"',
+  null, 'supabase-verification-evidence.sql', guard('evidence.schema')
+);
+
 /* rung 2 — the four base tables exist, the booking table does not */
 await rung(
   'team-roles with the schema tables but no booking_requests \u2192 names supabase-media-booking.sql',
@@ -922,6 +1002,16 @@ await rung(
 await rung(
   'verification-queue with the tables but no arzuz_role() → names supabase-team-roles.sql',
   null, 'supabase-verification-queue.sql', guard('shift.role')
+);
+
+/* rung 2d - STAGE 3's second guard on the same state: everything
+   table-shaped, nothing role-shaped. listing_attest() authorizes with
+   public.arzuz_role() like every function around it, so a database
+   without that function would build it and then refuse (or admit) the
+   wrong caller on first use. */
+await rung(
+  'verification-evidence with the tables but no arzuz_role() → names supabase-team-roles.sql',
+  null, 'supabase-verification-evidence.sql', guard('evidence.role')
 );
 
 /* rung 3 — bookings exist, support_tickets does not: the exact state
@@ -1040,6 +1130,17 @@ await rung(
   null, 'supabase-verification-queue.sql', guard('shift.launch')
 );
 
+/* rung 11d - STAGE 3's third guard, on the same database as 11b and 11c:
+   the role model is stubbed and listings exists, but the SHIFT does not.
+   This file calls listing_verify() and inserts into a trail table the
+   queue file creates, so the message has to name BOTH files — checking
+   one and assuming the other is exactly the install that would pass a
+   preflight and then fail on the first officer at a door. */
+await rung(
+  'verification-evidence with the role model but no shift → names supabase-verification-queue.sql',
+  null, 'supabase-verification-evidence.sql', guard('evidence.shift')
+);
+
 /* rung 12 — the other direction. Every prerequisite the guard checks is
    now present, so it must NOT fire. The run goes on to fail on the
    stub's shape (these are four-column tables, not the real ones) and
@@ -1137,6 +1238,20 @@ await db.exec(`
 `);
 await silent('status-history with the code table present \u2192 the preflight does not fire',
   'supabase-status-history.sql');
+
+/* STAGE 3's two prerequisites above it are the trail table and the
+   decision function, and neither stub above creates either — so they are
+   created here, by the exact signatures the guard asks for. The file then
+   runs for real against them: listing_attest() is a plpgsql body, so its
+   INSERT is not resolved until it is called, which is precisely why the
+   preflight checks the trail by name rather than trusting plpgsql to. */
+await db.exec(`
+  create table if not exists verification_events (id serial primary key);
+  create or replace function public.listing_verify(uuid, text, integer)
+  returns jsonb language sql stable as $$ select '{}'::jsonb $$;
+`);
+await silent('verification-evidence with the shift present \u2192 the preflight does not fire',
+  'supabase-verification-evidence.sql');
 
 /* roommate and care cannot be proved silent HERE \u2014 their precondition
    is arzuz_role(), which this stub database deliberately does not have.
@@ -1238,6 +1353,14 @@ const CHAIN = [
      its own preflight, and it sits above the closer for the same reason
      everything else here does. */
   'supabase-verification-queue.sql',
+  /* STAGE 3 of the verification layer, right after the queue file it
+     depends on twice: the trail it must find, and public.listing_verify()
+     — the decision it CALLS rather than re-implements, so "approved"
+     cannot come to mean two things depending on which button was pressed.
+     It sits above the closer for the same reason everything else does: it
+     names its own grants explicitly, so it has no opinion about anon's on
+     the five public tables. */
+  'supabase-verification-evidence.sql',
   /* and then the public status page, which resolves a reference through
      the registry the launch file creates — the one thing its preflight
      asks for. It sits above the closer for the same reason it does in
@@ -1587,7 +1710,70 @@ await check('and an officer\u2019s real call is accepted, and lands on the row',
    reference is what makes the second claim actually tested.
    ------------------------------------------------------------ */
 
-section('4e. A reference\u2019s code history is the desk\u2019s question, and only the desk\u2019s');
+section('4e. What the visit saw: a visit needs checks, and checks the badge can name');
+
+/* STAGE 3's four refusals, driven against the real chain the same way the
+   shift's are and for a sharper reason: these are the four ways an
+   "Inspected" badge could come to mean nothing. A role off the shift, a
+   listing that is not there, a visit with no checks, and a check nobody
+   can name. The control at the end is what keeps them honest — a function
+   that refused EVERYTHING would satisfy all four. */
+
+await db2.exec(`
+  insert into listings (payload, status, tier)
+  values ('{"nm":"Evidence Owner","ph":"08030000011","rent":"180000","ar":"Malete","ty":"Self-contain","rm":"1","hp":""}'::jsonb,
+          'active', 0);
+`);
+const evidenceListing = await val2(`select id from listings where owner_phone = '08030000011'`);
+
+await check('recording a visit refuses a marketing token, and a support one', async () => {
+  const marketing = await rpcGuard('evidence.who', 'authenticated', { role: 'marketing' },
+    `select public.listing_attest('${evidenceListing}'::uuid, '[{"kind":"water"}]'::jsonb)`);
+  if (marketing !== true) return marketing;
+  return rpcGuard('evidence.who', 'authenticated', { role: 'support' },
+    `select public.listing_attest('${evidenceListing}'::uuid, '[{"kind":"water"}]'::jsonb)`);
+});
+
+await check('recording a visit refuses an id that is not a listing', () =>
+  rpcGuard('evidence.exists', 'authenticated', { role: 'verification' },
+    `select public.listing_attest('00000000-0000-4000-8000-00000000feed'::uuid, '[{"kind":"water"}]'::jsonb)`));
+
+await check('recording a visit with NO checks is refused — the badge would have no parts', () =>
+  rpcGuard('evidence.checks', 'authenticated', { role: 'verification' },
+    `select public.listing_attest('${evidenceListing}'::uuid, '[]'::jsonb)`));
+
+await check('and a check nobody can name is refused, BY NAME', async () => {
+  const raised = await attempt2('authenticated', { role: 'verification' },
+    `select public.listing_attest('${evidenceListing}'::uuid, '[{"kind":"vibes"}]'::jsonb)`);
+  const want = guard('evidence.kind');
+  if (!raised) return 'an unknown check was recorded, so the badge could not print it';
+  if (!raised.includes(want.fragment)) return 'it raised something else:\n      ' + raised;
+  /* The word is in the sentence: an officer has to be able to fix it. */
+  return raised.includes('vibes') ? true : 'the refusal does not name the word:\n      ' + raised;
+});
+
+await check('  \u2026and the officer\u2019s refusals wrote no evidence and moved no listing', async () => {
+  const evidence = await val2(`select count(*)::int from public.listing_evidence`);
+  if (evidence !== 0) return 'the refused visits left ' + evidence + ' evidence row(s)';
+  const row = await one2(`select tier, status, verified_at from listings where id = '${evidenceListing}'::uuid`);
+  return Number(row.tier) === 0 && row.verified_at === null ? true
+    : 'a refused visit moved the listing: ' + JSON.stringify(row);
+});
+
+/* THE CONTROL. One named check, by the login whose shift it is: the
+   decision and the evidence, in one call. */
+await check('  \u2026while the real thing works: one visit, tier 2, and the check on file', async () => {
+  const out = await asClaim('authenticated', { role: 'verification' }, async () =>
+    one2(`select public.listing_attest('${evidenceListing}'::uuid, '[{"kind":"water","detail":"strong at the kitchen tap"}]'::jsonb) as r`));
+  if (!out || !out.r || Number(out.r.tier) !== 2) return 'the visit did not make it inspected: ' + JSON.stringify(out && out.r);
+  const rows = await sql2(`select kind, detail from public.listing_evidence
+                             where listing_id = '${evidenceListing}'::uuid`);
+  const water = rows.rows.filter((r) => r.kind === 'water')[0];
+  return water && water.detail === 'strong at the kitchen tap' ? true
+    : 'the evidence is ' + JSON.stringify(rows.rows);
+});
+
+section('4f. A reference\u2019s code history is the desk\u2019s question, and only the desk\u2019s');
 
 /* Valid shape, never minted: 'XXXX' is not hex, so the old fixture could
    not have been produced by arzuz_ref_token() and would never have been

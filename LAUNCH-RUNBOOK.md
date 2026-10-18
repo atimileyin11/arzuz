@@ -112,9 +112,24 @@ Desk's **Status code history** panel filling in.
 
 ## Step 5 — the verification queue
 
-**Run** — `supabase-verification-queue.sql`.
+**Run** — `supabase-verification-rpc.sql` if it is not already in (the decision), then
+`supabase-verification-queue.sql` (the shift).
 
-**Verify** — `npm run migrations:live` → `✓ supabase-verification-queue.sql`.
+**Verify** — `npm run migrations:live` → ✓ for both, then sign in on `/admin` as the verification
+login and confirm the queue panel draws: a live tier-0 listing owed a visit, and no listing drawn
+for a login that is not on the shift.
+
+## Step 5b — what the visit saw
+
+**Run** — `supabase-verification-evidence.sql` (needs both files in step 5).
+
+**Verify** — `npm run migrations:live` → `✓ supabase-verification-evidence.sql` (the table
+`listing_evidence`, the view `public_listing_checks`). Then take a listing on the dashboard's queue
+panel, tick two checks with a sentence each and press **Record the visit**: the panel must replace the
+listing with the next one, and `select * from public_listing_checks` must show both checks — while
+`select * from public.listing_evidence where listing_id = '<id>'` shows the officer whose account
+recorded it. The badge on `/browse` and on the room page must now name those checks and the date,
+and must read **Re-check due** rather than "Inspected" once `expires_at` has passed.
 
 ## Step 6 — Care
 

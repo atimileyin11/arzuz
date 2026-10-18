@@ -86,6 +86,8 @@ const LAUNCH_ORDER = [
   'supabase-team-roles.sql',
   'supabase-waitlist-launch.sql',
   'supabase-verification-rpc.sql',
+  'supabase-verification-queue.sql',
+  'supabase-verification-evidence.sql',
   'supabase-status-codes.sql',
   'supabase-status-history.sql',
   'supabase-close-public-inserts.sql'

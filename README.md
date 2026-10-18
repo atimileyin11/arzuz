@@ -567,6 +567,19 @@ arzuz-site/
 │                           and the ordering are assets/verification-queue.js, which the
 │                           dashboard and the hourly chaser both load. AFTER
 │                           supabase-verification-rpc.sql
+├── supabase-verification-evidence.sql Stage 3 of the verification layer: what the visit SAW.
+│                           One append-only row per check, grouped by visit — a closed
+│                           vocabulary of six (water, power, photos, price, access, security),
+│                           an optional sentence of the officer's own, and an expiry 180 days
+│                           out. public.listing_attest() records the checks AND makes the
+│                           decision through listing_verify() in one transaction, so a tier-2
+│                           "Inspected" listing cannot exist without the evidence that earned
+│                           the word; a refused visit writes nothing. public_listing_checks is
+│                           the one public read surface — the checks behind a badge, for
+│                           listings already on the board, never the officer's account. The
+│                           badge's wording lives in assets/verification-badge.js, loaded by
+│                           the browse board, the room page and the dashboard. AFTER
+│                           supabase-verification-queue.sql
 ├── supabase-status-codes.sql The public status page: the code a student proves a contact on
 │                           their file with — phone or email, the channel is the
 │                           function's business and never the table's — stored as a hash,

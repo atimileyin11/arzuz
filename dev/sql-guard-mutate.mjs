@@ -82,6 +82,7 @@ const CARE = 'supabase-care.sql';
 const FIN = 'supabase-finance.sql';
 const CLAIMS = 'supabase-claims.sql';
 const SHIFT = 'supabase-verification-queue.sql';
+const EVIDENCE = 'supabase-verification-evidence.sql';
 
 const MUTATIONS = [
   {
@@ -211,6 +212,31 @@ const MUTATIONS = [
     apply: (s) => s.replace(
       'end $$;',
       "raise exception 'a brand new rule nobody tests';\nend $$;"),
+  },
+
+  /* STAGE 3. Same reasoning one file further along: the newest migration
+     must not be the one whose guards are claimed rather than driven. The
+     first mutation changes only WHICH file the message names — the raise
+     still happens, so a rung that matched on "it threw" would still pass
+     and this is what proves the rungs read the sentence. The second turns
+     the visit guard off for the empty case, which is the exact failure
+     the whole layer exists to prevent: an "Inspected" badge with no
+     checks behind it. */
+  {
+    name: 'verification-evidence: the shift guard names the wrong file',
+    file: EVIDENCE,
+    breaks: 'a database with no shift is sent to supabase-verification-rpc.sql, which is only half of what is missing',
+    apply: (s) => s.replace(
+      'Run supabase-verification-queue.sql and supabase-verification-rpc.sql before this file',
+      'Run supabase-verification-rpc.sql before this file'),
+  },
+  {
+    name: 'verification-evidence: a visit with no checks is allowed through',
+    file: EVIDENCE,
+    breaks: 'a tier-2 badge could be minted with nothing behind it, which is the one thing this layer promises cannot happen',
+    apply: (s) => s.replace(
+      'or jsonb_array_length(p_checks) < 1',
+      'or false'),
   },
 ];
 

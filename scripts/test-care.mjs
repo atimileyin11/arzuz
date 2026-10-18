@@ -87,6 +87,9 @@ const state = {
   /* Relations PostgREST answers PGRST205 for: the state the live
      project is actually in before supabase-care.sql is run. */
   missing: [],
+  /* The key is in the slot and the project refuses it — the state the
+     live deploy was actually in: "Invalid API key", 401. */
+  refusedKey: false,
 };
 
 function resp(status, obj) {
@@ -120,6 +123,12 @@ global.fetch = async function (url, init = {}) {
     const table = rest.split('?')[0];
     const qs = rest.indexOf('?') !== -1 ? rest.slice(rest.indexOf('?') + 1) : '';
     const q = new URLSearchParams(qs);
+
+    /* PostgREST refusing the key the deploy holds, before it ever gets
+       as far as a table: 401 and the sentence the live project gave. */
+    if (state.refusedKey) {
+      return resp(401, { message: 'Invalid API key', hint: 'Double check your Supabase `anon` or `service_role` API key.' });
+    }
 
     /* What PostgREST does for a table missing from its schema cache:
        HTTP 404 and code PGRST205, which is the real answer the live
@@ -913,11 +922,33 @@ await t('the student door needs the service key too \u2014 and says which one is
   }
 });
 
+/* The sibling of the check above, and the state the live site was
+   actually in: the variable IS set, and Supabase refuses the value. The
+   door answered 502 "we could not open your Care account just now" — a
+   student holding a perfectly good link was told to try again, forever,
+   while no retry could ever work. The link is fine and the site is not
+   switched on, so it says exactly that. */
+await t('a service key Supabase REFUSES is a not-ready 503 \u2014 the same answer as a missing one', async () => {
+  state.refusedKey = true;
+  try {
+    const before = state.wrote.length;
+    const r = await asStudent({ action: 'view', token: planToken });
+    assert.equal(r.status, 503, 'a refused credential answered something other than 503');
+    assert.match(r.body.error, /not switched on/);
+    assert.doesNotMatch(r.body.error, /SUPABASE_SERVICE_ROLE_KEY/,
+      'the student was handed the name of an environment variable');
+    const req = await asStudent({ action: 'request', token: planToken, issue: 'The tap is running again' });
+    assert.equal(req.status, 503, 'a request was answered like a bad link');
+    assert.equal(state.wrote.length, before, 'a refused credential still wrote something');
+  } finally {
+    state.refusedKey = false;
+  }
+});
+
 await t('the student door refuses a GET like every other action', async () => {
   const r = await call({ token: null, method: 'GET' });
   assert.equal(r.status, 405);
 });
-
 await t('nothing the student door wrote would have been rejected by the database', async () => {
   const filed = state.wrote.filter((r) => r.payload && r.payload.category === 'care');
   assert.ok(filed.length >= 3, 'too few tickets to be meaningful: ' + filed.length);

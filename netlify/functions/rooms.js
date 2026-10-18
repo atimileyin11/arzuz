@@ -66,6 +66,27 @@ function loadListingUrl() {
 
 const ArzuzListing = loadListingUrl();
 
+/* The badge's words live in assets/verification-badge.js — the same
+   module the browse card and listing.html load — so the page a crawler
+   gets and the page a browser repaints agree about what was checked.
+   Loaded the same way, and optional: without it the page keeps the
+   stage-1 wording rather than 500ing. */
+function loadBadge() {
+  const candidates = [
+    path.join(__dirname, 'verification-badge.js'),
+    path.join(__dirname, '..', '..', 'assets', 'verification-badge.js'),
+    '/var/task/assets/verification-badge.js'
+  ];
+  for (const candidate of candidates) {
+    try {
+      return require(candidate);
+    } catch (e) { /* try the next location */ }
+  }
+  return null;
+}
+
+const ArzuzBadge = loadBadge();
+
 const SITE = 'https://arzuz.com';
 const GENERIC_IMAGE = SITE + '/assets/social/og-image.png';
 
@@ -191,6 +212,47 @@ function replaceMetaTags(html, updates) {
 
 /* ---------- Supabase read (12 s timeout — a crawler must never hang) ---------- */
 
+/* The checks behind this room's badge, read from the public view. A
+   failure returns null, not []: only a successful read may say that a
+   listing has no record, and an outage is not a fact about the room. */
+async function fetchChecks(id) {
+  if (!/^[0-9a-fA-F-]{8,64}$/.test(id)) return null;
+  const url =
+    SUPABASE_URL.replace(/\/+$/, '') +
+    '/rest/v1/public_listing_checks?select=listing_id,visit_id,kind,detail,checked_at,expires_at' +
+    '&listing_id=eq.' + encodeURIComponent(id) + '&order=checked_at.desc';
+  try {
+    const res = await fetch(url, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!res.ok) return null;
+    const rows = await res.json();
+    return Array.isArray(rows) ? rows : null;
+  } catch (e) {
+    console.warn('[rooms] checks read failed:', e && e.message);
+    return null;
+  }
+}
+
+/* tier + evidence → label/class/sentence. Falls back to stage 1's label
+   if the module is missing from the sandbox, so a bundling mistake
+   degrades the wording instead of blanking the badge. */
+function badgeOf(row, checks) {
+  if (ArzuzBadge) return ArzuzBadge.summarise(row.tier, checks, Date.now());
+  const n = Number(row.tier);
+  return {
+    cls: n >= 2 ? 'b2' : (n === 1 ? 'b1' : 'b0'),
+    label: ArzuzListing.tierLabel(row.tier),
+    sentence: ArzuzListing.tierLabel(row.tier),
+    hasEvidence: false,
+    expired: false,
+    parts: [],
+    checked_at: null,
+    expires_at: null
+  };
+}
+
 async function fetchListing(id) {
   if (!/^[0-9a-fA-F-]{8,64}$/.test(id)) return null;
   const url =
@@ -218,7 +280,7 @@ async function fetchListing(id) {
    Supabase when it boots — with the same fields — so a visitor ends
    up looking at the interactive page either way. The point of doing
    it here is the reader that never runs the script. */
-function renderBody(row) {
+function renderBody(row, checks) {
   const p = row.payload || {};
   const name = ArzuzListing.nameOf(row) || 'Verified room';
   const area = ArzuzListing.areaOf(row) || 'Malete';
@@ -226,8 +288,9 @@ function renderBody(row) {
   const rooms = String(first(p, ['rm']) || row.rooms || '').trim();
   const rent = row.listed_price_ngn;
   const walk = ArzuzListing.walkText(row.latitude, row.longitude);
-  const badge = ArzuzListing.tierLabel(row.tier);
-  const badgeClass = Number(row.tier) >= 2 ? 'b2' : (Number(row.tier) === 1 ? 'b1' : 'b0');
+  const info = badgeOf(row, checks);
+  const badge = info.label;
+  const badgeClass = info.cls;
   const desc = String(p.desc || p.description || '').trim();
   const passage = String(p.passage || '').trim();
   const utilities = Array.isArray(p.ut) ? p.ut.filter(Boolean) : [];
@@ -272,6 +335,21 @@ function renderBody(row) {
     h += '<div class="ld-sec"><h2>Getting there</h2><div class="ld-card"><p>' + esc(passage) + '</p></div></div>';
   }
 
+  /* WHAT WE CHECKED — the stage-3 section, written into the HTML so a
+     reader with no JavaScript still gets the parts of the badge. */
+  h += '<div class="ld-sec" id="verified"><h2>What we checked</h2><div class="ld-card verify-detail">' +
+    '<p>' + esc(info.sentence) + '</p>' +
+    (info.hasEvidence
+      ? '<ul>' + info.parts.map(function (part) {
+          return '<li><b>' + esc(part.label) + '</b>' +
+            (part.detail ? ' \u2014 ' + esc(part.detail) : '') + '</li>';
+        }).join('') + '</ul>' +
+        '<p class="note">We go back every six months. This record was made on ' +
+        esc(ArzuzBadge ? ArzuzBadge.day(info.checked_at) : '') + ' and is current until ' +
+        esc(ArzuzBadge ? ArzuzBadge.day(info.expires_at) : '') + '.</p>'
+      : '') +
+    '</div></div>';
+
   h += '<div class="ld-sec"><h2>About this price</h2><div class="ld-card"><p>' +
     'The price shown is what the owner is charging for the session, and Arzuz adds no agent fee. ' +
     'The walking time is measured from a pin dropped at the gate of the compound, not estimated. ' +
@@ -294,12 +372,12 @@ function renderBody(row) {
 
 /* ---------- head ---------- */
 
-function rewriteHead(html, row, canonicalUrl) {
+function rewriteHead(html, row, canonicalUrl, checks) {
   const p = row.payload || {};
   const name = ArzuzListing.nameOf(row) || 'Verified room';
   const area = ArzuzListing.areaOf(row) || 'Malete';
   const rent = row.listed_price_ngn;
-  const badge = ArzuzListing.tierLabel(row.tier);
+  const badge = badgeOf(row, checks).label;
   const title = name + ' \u2014 ' + area + ' | Arzuz';
   const desc = (rent ? ngn(rent) + ' per session \u00B7 ' : '') +
     badge + ' \u00B7 no agent fee \u00B7 ' + area + ', near KWASU.';
@@ -394,8 +472,9 @@ exports.handler = async function (event) {
   const canonical = SITE + ArzuzListing.path(row);
   if (!ArzuzListing.isCanonical(pathname, row)) return redirect(ArzuzListing.path(row));
 
-  const bodyHtml = renderBody(row);
-  let html = rewriteHead(page, row, canonical);
+  const checks = await fetchChecks(id);
+  const bodyHtml = renderBody(row, checks);
+  let html = rewriteHead(page, row, canonical, checks);
 
   /* The room, in the markup, visible without a line of JavaScript. */
   html = html.replace(

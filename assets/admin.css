@@ -591,6 +591,44 @@ body.side-open .side-scrim { opacity: 1; pointer-events: auto; }
 .verify-age { color: var(--atext3); font-size: 12.5px; flex: 1; min-width: 220px; }
 .verify-row.late .verify-age { color: #FCD34D; }
 
+/* ---------- the visit form (stage 3 of the verification layer) ----------
+   Drawn only on a listing this login holds: the visit is the state a
+   claim exists for. Two columns of controls — the check, then the
+   officer's own sentence about it — because the sentence is the part a
+   student actually reads on the badge. */
+.verify-evidence {
+  flex-basis: 100%;
+  margin: 10px 0 4px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--aline);
+  border-radius: 10px;
+  display: grid;
+  gap: 8px;
+}
+.verify-evidence-head {
+  font-size: 11px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: #C4B5FD;
+}
+.verify-check {
+  display: grid; grid-template-columns: minmax(190px, 1fr) minmax(160px, 1.2fr);
+  gap: 10px; align-items: center;
+}
+.verify-check label {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: #fff; cursor: pointer;
+}
+.verify-evidence input[type="text"] {
+  width: 100%; font-family: inherit; font-size: 13px;
+  padding: 7px 10px; border-radius: 8px;
+  background: rgba(0,0,0,0.25); border: 1px solid var(--aline); color: #fff;
+}
+.verify-evidence input[type="text"]::placeholder { color: var(--atext3); }
+.verify-evidence .act-btn { justify-self: start; margin-top: 2px; }
+@media (max-width: 640px) {
+  .verify-check { grid-template-columns: 1fr; gap: 6px; }
+}
+
 .table-card {
   background: var(--a1);
   backdrop-filter: blur(16px);

@@ -68,6 +68,10 @@ const crypto = require('node:crypto');
 const { sb, cfg, newToken, hashToken, normalizePhone } = require('./roommate-match.js');
 const { liveUser, roleOf } = require('./care-credit.js');
 const { sendAlert } = require('./notify.js');
+/* WhatsApp's server door (never throws — a stale number fails the message,
+   never the payout). Required here rather than called over HTTP: a function
+   cannot ring its own endpoint without a round-trip to itself. */
+const { sendText } = require('./whatsapp-send.js');
 
 const ApiErrors = require('../../assets/api-errors.js');
 
@@ -291,8 +295,153 @@ async function post(entry) {
    indexes are the enforcement — a self-referral, a replayed payment
    and a second claim on the same customer all fail the insert rather
    than being filtered by a read that could race. */
+/* ------------------------------------------------------------
+   SELF-SERVICE REFERRALS — the growth loop (dev/referral-growth-design.md)
+
+   A code is AZ- + 4 unambiguous chars (no 0/O/1/I/L — they get misread
+   on WhatsApp forwards), stored UPPERCASE. The lowercased code passes
+   assets/attribution.js sanitize(), so a personal link IS just a ?ref=
+   tag and needs no new plumbing: the tag is the code.
+   ------------------------------------------------------------ */
+
+const REFERRAL_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+/* A tag is only treated as a code when it has the code's shape — a
+   channel tag like whatsapp-status must never become a referral. */
+function normalizeReferralCode(raw) {
+  const c = String(raw || '').trim().toUpperCase().replace(/[\s_]+/g, '-');
+  return /^AZ-[A-Z0-9]{4,8}$/.test(c) ? c : null;
+}
+
+function mintReferralCode() {
+  const bytes = crypto.randomBytes(4);
+  let c = 'AZ-';
+  for (let i = 0; i < 4; i += 1) c += REFERRAL_CODE_ALPHABET[bytes[i] % REFERRAL_CODE_ALPHABET.length];
+  return c;
+}
+
+/* The code on an order: what the buyer typed wins (uppercased, so case
+   can never un-qualify a real referral), otherwise the attribution tag
+   when — and only when — it has a code's shape. A hand-made legacy code
+   that is not AZ-shaped still travels when typed; it simply cannot arrive
+   via a link, which is exactly the old behaviour. */
+function resolveReferralCode(explicit, tag) {
+  const typed = String(explicit || '').trim().toUpperCase().slice(0, 40);
+  if (typed) return typed;
+  return normalizeReferralCode(tag);
+}
+
+/* One code per phone: minting twice returns the same code, so a
+   double-tap or a retry never orphans the first share link. */
+async function actionReferralMint(body) {
+  const phone = normalizePhone(body.phone);
+  if (!phone) return { status: 400, body: { error: 'Send the phone number the code belongs to — your code is claimed with it.' } };
+  const name = String(body.name || '').trim().slice(0, 80) || null;
+  const env = body.env === 'test' ? 'test' : 'production';
+  const found = await sb(
+    'referral_codes?select=code,owner_ref,owner_name,active&owner_ref=eq.' +
+      encodeURIComponent(phone) + '&active=is.true&limit=1',
+    { method: 'GET' }
+  );
+  if (found && found[0]) return { status: 200, body: { ok: true, code: found[0].code, existing: true } };
+  /* ~1.5M codes: a collision is a retry, not an error. Five misses in a
+     row is a crowded afternoon, not a broken afternoon. */
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const code = mintReferralCode();
+    try {
+      await sb('referral_codes', {
+        method: 'POST',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({ code: code, owner_ref: phone, owner_name: name, env: env }),
+      });
+      return { status: 201, body: { ok: true, code: code, existing: false } };
+    } catch (err) {
+      if (err && (err.code === '23505' || String(err.message || '').indexOf('duplicate') !== -1)) continue;
+      throw err;
+    }
+  }
+  return { status: 502, body: { error: 'We could not mint a code just now. Try again in a moment.' } };
+}
+
+/* A click is logged, never rewarded and never identifying: code + moment
+   + truncated agent. Unknown codes and database hiccups both answer ok —
+   a click ping must never fail a page, and must never leak which codes
+   exist. */
+async function actionReferralClick(body, headers) {
+  const code = normalizeReferralCode(body.code);
+  if (!code) return { status: 200, body: { ok: true } };
+  try {
+    const rows = await sb(
+      'referral_codes?select=code&code=eq.' + encodeURIComponent(code) +
+        '&active=is.true&limit=1',
+      { method: 'GET' }
+    );
+    if (rows && rows[0]) {
+      const ua = String((headers && (headers['user-agent'] || headers['User-Agent'])) || body.user_agent || '').slice(0, 120) || null;
+      await sb('referral_clicks', {
+        method: 'POST',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          code: code,
+          user_agent: ua,
+          env: body.env === 'test' ? 'test' : 'production',
+        }),
+      });
+    }
+  } catch (err) { /* best-effort: the log above carries a failure */ }
+  return { status: 200, body: { ok: true } };
+}
+
+/* The referrer's dashboard reads through code + phone — the pair is the
+   credential, the same pattern as the status page's reference + code.
+   Clicks are capped at 5000 rows read (personal links never reach it;
+   the flag says so if one does). Registrations are demand rows whose
+   stored tag is this code, lowercased the way attribution filed it. */
+async function actionReferralStats(body) {
+  const code = normalizeReferralCode(body.code);
+  const phone = normalizePhone(body.phone);
+  if (!code || !phone) return { status: 400, body: { error: 'Send your code and the phone number it belongs to.' } };
+  const rows = await sb(
+    'referral_codes?select=code,owner_ref,owner_name,active&code=eq.' +
+      encodeURIComponent(code) + '&limit=1',
+    { method: 'GET' }
+  );
+  const owner = (rows && rows[0]) || null;
+  if (!owner) return { status: 404, body: { error: 'No such code.' } };
+  if (owner.owner_ref !== phone) {
+    return { status: 403, body: { error: 'That code belongs to a different number.' } };
+  }
+  const [clickRows, regRows, refRows] = await Promise.all([
+    sb('referral_clicks?select=id&code=eq.' + encodeURIComponent(code) + '&limit=5000', { method: 'GET' }),
+    sb('demand_records?select=ref,created_at&payload->>ref=eq.' + encodeURIComponent(code.toLowerCase()) + '&limit=200', { method: 'GET' }),
+    sb('referrals?select=status,reward_kobo,created_at,decided_at,paid_at&code=eq.' + encodeURIComponent(code) + '&order=created_at.desc&limit=200', { method: 'GET' }),
+  ]);
+  let pendingKobo = 0;
+  let paidKobo = 0;
+  for (const r of refRows || []) {
+    if (r.status === 'paid') paidKobo += Number(r.reward_kobo) || 0;
+    else if (r.status !== 'rejected' && r.status !== 'reversed') pendingKobo += Number(r.reward_kobo) || 0;
+  }
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      code: owner.code,
+      owner_name: owner.owner_name,
+      active: !!owner.active,
+      clicks: { count: (clickRows || []).length, capped: (clickRows || []).length >= 5000 },
+      registrations: (regRows || []).map((r) => ({ ref: r.ref, at: r.created_at })),
+      referrals: (refRows || []).map((r) => ({
+        status: r.status, reward_kobo: r.reward_kobo,
+        created_at: r.created_at, decided_at: r.decided_at, paid_at: r.paid_at,
+      })),
+      earnings: { pending_kobo: pendingKobo, paid_kobo: paidKobo },
+    },
+  };
+}
+
 async function qualifyReferral(payment) {
-  const code = payment.referral_code;
+  const code = String(payment.referral_code || '').trim().toUpperCase();
   if (!code) return { ok: false, reason: 'no code' };
 
   const rows = await sb(
@@ -329,7 +478,19 @@ async function qualifyReferral(payment) {
         env: payment.env || 'production',
       }),
     });
-    return { ok: true, row: Array.isArray(out) ? out[0] : out };
+    const row = Array.isArray(out) ? out[0] : out;
+    /* THE QUALIFICATION PAGE. The money is verified and the referral is
+       real, so the team hears about it NOW — a qualified referral that
+       sits in pending_qualification until somebody opens the report is
+       a referrer who concludes sharing earns nothing. sendAlert never
+       throws, so a Telegram outage cannot un-qualify anything. */
+    await sendAlert(
+      '🤝 Referral qualified\n' +
+      code + ' · owner ' + (owner.owner_name || owner.owner_ref) + '\n' +
+      'buyer ' + referred + ' · ₦' + Math.round((Number(reward) || 200000) / 100).toLocaleString('en-NG') + '\n' +
+      'payment ' + payment.reference + ' — review it in Finance → referrals.'
+    );
+    return { ok: true, row: row };
   } catch (err) {
     /* A second claim on this payment, or this customer already
        qualified: the uniqueness did its job. */
@@ -610,6 +771,16 @@ async function claimPassLink(payment) {
   return { token: token, path: '/my-care?t=' + token };
 }
 
+/* Where a buyer who replays an order is sent: the checkout the provider
+   opened for it, if it ever opened one. Read from provider_payload,
+   which is where the provider's own record of the order belongs — and
+   which activation later overwrites with the verification payload. */
+function checkoutOf(payment) {
+  const stored = payment && payment.provider_payload;
+  const checkout = stored && stored.checkout;
+  return checkout && checkout.authorization_url ? checkout : null;
+}
+
 /* What a fresh activation is allowed to be true about: the amount the
    provider took must equal the order, in the same currency. */
 function amountMatches(payment, providerData) {
@@ -624,7 +795,7 @@ function amountMatches(payment, providerData) {
    ------------------------------------------------------------ */
 
 /* The student's four, and none of them can name a price. */
-const PUBLIC_ACTIONS = ['terms', 'order', 'verify', 'status'];
+const PUBLIC_ACTIONS = ['terms', 'order', 'verify', 'status', 'referral_mint', 'referral_click', 'referral_stats'];
 
 async function actionTerms() {
   const terms = await publishedTerms('care_pass');
@@ -674,23 +845,64 @@ async function actionOrder(body, headers) {
   }
 
   /* A double-tapped Pay button replays the same client_ref and gets
-     the SAME order back, rather than a second one and a second charge. */
+     the SAME order back, rather than a second one and a second charge.
+
+     AND THE SAME PAYMENT PAGE. Paystack refuses a second initialize for
+     a reference it already holds, so a replay that only echoed the
+     order would leave a buyer staring at a button that does nothing
+     (the page navigates to authorization_url, and there was none).
+     The URL is stored on the order when the provider first answers —
+     provider_payload is where the provider's own words about this
+     order belong — so the replay hands back exactly the same page. */
   const existing = await sb(
-    'payments?select=reference,amount_kobo,status,terms_version&client_ref=eq.' +
-      encodeURIComponent(clientRef) + '&limit=1',
+    'payments?select=*&client_ref=eq.' + encodeURIComponent(clientRef) + '&limit=1',
     { method: 'GET' }
   );
   if (existing && existing[0]) {
+    const prior = existing[0];
+    const checkout = checkoutOf(prior);
+
+    /* An order the provider never opened (initialize failed, or the
+       response never made it back) has no page to send the buyer to.
+       Re-initializing the SAME reference would be refused by Paystack
+       and re-using the row under a new reference would orphan any
+       charge already made against the old one — so the row is marked
+       abandoned and the page starts a FRESH order. Nothing has been
+       charged: initialize does not move money. */
+    if (!checkout && prior.status !== 'paid') {
+      await sb('payments?id=eq.' + encodeURIComponent(prior.id) + '&status=eq.' + encodeURIComponent(prior.status), {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          status: 'abandoned',
+          activation_error: 'the payment page was never opened for this order',
+          updated_at: new Date().toISOString(),
+        }),
+      });
+      return {
+        status: 200,
+        body: {
+          ok: false,
+          retry: true,
+          reference: prior.reference,
+          error: 'Our payment page did not open for that order. Nothing has been charged — tap Pay again and it will start a fresh one.',
+        },
+      };
+    }
+
     return {
       status: 200,
       body: {
         ok: true,
         replay: true,
-        reference: existing[0].reference,
-        amount_kobo: existing[0].amount_kobo,
-        status: existing[0].status,
+        reference: prior.reference,
+        amount_kobo: prior.amount_kobo,
+        currency: prior.currency || 'NGN',
+        status: prior.status,
         terms: terms.terms,
-        version: terms.version,
+        version: prior.terms_version || terms.version,
+        authorization_url: checkout ? checkout.authorization_url : null,
+        access_code: checkout ? checkout.access_code : null,
       },
     };
   }
@@ -737,7 +949,10 @@ async function actionOrder(body, headers) {
         reference: ref,
         provider: 'paystack',
         subject: subject,
-        referral_code: body.referral_code ? String(body.referral_code).slice(0, 40) : null,
+        /* What the buyer typed wins; otherwise the attribution tag the
+           friend's link carried, when it has a code's shape — a referred
+           buyer who leaves the optional field blank is still referred. */
+        referral_code: resolveReferralCode(body.referral_code, body.attribution_tag),
         env: body.env === 'test' ? 'test' : 'production',
       }),
     });
@@ -767,17 +982,61 @@ async function actionOrder(body, headers) {
     };
   }
 
-  const init = await payInit({
-    email: email,
-    amountKobo: priceKobo,
-    reference: ref,
-    metadata: { name: name, purpose: 'care_pass', terms_version: terms.version },
-  });
+  /* A provider that is down is a DELAY, not a dead checkout. The order
+     is marked abandoned (initialize never charged anything), the page is
+     told to start again, and the next tap writes a fresh order instead
+     of replaying a row that can never open a payment page. Throwing here
+     would leave a pending order whose client_ref replays forever with no
+     URL — the buyer presses Pay, nothing happens, and there is nothing
+     on screen that says why. */
+  let init = null;
+  try {
+    init = await payInit({
+      email: email,
+      amountKobo: priceKobo,
+      reference: ref,
+      metadata: { name: name, purpose: 'care_pass', terms_version: terms.version },
+    });
+  } catch (err) {
+    const message = 'the provider was never reached: ' + ((err && err.message) || err);
+    await sb('payments?id=eq.' + encodeURIComponent(payment.id), {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        status: 'abandoned',
+        activation_error: message.slice(0, 500),
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    console.error('[finance] order ' + ref + ' could not open a checkout:', message);
+    return {
+      status: 502,
+      body: {
+        ok: false,
+        retry: true,
+        reference: ref,
+        error: 'We could not open the payment page just now. Nothing has been charged — tap Pay again in a moment.',
+      },
+    };
+  }
 
+  /* The provider's own answer, stored on the order the moment we have
+     it: this is what makes a double tap, a reload and a lost response
+     all land on the SAME checkout rather than on none. */
   await sb('payments?id=eq.' + encodeURIComponent(payment.id), {
     method: 'PATCH',
     headers: { Prefer: 'return=minimal' },
-    body: JSON.stringify({ provider_ref: ref, updated_at: new Date().toISOString() }),
+    body: JSON.stringify({
+      provider_ref: ref,
+      provider_payload: {
+        checkout: {
+          authorization_url: (init && init.authorization_url) || null,
+          access_code: (init && init.access_code) || null,
+          at: new Date().toISOString(),
+        },
+      },
+      updated_at: new Date().toISOString(),
+    }),
   });
 
   return {
@@ -1127,9 +1386,9 @@ async function actionReferralDecide(actor, body) {
   if (status === 'paid' && !String(body.payout_provider_ref || '').trim()) {
     return { status: 400, body: { error: 'A referral is only paid with a payout_provider_ref — the provider must confirm it first.' } };
   }
-  await sb('referrals?id=eq.' + encodeURIComponent(id), {
+  const changed = await sb('referrals?id=eq.' + encodeURIComponent(id), {
     method: 'PATCH',
-    headers: { Prefer: 'return=minimal' },
+    headers: { Prefer: 'return=representation' },
     body: JSON.stringify({
       status: status,
       reason: body.reason ? String(body.reason).slice(0, 400) : null,
@@ -1140,7 +1399,56 @@ async function actionReferralDecide(actor, body) {
       updated_at: new Date().toISOString(),
     }),
   });
-  return { status: 200, body: { ok: true, id: id, status: status } };
+  /* A typo'd id is not a decision: without this the admin's "moved"
+     notice would confirm a payout that never happened. */
+  if (!changed || !changed.length) return { status: 404, body: { error: 'No such referral.' } };
+  const decided = changed[0];
+  /* A payout the referrer never hears about earns no second referral.
+     The message goes out on the decision that moves the money, and its
+     outcome is RECORDED, never raised: a stale number fails the message,
+     never the payout. */
+  let notified = false;
+  let notifyReason = 'not-a-payout';
+  if (status === 'paid' && decided) {
+    const owners = await sb(
+      'referral_codes?select=owner_ref,owner_name&code=eq.' +
+        encodeURIComponent(decided.code || '') + '&limit=1',
+      { method: 'GET' }
+    );
+    const ownerPhone = normalizePhone((owners && owners[0] && owners[0].owner_ref) || '');
+    if (/^234\d{10}$/.test(ownerPhone || '')) {
+      const sent = await sendText(ownerPhone + '@c.us',
+        'Hi ' + ((owners[0] && owners[0].owner_name) || 'there') + '! Your Arzuz referral earned ' +
+        '₦' + Math.round((Number(decided.reward_kobo) || 200000) / 100).toLocaleString('en-NG') +
+        ' — paid' + (decided.payout_provider_ref ? ' (' + decided.payout_provider_ref + ')' : '') +
+        '. Thank you for spreading the word — your code ' + (decided.code || '') + ' still earns on every friend who buys.');
+      notified = !!sent.ok;
+      notifyReason = sent.ok ? 'sent' : (sent.reason || 'send-failed');
+    } else {
+      notifyReason = 'no-owner-phone';
+    }
+  }
+  return { status: 200, body: { ok: true, id: id, status: status, notified: notified, notify_reason: notifyReason } };
+}
+
+/* Revoking a code the dashboard never offered: active=false fails every
+   future qualification at the lookup, while the rows it already earned
+   stand exactly as decided. Admin only, like every other money move. */
+async function actionReferralCode(actor, body) {
+  const code = String(body.code || '').trim().toUpperCase();
+  if (!code) return { status: 400, body: { error: 'Send the code to switch.' } };
+  /* The admin panel posts revoked:true/false; active:true/false is
+     accepted too so the curl in the runbook keeps working. */
+  const active = body.active !== undefined && body.active !== null
+    ? (body.active === true || String(body.active).toLowerCase() === 'true')
+    : !(body.revoked === true || String(body.revoked || '').toLowerCase() === 'true');
+  const changed = await sb('referral_codes?code=eq.' + encodeURIComponent(code), {
+    method: 'PATCH',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ active: active }),
+  });
+  if (!changed || !changed.length) return { status: 404, body: { error: 'No such code.' } };
+  return { status: 200, body: { ok: true, code: code, active: active } };
 }
 
 /* ------------------------------------------------------------
@@ -1162,21 +1470,54 @@ exports.handler = async function (event) {
     return json(503, { error: 'Payments need SUPABASE_SERVICE_ROLE_KEY in Netlify before they can write anything.' }, 'not-ready');
   }
 
-  /* THE STUDENT'S DOOR — no session, metered per connection. */
+  /* THE STUDENT'S DOOR — no session, metered per connection. The click
+     beacon is exempt from the per-connection gate: it answers 200 come
+     what may, so a 429 there would be breakage wearing a meter's clothes
+     — and its own 60-a-minute ceiling below still bounds the writes. */
   if (PUBLIC_ACTIONS.indexOf(action) !== -1) {
     const ip = (headers['x-nf-client-connection-ip'] || headers['x-forwarded-for'] || 'unknown').split(',')[0].trim();
-    if (limited('finance-ip:' + ip, 40)) {
+    if (action !== 'referral_click' && limited('finance-ip:' + ip, 40)) {
       return json(429, { error: 'That is a lot of checkout attempts in a minute — wait a moment and try again.' });
     }
     try {
+      /* referral_click is a beacon: over the limit it is dropped, never
+         refused — answering 429 to a page's fire-and-forget ping would
+         read as breakage, and the clicks were never the money. */
+      if (action === 'referral_click' && limited('finance-click:' + ip, 60)) {
+        return json(200, { ok: true });
+      }
+      if (action === 'referral_mint' && limited('finance-mint:' + ip, 5)) {
+        return json(429, { error: 'That is a lot of codes in a minute — wait a moment and try again.' });
+      }
+      if (action === 'referral_stats' && limited('finance-stats:' + ip, 20)) {
+        return json(429, { error: 'That is a lot of refreshes in a minute — wait a moment and try again.' });
+      }
       const out = action === 'terms' ? await actionTerms()
         : action === 'order' ? await actionOrder(body, headers)
           : action === 'verify' ? await actionVerify(body)
-            : await actionStatus(body);
+            : action === 'status' ? await actionStatus(body)
+              : action === 'referral_mint' ? await actionReferralMint(body)
+                : action === 'referral_click' ? await actionReferralClick(body, headers)
+                  : await actionReferralStats(body);
       return json(out.status, out.body, out.kind);
     } catch (err) {
       if (ApiErrors.isMissingFunction(err) || (err && err.status === 404)) {
         return json(503, { error: 'Payments are not switched on for this site yet. Message us on WhatsApp and we will sort it out.' }, 'not-ready');
+      }
+      /* The key is PRESENT and Supabase refuses it — see the flag in
+         sb(). The sibling of the branch above, and the same sentence:
+         an order cannot be saved until a person fixes the deploy, the
+         buyer did nothing wrong, and "try again in a moment" invites a
+         retry that can never succeed. The alert is the half a student
+         cannot do — nobody reads a 502 in a function log nobody opens. */
+      if (err && err.credentialRefused) {
+        console.error('[finance] Supabase refused the credential this deploy holds (' + err.status + ') on ' + action);
+        if (!limited('finance-credential-refused', 1)) {
+          await sendAlert('\u26a0\ufe0f Finance cannot reach Supabase: the service key this deploy holds was refused on ' +
+            action + '. Check SUPABASE_SERVICE_ROLE_KEY and SUPABASE_URL in Netlify, then redeploy — a variable added ' +
+            'without a deploy is not in the running function.');
+        }
+        return json(503, { error: 'Payments are not switched on for this site yet. Your order is not lost — message us on WhatsApp and we will sort it out.' }, 'not-ready');
       }
       console.error('[finance] ' + action + ' failed:', err && err.message);
       return json(502, { error: 'We could not complete that just now. Try again in a moment.' });
@@ -1207,7 +1548,7 @@ exports.handler = async function (event) {
 
   /* Finance reads; it does not move money. A finance login asking to
      refund is refused HERE, not by a hidden button. */
-  const ADMIN_ONLY = ['publish_terms', 'set_config', 'refund', 'referral_decide'];
+  const ADMIN_ONLY = ['publish_terms', 'set_config', 'refund', 'referral_decide', 'referral_code'];
   if (ADMIN_ONLY.indexOf(action) !== -1 && role !== 'admin') {
     return json(403, { error: 'Only the admin login may change prices, terms, refunds and referral payouts.' });
   }
@@ -1223,9 +1564,10 @@ exports.handler = async function (event) {
         : action === 'set_config' ? await actionSetConfig(actor, body)
           : action === 'refund' ? await actionRefund(actor, body)
             : action === 'referral_decide' ? await actionReferralDecide(actor, body)
-              : null;
+              : action === 'referral_code' ? await actionReferralCode(actor, body)
+                : null;
     if (!out) {
-      return json(400, { error: 'Unknown action. Public: ' + PUBLIC_ACTIONS.join(', ') + '. Team: report, publish_terms, set_config, refund, referral_decide.' });
+      return json(400, { error: 'Unknown action. Public: ' + PUBLIC_ACTIONS.join(', ') + '. Team: report, publish_terms, set_config, refund, referral_decide, referral_code.' });
     }
     return json(out.status, out.body, out.kind);
   } catch (err) {
@@ -1243,7 +1585,12 @@ exports.amountMatches = amountMatches;
 exports.payVerify = payVerify;
 exports.payInit = payInit;
 exports.PUBLIC_ACTIONS = PUBLIC_ACTIONS;
-exports.ADMIN_ONLY = ['publish_terms', 'set_config', 'refund', 'referral_decide'];
+exports.ADMIN_ONLY = ['publish_terms', 'set_config', 'refund', 'referral_decide', 'referral_code'];
+/* The growth loop's helpers, exported so scripts/test-referrals.mjs drives
+   the same rules the handler does rather than a copy of them. */
+exports.normalizeReferralCode = normalizeReferralCode;
+exports.mintReferralCode = mintReferralCode;
+exports.resolveReferralCode = resolveReferralCode;
 exports.CONFIG_KEYS = CONFIG_KEYS;
 exports.REFERRAL_STATES = REFERRAL_STATES;
 exports.readConfig = readConfig;

@@ -70,10 +70,11 @@
     /* numeric, handled outside the distance model */
     budget: { label: 'Your share of the rent, per session (\u20A6)', kind: 'number', short: 'Budget', cat: 'budget' },
 
-    /* not orderable: two people who both need covering is a
-       genuine conflict, one needing it is a real but survivable gap */
-    split:  { label: 'How should the split work?',
-              options: ['I can pay my half', 'I need help covering my half'], short: 'Split', cat: 'budget' }
+    /* not orderable: what matters is whether both sides want the same
+       arrangement. Equal halves means every bill split down the middle;
+       flexible means the pair agrees based on who takes which room. */
+    split:  { label: 'How should the rent be split?',
+              options: ['Equal halves \u2014 we split everything 50/50', 'Flexible \u2014 we agree based on the rooms'], short: 'Split', cat: 'budget' }
   };
 
   /* ------------------------------------------------------------
@@ -213,16 +214,26 @@
     return d === null ? null : 1 - d;
   }
 
-  /* Two people who both need their half covered cannot split a room;
-     one of them needing it means the other carries more. */
+  /* Same arrangement, no friction. Different arrangements are not a
+     veto — the pair can still talk — but they score lower, because the
+     money conversation is the one that ends roommate pairings.
+
+     Rows written before the rewording carry the old answers ('I can pay
+     my half' / 'I need help covering my half'); they map onto the new
+     ones so an existing profile is not scored as unknown. */
+  var SPLIT_EQUAL = 'Equal halves \u2014 we split everything 50/50';
+  var SPLIT_FLEXIBLE = 'Flexible \u2014 we agree based on the rooms';
+  function splitSide(v) {
+    if (v === SPLIT_EQUAL || v === 'I can pay my half') return 'equal';
+    if (v === SPLIT_FLEXIBLE || v === 'I need help covering my half') return 'flexible';
+    return null;
+  }
   function splitScore(me, them) {
     me = me || {}; them = them || {};
     if (!isSet(me.split) || !isSet(them.split)) return null;
-    var meHelp = me.split === 'I need help covering my half';
-    var themHelp = them.split === 'I need help covering my half';
-    if (meHelp && themHelp) return 0;
-    if (meHelp !== themHelp) return 0.5;
-    return 1;
+    var a = splitSide(me.split), b = splitSide(them.split);
+    if (a === null || b === null) return null;
+    return a === b ? 1 : 0.5;
   }
 
   function budgetScore(me, them) {
@@ -269,7 +280,7 @@
     if (me.want_split === 'Equal split only') {
       var penalty = 0;
       if (!isSet(them.split)) penalty = 0.5;
-      else if (them.split === 'I need help covering my half') penalty = 1;
+      else if (splitSide(them.split) === 'flexible') penalty = 1;
       if (penalty) {
         total = total * (1 - penalty * 0.5);
         cats.push({ key: 'split_penalty', phrase: 'rent split', weight: 0, score: 1 - penalty });

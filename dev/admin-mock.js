@@ -44,6 +44,14 @@
                 'care_plans', 'care_credit_events',
                 'repair_claims', 'claim_events'];
 
+  /* STAGE 3's vocabulary: the checks a visit may record, word for word
+     with the CHECK constraint in supabase-verification-evidence.sql.
+     dev/mock-schema-test.mjs compares this list to that constraint, so a
+     kind the migration adds cannot be one the mock refuses, and a word
+     Postgres would reject cannot be one the mock admits. The public badge
+     names the same six in assets/verification-badge.js. */
+  var EVIDENCE_KINDS = ['water', 'power', 'photos', 'price', 'access', 'security'];
+
   function log() {
     var a = Array.prototype.slice.call(arguments);
     a.unshift('[ArzuzMock]');
@@ -89,7 +97,7 @@
     return window.ArzuzMockData.seed();
   }
 
-  var DB = { rows: seedRows(SEED_KIND), seq: 100 };
+  var DB = { rows: seedRows(SEED_KIND), seq: 100, evidence: [] };
 
   function nextId() {
     DB.seq += 1;
@@ -427,6 +435,62 @@
       return resp({ id: row.id, stage: 'queue', released_by: me });
     }
 
+    if (name === 'listing_attest') {
+      /* STAGE 3, as the database enforces it: 1–8 named checks, a closed
+         vocabulary, and the decision made in the same transaction. The
+         vocabulary is this file's own copy of the six words — the mock is
+         the database's stand-in and stands on its own, so a harness that
+         never loaded assets/verification-badge.js refuses an unknown word
+         rather than admitting everything. Both copies are held to the
+         migration: the badge's table by scripts/test-verification-badge.mjs,
+         and EVIDENCE_KINDS by dev/mock-schema-test.mjs. */
+      if (ROLE !== 'verification' && ROLE !== 'admin') {
+        return errResp(403, { code: '42501',
+          message: 'listing_attest: a ' + ROLE + ' login may not record a visit. Going to the door is the verification role\u2019s job, and an admin\u2019s.' });
+      }
+      var vrow = (DB.rows.listings || []).filter(function (r) { return r.id === req.p_id; })[0];
+      if (!vrow) {
+        return errResp(404, { code: 'P0002', message: 'listing_attest: no listing with id ' + req.p_id + '. Nothing was changed.' });
+      }
+      var checks = req.p_checks;
+      if (!Array.isArray(checks) || checks.length < 1 || checks.length > 8) {
+        return errResp(400, { code: '22023',
+          message: 'listing_attest: a visit records between 1 and 8 checks. An "Inspected" badge with nothing behind it is the thing this file exists to stop.' });
+      }
+      var bad = checks.filter(function (c) {
+        return EVIDENCE_KINDS.indexOf(String((c && c.kind) || '').toLowerCase()) === -1;
+      });
+      if (bad.length) {
+        return errResp(400, { code: '22023',
+          message: 'listing_attest: ' + String((bad[0] && bad[0].kind) || '(none)') +
+            ' is not a check we can publish. The vocabulary is ' + EVIDENCE_KINDS.join(', ') + '.' });
+      }
+      var visit = 'visit-' + (++DB.seq);
+      var at = nowIso();
+      var expires = new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString();
+      DB.evidence = DB.evidence || [];
+      checks.forEach(function (c) {
+        DB.evidence.push({
+          listing_id: vrow.id,
+          visit_id: visit,
+          kind: String(c.kind).toLowerCase(),
+          detail: c.detail ? String(c.detail).slice(0, 200) : null,
+          checked_at: at,
+          expires_at: expires,
+          officer: 'mock-' + ROLE + '@arzuz.com'
+        });
+      });
+      vrow.tier = 2;
+      vrow.status = 'active';
+      vrow.verified_at = at;
+      vrow.verified_by = 'mock-' + ROLE + '@arzuz.com';
+      return resp({
+        id: vrow.id, status: vrow.status, tier: 2,
+        verified_at: at, verified_by: vrow.verified_by,
+        visit_id: visit, checks: checks.length
+      });
+    }
+
     if (name === 'verification_nudge') {
       /* The chaser's own line, service-role only in the SQL. Nothing in
          the dashboard calls it, so an authenticated login must not be
@@ -714,6 +778,13 @@
       { status: 'payout_pending', claims: 1, reward_kobo: 100000, first_at: '2026-10-04T09:00:00.000Z', last_at: '2026-10-04T09:00:00.000Z' },
       { status: 'paid', claims: 1, reward_kobo: 100000, first_at: '2026-09-28T09:00:00.000Z', last_at: '2026-09-28T09:00:00.000Z' }
     ],
+    /* The codes the referral_code switch flips. Kept beside the pipeline
+       rows because a revoked code and its earned rewards are different
+       facts: switching one off never rewrites the other. */
+    codes: [
+      { code: 'AZ-MOCK1', owner_ref: '2348011111111', owner_name: 'Amaka', active: true },
+      { code: 'AZ-MOCK2', owner_ref: '2348022222222', owner_name: 'Bola', active: false }
+    ],
     orders: { 'care:paid': 3, 'care:pending': 1 }
   };
 
@@ -992,7 +1063,7 @@
 
       if (finAct === 'report') return respondLater(resp(financeReport()));
 
-      if (['refund', 'referral_decide', 'publish_terms', 'set_config'].indexOf(finAct) !== -1 && ROLE !== 'admin') {
+      if (['refund', 'referral_decide', 'referral_code', 'publish_terms', 'set_config'].indexOf(finAct) !== -1 && ROLE !== 'admin') {
         return respondLater(errResp(403, { error: 'Only the admin login may change prices, terms, refunds and referral payouts.' }));
       }
 
@@ -1025,7 +1096,22 @@
         return respondLater(resp({ ok: true, id: finReq.id, status: finReq.status }));
       }
 
-      return respondLater(errResp(400, { error: 'Unknown action. Team: report, publish_terms, set_config, refund, referral_decide.' }));
+      /* Switching a code off stops new buyers using it without touching
+         rewards already earned — the mock keeps the flags on its own
+         code rows, the same way the function keeps them in the table. */
+      if (finAct === 'referral_code') {
+        var finCode = String(finReq.code || '').trim().toUpperCase();
+        if (!finCode) return respondLater(errResp(400, { error: 'Send the code to switch.' }));
+        var finRow = null;
+        for (var ci = 0; ci < FINANCE.codes.length; ci += 1) {
+          if (FINANCE.codes[ci].code === finCode) finRow = FINANCE.codes[ci];
+        }
+        if (!finRow) return respondLater(errResp(404, { error: 'No such code.' }));
+        finRow.active = !(finReq.revoked === true || String(finReq.revoked || '').toLowerCase() === 'true');
+        return respondLater(resp({ ok: true, code: finCode, active: finRow.active }));
+      }
+
+      return respondLater(errResp(400, { error: 'Unknown action. Team: report, publish_terms, set_config, refund, referral_decide, referral_code.' }));
     }
 
     /* Repair claims (netlify/functions/claims.js).
@@ -1498,6 +1584,7 @@
       CONFIG.delay = 0;
       CONFIG.fail = null;
       DB.rows = seedRows(SEED_KIND);
+      DB.evidence = [];
       DB.rows.team_users = seedTeamUsers();
       log('database + scenario reset — press Refresh in the dashboard');
     },
@@ -1542,6 +1629,9 @@
       return out;
     },
     db: function () { return DB.rows; },
+    /* What listing_attest() has recorded so far, so a harness can read the
+       evidence back rather than trust the response. */
+    evidence: function () { return DB.evidence || []; },
 
     /* HALF a posting: cash out with no obligation entry to match it. The
        Finance screen has to report the line as off — smoothing it away

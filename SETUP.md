@@ -88,6 +88,15 @@ the label and the wording switch to live automatically.
    to run twice. **The queue is drawn on `/admin` as soon as the file is run**, and the hourly chaser
    (`netlify/functions/verification-aging.js`, scheduled in `netlify.toml`) starts paging the team
    within the hour — so run it when somebody is on the shift, not the day before a holiday.
+   Want the badge on the board to say **exactly what was checked** rather than only how far the
+   check went? Then `supabase-verification-evidence.sql` as well, right after the queue file (it is
+   stage 3, and it needs both that file's trail and the RPC's `listing_verify()`). It adds
+   `listing_evidence` — one append-only row per check, with a 180-day expiry — the public read view
+   `public_listing_checks`, and `public.listing_attest()`, which records the visit and makes the
+   decision in ONE transaction: an "Inspected" listing cannot exist without the checks behind it,
+   and a refused visit leaves nothing. The officer's form appears on the dashboard's queue card as
+   soon as a listing is taken, and the public badge starts naming the checks immediately. Additive
+   and safe to run twice.
    Letting students check their own reference — the **/status** page? Run
    `supabase-status-codes.sql` after the waitlist file. It adds the code table (a hash of the code, never
    the code), a lookup throttle in a table of its own so a lookup flood can never throttle real

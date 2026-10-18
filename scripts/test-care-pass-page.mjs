@@ -506,10 +506,14 @@ await t('an accepted, complete form sends exactly the customer\u2019s own detail
   const sent = await acceptAndOrder(page, { cpReferral: 'AZ-4F2K' });
   if (!sent) return 'no order was sent';
   const keys = Object.keys(sent.body).sort().join(',');
-  const want = 'action,area,client_ref,email,name,phone,property,referral_code,room';
+  /* attribution_tag is the link the buyer arrived on — a hint the server
+     resolves (typed referral_code wins, a channel tag resolves to
+     nothing), never money and never an instruction. */
+  const want = 'action,area,attribution_tag,client_ref,email,name,phone,property,referral_code,room';
   if (keys !== want) return 'it sent: ' + keys;
   if (sent.body.name !== 'Ada Okonkwo') return 'the name did not survive';
   if (sent.body.referral_code !== 'AZ-4F2K') return 'the referral code did not survive';
+  if (typeof sent.body.attribution_tag !== 'string') return 'the link tag did not survive';
   return true;
 });
 
@@ -559,6 +563,32 @@ await t('the same key is reused on a retry, so a second attempt is the SAME orde
   if (before !== 1) return 'the first attempt sent ' + before + ' orders';
   return second.body.client_ref === sent.body.client_ref
     ? true : 'the retry asked for a second order: ' + second.body.client_ref;
+});
+
+await t('an order whose payment page never opened starts a FRESH order, not a dead one', async () => {
+  let calls = 0;
+  const page = makePage({
+    terms: TERMS_OK,
+    order: () => {
+      calls += 1;
+      /* The first answer is the server being honest about a checkout the
+         provider never opened: the row is abandoned and the page is told
+         to start again with a new idempotency key. */
+      return calls === 1
+        ? { status: 200, body: { ok: false, retry: true, reference: 'AZ-OLD', error: 'Our payment page did not open for that order. Nothing has been charged \u2014 tap Pay again and it will start a fresh one.' } }
+        : { status: 201, body: { ok: true, reference: 'AZ-NEW', amount_kobo: 2000000, authorization_url: 'https://checkout.paystack.com/fresh', version: 3 } };
+    }
+  });
+  await page.boot();
+  await acceptAndOrder(page);
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+  const orders = page.requests.filter((r) => r.action === 'order');
+  if (orders.length !== 2) return 'it sent ' + orders.length + ' order(s), not a retry';
+  if (orders[1].body.client_ref === orders[0].body.client_ref) return 'the retry reused the dead client_ref, so it replayed the dead order';
+  if (page.assigns[0] !== 'https://checkout.paystack.com/fresh') return 'no fresh payment page opened: ' + JSON.stringify(page.assigns);
+  if (page.store[page.api.CLIENT_KEY] === orders[0].body.client_ref) return 'the dead key was kept';
+  return true;
 });
 
 await t('a paid order takes the customer to the provider and claims no coverage', async () => {

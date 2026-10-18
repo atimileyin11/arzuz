@@ -36,9 +36,6 @@
 # function in this repo is CommonJS. A missing schedule here is silent:
 # the function still deploys, it just never runs. See
 # netlify/functions/roommate-digest.js.
-[functions."roommate-digest"]
-  schedule = "0 6 * * *"
-
 # EVERY HALF HOUR: is media upload still switched on? The failure this
 # catches ran for weeks — /api/cloudinary-sign answering 200 while
 # every upload was refused 401 "Invalid Signature", and the first
@@ -55,6 +52,34 @@
 # catch, which is why the line is not left to memory.
 [functions."upload-health"]
   schedule = "*/30 * * * *"
+
+# EVERY HOUR, ON THE HOUR: can this deploy still reach its database?
+# The failure this catches ran for an afternoon — SUPABASE_SERVICE_ROLE_KEY
+# SET and refused by Supabase (rotated upstream, or an anon key in the
+# service slot), so every form, the Care panel and the checkout answered
+# "not switched on yet" to people who could not fix it while every page
+# rendered. netlify/functions/database-health.js reads a private table
+# with the key this deployment was built with, repeats the read with one
+# byte changed and requires a refusal — so a probe that cannot see a bad
+# key cannot report a green one — then calls /api/finance and
+# /api/care-credit, because the key can be right and the deploy wrong.
+#
+# It says nothing while everything is fine, so a recovery used to happen in
+# silence: the last message the team got was "broken". Each healthy hour now
+# records ONE timestamp (lib/health-state.js, a single ops_database_health row
+# in finance_config — the one key/value table this key can write without a new
+# migration) and a healthy run that finds a gap over two hours sends exactly
+# one all-clear with the last healthy time. A failing hour writes nothing, so
+# the gap survives and the notice cannot fire twice for one outage.
+#
+# A missing schedule here is silent: the function still deploys, it
+# just never runs. That is the same class of failure it exists to
+# catch, which is why the line is not left to memory.
+[functions."database-health"]
+  schedule = "0 * * * *"
+
+[functions."roommate-digest"]
+  schedule = "0 6 * * *"
 
 # EVERY HOUR, ON THE HOUR: the claim aging clock. A claim that has stood
 # in one status past the deadline for that status pages the team ONCE per
@@ -98,7 +123,7 @@
 [build]
   # THE GATE THAT MAKES A DEPLOY THAT CANNOT KEEP A PROMISE IMPOSSIBLE.
   #
-  # Three credentials, and each one fails the same way when it is missing:
+  # Five credentials, and each one fails the same way when it is missing:
   # NOTHING looks broken. There is no crash to notice — only a person who was
   # told their request was received and then never heard anything again.
   #
@@ -117,11 +142,14 @@
   #     that stays empty, and the notice is recorded as unsent in a trail
   #     nobody is reading. See netlify/functions/status.js.
   #
-  # OPENWA_SESSION and RESEND_API_KEY are on the script's ADVISED list: their
-  # absence degrades the site rather than breaking a promise (WhatsApp still
-  # delivers; the status page's second email channel and the claim emails go
-  # quiet). Those are warnings, and they never fail the build — a gate that
-  # fails on a preference is a gate people learn to override.
+  # OPENWA_SESSION, RESEND_API_KEY, PAYSTACK_SECRET_KEY and TELEGRAM_BOT_TOKEN /
+  # TELEGRAM_CHAT_ID are on the script's ADVISED list: their absence degrades
+  # the site rather than breaking a promise (WhatsApp still delivers; the second
+  # email channel goes quiet; the Care Pass is legitimately off sale until its
+  # terms are published; the ops pager is not configured yet). Those are
+  # warnings, and they never fail the build — a gate that fails on a preference
+  # is a gate people learn to override. A value that is PRESENT and refused is a
+  # different fact, and that one does fail the build.
   #
   # So the build refuses. A failed build does not publish, which is what leaves
   # the last working deploy live rather than exposing students to one that
@@ -129,6 +157,19 @@
   # of any value, and it names the two causes it cannot tell apart from inside
   # a build — the variable was never set, or it was scoped to "Functions" only
   # — so a correctly-scoped project is a one-minute fix rather than a mystery.
+  #
+  # AND IT TRIES THE VALUES, NOT JUST THE NAMES. A ROTATED key is SET: the
+  # name-check above passes, the deploy ships, and every door answers "not
+  # switched on yet" to someone who cannot fix it. So the same command proves
+  # each credential against the provider that has to accept it — one read of a
+  # private table, GET /api/sessions on the OpenWA server, a POST to Resend
+  # whose body cannot send anything, GET /balance on Paystack, and getMe +
+  # getChat on Telegram — then repeats each request with one byte changed and
+  # REQUIRES a refusal, so a green cannot be vacuous. A value the provider
+  # refuses fails the build. A value the build cannot ask about (a network
+  # minute, a 403 from a key's IP allowlist, an older OpenWA without that
+  # route, a Telegram token of the wrong shape) warns and does NOT fail it: a
+  # gate that blocks on where the build runs is a gate people learn to override.
   #
   # A deploy that is deliberately going out without the door can say so with
   # ARZUZ_ALLOW_MISSING_ENV=1 (everything) or ARZUZ_ALLOW_MISSING_ENV=OPENWA_URL
@@ -163,7 +204,7 @@
   # checked. scripts/test-seo.mjs fails the build when the key file in the
   # root is not the one this line names, which is what happens the day
   # somebody rotates the key by creating a new file.
-  included_files = ["netlify/functions/**", "listing.html", "browse.html", "404.html", "assets/listing-url.js", "assets/listing-score.js", "assets/indexnow.js", "8e15f62cc98636edef91c1ba76943ebb.txt", "strategy/*.md"]
+  included_files = ["netlify/functions/**", "listing.html", "browse.html", "404.html", "assets/listing-url.js", "assets/verification-badge.js", "assets/listing-score.js", "assets/indexnow.js", "8e15f62cc98636edef91c1ba76943ebb.txt", "strategy/*.md"]
 
 # Repo files that are NOT part of the website. `publish = "."` means Netlify
 # will happily serve any of them as plain text — and it was: supabase-hardening.sql
@@ -531,6 +572,14 @@
   to   = "/status.html"
   status = 200
 
+# The referrer dashboard: code + phone is the whole credential, so like
+# /status it is a page about one person's business — noindexed below and
+# deliberately absent from the sitemap.
+[[redirects]]
+  from = "/referrals"
+  to   = "/my-referrals.html"
+  status = 200
+
 [[redirects]]
   from = "/privacy"
   to   = "/privacy.html"
@@ -566,10 +615,10 @@
 # force = true is required: /register.html is a real file in the deploy,
 # and without it Netlify serves the file and never applies the rule.
 #
-# NOT redirected, deliberately: /admin.html, /complete-listing.html and
-# /my-care.html (noindex and private — they already carry an
-# X-Robots-Tag header), and /404.html, which Netlify serves at every
-# missing path and which would loop if it redirected anywhere.
+# NOT redirected, deliberately: /admin.html, /complete-listing.html,
+# /my-care.html and /my-referrals.html (noindex and private — they already
+# carry an X-Robots-Tag header), and /404.html, which Netlify serves at
+# every missing path and which would loop if it redirected anywhere.
 
 [[redirects]]
   from = "/index.html"
@@ -672,6 +721,12 @@
   status = 301
   force = true
 
+[[redirects]]
+  from = "/my-referrals.html"
+  to   = "/referrals"
+  status = 301
+  force = true
+
 
 # API routes → Netlify Functions
 [[redirects]]
@@ -709,6 +764,15 @@
 # caching it costs nothing and saves a round trip on the second visit.
 [[headers]]
   for = "/status.html"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
+# The referrer dashboard: noindex in the file as well, because the header
+# is the copy a crawler is guaranteed to read and the meta tag is the one
+# that survives being scraped into something else. NOT no-store — like
+# /status there is nothing of anybody's on it until they act.
+[[headers]]
+  for = "/my-referrals.html"
   [headers.values]
     X-Robots-Tag = "noindex, nofollow"
 

@@ -254,7 +254,7 @@ and both are enforced by `CHECK` constraints. Unifying them is a post-launch tas
 > actually run on production — it exists because on 17 Oct 2026 the answer was "eight of them have
 > not", while every local suite was green.
 
-### 3a. Run six migrations, in this order
+### 3a. Run the migrations, in this order
 
 In Supabase → SQL Editor:
 
@@ -271,7 +271,14 @@ In Supabase → SQL Editor:
    `supabase-waitlist-launch.sql` has already been applied, so the migration order cannot be got
    wrong, but it cannot check a Netlify environment variable for you.
 
-All five are idempotent. None drops a table, a column or a row.
+**The two verification files slot into the same list**, in the order `scripts/verify-migrations.mjs`
+and `scripts/apply-migrations.mjs` both use: `supabase-verification-queue.sql` (stage 2, the shift) and
+then `supabase-verification-evidence.sql` (stage 3, what the visit saw), both after (3) and before (4).
+They are steps 5 and 5b of LAUNCH-RUNBOOK.md, which says what to check after each one — the queue
+panel drawing for the officer's login, and then a recorded visit whose checks appear on the public
+badge.
+
+All eight are idempotent. None drops a table, a column or a row.
 
 Then re-run `supabase-finance.sql` if you want the books split (it is idempotent too, and it is the
 file that moves the six read policies to `finance`).
@@ -367,6 +374,21 @@ submission lost — both are caught before students are told the form is live.
 > `npm run sql:mutate` reports **16 of 16 held, 13 mutations each caught on a healthy tree**, the two
 > newest of which break guards in `supabase-verification-queue.sql`. The table below still holds this
 > pass's per-row numbers, which are older than these.
+>
+> **The numbers moved once more with stage 3.** The evidence migration and the badge module landed
+> after the run above, so the pass that includes them is a fresh one — a full `npm test` on this tree
+> reports **31 of 31 suites passed, nothing failed**: `test:api-errors` 101/101 (where
+> `upload-health.js`, the fourth timer to be exempt by name, is written up in the list rather than
+> filed quietly), `test:verify-queue` 59/59, `test:verify-badge` 27/27 (new: the wording of all three
+> tiers, the expiry instant and one millisecond either side of it, and the pairing of the module's six
+> kinds with the migration's CHECK), `test:schema` 85/85 (which now also compares `EVIDENCE_KINDS` in
+> `dev/admin-mock.js` against that same CHECK, so the mock cannot admit a word Postgres would refuse),
+> `sql:guards` 123/123, `sql:proof` 309/309 and `test:admin` 601/601. The suites that need a browser
+> were re-run separately, last, after the final copy change: `test-site-audit` 405/405,
+> `test-admin-worst` 69/69 and `test-confirm-render` 233/233. `npm run sql:mutate` reports
+> **18 of 18 checks held — 15 mutations, every one caught on a healthy tree**, the two newest of which
+> break guards in `supabase-verification-evidence.sql`. The table below still holds the older pass's
+> per-row numbers.
 
 | Suite | Result | What it covers for this work |
 | --- | --- | --- |
@@ -672,8 +694,8 @@ trail; the forms still working without login; no passwords anywhere.
 4. **Unify `status` and `follow_up_status`** — one column, one vocabulary, with the views rewritten
    alongside it.
 4. **The help center** (§8) — designed below, not built.
-5. **The verification layer** (§8) — stage 2 is built (§8.2a); stage 3 is designed below and deliberately
-   off until volume triggers it.
+5. **The verification layer** (§8) — stages 2 and 3 are built (§8.2a, §8.2b); the staged gate is
+   complete up to the volume trigger, and what remains is a product decision rather than a build.
 6. **Customer accounts + waitlist linking** (§9).
 
 ---
@@ -681,8 +703,10 @@ trail; the forms still working without login; no passwords anywhere.
 ## 8. Designed, not built: the help center and the verification layer
 
 Both of these are explicitly gated on scale, and the user's instruction was to design them now and
-turn them on when the manual operation stops working. **Nothing in this section is implemented.** It
-is a specification to build against when the trigger is met.
+turn them on when the manual operation stops working. **The help center (§8.1) is still nothing but a
+specification.** The verification layer is not: stages 2 and 3 are built (§8.2a, §8.2b), and the
+trigger it was waiting for — a student asking "what exactly did you check?" — is now answered by the
+page instead of by a person's memory. What remains of the staged gate is volume, not code.
 
 ### 8.1 The help center
 
@@ -739,7 +763,7 @@ remembering, at the speed the team can drive around Malete.
 | 0 · Manual *(today)* | — | The team visits everything, and `tier` is set by hand from field notes. | `listings.tier`, the admin dashboard |
 | 1 · Sampled | > 25 new listings a week | A new listing goes live at `tier` 0 as **unverified**, visibly flagged, and is sampled for a physical check within 72 hours. | A `tier = 0` badge on the card and the room page |
 | 2 · Assigned | > 75 a week, or two officers | `verification` is a shift: a queue, a deadline per listing, and the officer's account on the record. **Built** — see 8.2a. | The `verification` role, `verified_at` / `verified_by`, the audit trail, `supabase-verification-queue.sql` |
-| 3 · Verified-with-evidence | > 200 a week | An artefact per listing: a geotagged photo set, a water-pressure note, a signed owner statement, with an expiry. | A `verification_events` table (append-only, like `care_credit_events`) and a public badge that *names* what was checked |
+| 3 · Verified-with-evidence | > 200 a week | An artefact per listing: a named set of checks — water, power, photos, price, access, security — each with the officer's own sentence about it, and an expiry. **Built** — see 8.2b. | `listing_evidence` (append-only, like `care_credit_events`), `public.listing_attest()`, and a public badge that *names* what was checked |
 
 **What already exists to build it on.** `listings.tier` (0 unverified / 1 community / 2 inspected),
 `verified_at` / `verified_by` on both waitlist tables, the `verification` role with read + approve and
@@ -782,8 +806,9 @@ red.
   why `taken_at` exists as a column and why nothing can buy a job another deadline by being edited.
 - The chaser pages a Telegram channel. If nobody reads that channel, this is a quieter version of the
   problem it was built for — the honest backstop is still a person opening the dashboard.
-- Stage 3 (evidence per listing, a public badge naming what was checked) is NOT built, and the trail here
-  is not it: `verification_events` is about the SHIFT, not about what was seen at the door.
+- Stage 2's trail is about the SHIFT, not about what was seen at the door: `verification_events` records
+  taken / released / nudged. What the visit SAW is stage 3, and it is a different table for that reason
+  (§8.2b).
 - The officer's queue is checked in the dashboard's own harness for all five roles: that the card ships
   `display:none` in the markup and the gate hides it again for anyone off the shift; that the panel says
   what is owed and puts the overdue listing first; that the queue carries a reference and none of the
@@ -808,8 +833,78 @@ red.
 **What is deliberately absent.** No new provider, no address-verification API, no ID service. A
 student does not need Arzuz to prove who owns a building; they need Arzuz to have *been there*.
 
-**The trigger for stage 3:** when a student asks "what exactly did you check?" and the answer is
-currently a person's recollection.
+### 8.2b Stage 3 is built — the badge now has parts
+
+**What it is.** Stage 1 could say *this room has not been checked*. Stage 2 could say *somebody is owed
+a visit, by when*. Neither could answer the question a student actually asks at the door of a room:
+**what exactly did you check?** Until now the honest answer was a person's recollection and a tier
+number — "Inspected" was a word with no parts.
+
+| Piece | What it is | Where |
+| --- | --- | --- |
+| The evidence | One append-only row per check, grouped by `visit_id`: a closed vocabulary of six, an optional sentence of the officer's own, and an expiry 180 days out. No INSERT/UPDATE/DELETE policy exists for any browser key, and anon/authenticated are revoked by name | `supabase-verification-evidence.sql` |
+| `listing_attest(p_id, p_checks)` | Records the checks **and** makes the decision through `listing_verify()`, in one transaction. One to eight checks; the vocabulary is refused by name; a refused visit writes nothing | same |
+| `public_listing_checks` | The public read: kind, the officer's sentence, the date and the expiry — for listings already on the board (`active`, `tier >= 1`, `production`), and never the officer's account | same |
+| The badge | `assets/verification-badge.js` turns (tier, rows, now) into the words. Loaded by the browse board, the room page (server-rendered) and `listing.html`'s own repaint, so a card and the room it opens cannot disagree | `assets/`, `netlify/functions/browse.js`, `netlify/functions/rooms.js` |
+| The officer's form | On the queue card of a listing THIS login holds: the six checks with a sentence each, and one button. The draft lives in a store the browser and the harness both write through | `assets/admin.js` |
+
+**The honesty rules, which are the module rather than a label on a row.** "Inspected" is printed only
+when there is evidence and none of it has expired; the moment the 180-day record runs out the badge
+reads **Re-check due** and prints the date of the last visit; a tier-2 listing from before this layer
+says it has no record rather than inventing one; a re-visit is read as ONE visit (the newest) instead
+of pooling two partial visits into one perfect badge; and evidence dated in the future is not treated
+as fresh. A surface whose second query failed renders "Inspected" with **no claim** about what was
+seen — that is why `null` (not read) and `[]` (read, and there is none) are different inputs.
+
+**What is proved, and how.**
+
+- `scripts/test-verification-badge.mjs` (27 checks) drives the wording: the three tiers, the expiry
+  instant itself, one millisecond either side of it, the newest-visit rule, an unknown kind, a
+  future-dated row, and the group expiring at its EARLIEST check rather than its latest. Its last
+  three checks pair the module with the database: the kinds it can name must equal the `CHECK`
+  constraint's list, and the 180 days must match, read out of the migration — so a check added to one
+  and not the other fails the build rather than silently vanishing from a badge.
+- `dev/sql-proof.mjs` §13j proves it on real Postgres: the table is unreadable and unwritable by every
+  browser key (grants asked by privilege, then the INSERT itself driven — with a row count afterwards to
+  show the refusal wrote nothing); the refuse paths (a support/marketing/anon login, a missing listing,
+  no checks, nine checks, an unnamed kind — and the refusal NAMES the word); the happy path (tier 2,
+  the decision stamped with the token's own account, 180 days, and the price and `env` unmoved); the
+  public view (anon reads the checks, never the officer; a `test`-environment listing and a draft
+  publish nothing even after being inspected); and a re-visit adding a second visit without editing a
+  byte of the first.
+- `dev/sql-guard-test.mjs` (123 checks) drives all seven raises in the migration: three preflights on
+  their own rungs — empty database, tables without the role model, role model without the shift — each
+  asserted to have left no table, view or function behind, and the four refusals inside the function
+  driven against the real chain with a working visit as the control.
+- `dev/admin-boot-test.js` walks the officer's half in the dashboard, for both roles on the shift: the
+  form is drawn on a listing this login holds and once only; the payload is exactly the ticked checks
+  with their sentences (and a 260-character sentence is cut to the column's 200 before it is sent);
+  nothing ticked is refused **before any request**; the write leaves tier 2, an active listing, two
+  evidence rows naming the recorder, and a forgotten draft; the inspected listing leaves the queue; and
+  a refusal shows the function's sentence instead of signing the officer out.
+- `dev/sql-guard-mutate.mjs` carries two mutations for this file — the shift guard naming the wrong
+  file, and the empty-visit guard turned off — because the newest migration is exactly where a battery
+  stops being written.
+
+**What it costs, and what it does not do.**
+
+- The expiry is the database's, written by the function: 180 days from the moment the visit is
+  recorded. It is not a claim of 180 days of correctness — it is the point at which the badge stops
+  implying the visit is recent, and says so instead.
+- The vocabulary is six checks with fixed labels. "What we published" is therefore narrower than "what an
+  officer could look at", deliberately: a badge can only name what both the database and the module
+  know, and adding a seventh check is one line in each plus one test that fails until both are updated.
+- A re-visit ADDS a visit. Nothing edits or deletes what was said before, so the oldest record of a room
+  is still readable after the third revisit — which is the property that makes the trail worth having.
+- The badge is honest about a room it cannot vouch for, which means some rooms will say **Re-check due**
+  in public. That is the feature: the alternative is a badge that ages without saying so.
+- It is not an inspection certificate and not a promise about next month, and the copy says exactly
+  that. Geotagged photo sets and signed owner statements, which the stage-3 design above names, are not
+  built: the evidence rows carry a check, a sentence and a date, and nothing that requires a storage
+  bucket or a signature provider. That is the next increment if volume asks for it.
+
+**The trigger for stage 3, answered:** a student asks "what exactly did you check?" and the page now
+answers with the checks and the dates instead of a person's recollection.
 
 ### 8.3 What "handling 100,000 people" changes
 

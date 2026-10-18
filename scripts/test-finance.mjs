@@ -107,7 +107,10 @@ const state = {
   events: [],
   seq: 0,
   requests: [],
-  paystack: { status: 'success', amount: null, currency: 'NGN', initialized: [] },
+  paystack: { status: 'success', amount: null, currency: 'NGN', initialized: [], failInitialize: false },
+  /* PostgREST refusing the key this deploy holds: the real answer the
+     live project gave while the service key in Netlify was stale. */
+  refuseKey: false,
 };
 
 const TOKEN = 'stand-in-service-role-key';
@@ -158,6 +161,9 @@ global.fetch = async function (url, init = {}) {
   /* --- Paystack --- */
   if (u.indexOf('api.paystack.co') !== -1) {
     if (u.indexOf('/transaction/initialize') !== -1) {
+      if (state.paystack.failInitialize) {
+        return resp(502, { status: false, message: 'the provider is unreachable' });
+      }
       state.paystack.initialized.push(body);
       return resp(200, { status: true, data: { authorization_url: 'https://checkout.paystack.com/' + body.reference, access_code: 'ac_' + body.reference, reference: body.reference } });
     }
@@ -188,6 +194,14 @@ global.fetch = async function (url, init = {}) {
   if (u.indexOf('/rest/v1/rpc/arzuz_role') !== -1) {
     if (!state.auth) return resp(401, {});
     return resp(200, state.auth.role);
+  }
+
+  /* The key is in the slot and the project will not accept it — the
+     sentence PostgREST answers, verbatim. Placed after the auth and rpc
+     branches because those still work: the anon key is a different
+     value and the live project kept accepting it throughout. */
+  if (state.refuseKey && u.indexOf('/rest/v1/') !== -1) {
+    return resp(401, { message: 'Invalid API key', hint: 'Double check your Supabase `anon` or `service_role` API key.' });
   }
 
   if (u.indexOf('/rest/v1/') === -1) return resp(200, {});
@@ -274,7 +288,14 @@ global.fetch = async function (url, init = {}) {
       return resp(201, [row]);
     }
     if (method === 'GET') return resp(200, rows(state.referrals));
-    if (method === 'PATCH') { rows(state.referrals).forEach((r) => Object.assign(r, body)); return resp(204); }
+    if (method === 'PATCH') {
+      const found = rows(state.referrals);
+      found.forEach((r) => Object.assign(r, body));
+      /* PostgREST answers the rows when asked (Prefer: return=representation)
+         and the decide action reads its own write back — an empty 204 here
+         would make a real decision look like a missing row. */
+      return /return=representation/.test((init.headers && init.headers.Prefer) || '') ? resp(200, found) : resp(204);
+    }
   }
 
   if (table === 'care_plans') {
@@ -595,6 +616,66 @@ await t('the same client_ref replays the same order', async () => {
   eq(state.payments.filter((p) => p.client_ref === ref).length, 1, 'a second row was written');
 });
 
+await t('and the SAME payment page — a replay opens no second transaction', async () => {
+  const ref = UUID();
+  const opened = state.paystack.initialized.length;
+  const first = await buy({ client_ref: ref });
+  const second = await buy({ client_ref: ref });
+  eq(first.status, 201, 'first order');
+  eq(second.status, 200, 'replay');
+  eq(second.body.authorization_url, first.body.authorization_url, 'the checkout URL');
+  eq(state.paystack.initialized.length, opened + 1, 'transactions opened at the provider');
+});
+
+await t('a paid order replays as paid, with no page to pay on again', async () => {
+  const ref = UUID();
+  const first = await buy({ client_ref: ref });
+  state.paystack.status = 'success';
+  await call({ action: 'verify', reference: first.body.reference });
+  const again = await buy({ client_ref: ref });
+  eq(again.body.status, 'paid', 'status');
+  eq(again.body.authorization_url, null, 'a second payment page was handed out');
+});
+
+/* ============================================================
+   5b. a payment page that never opened is a retry, not a dead order
+   ============================================================ */
+
+console.log('\n5b. A checkout the provider never opened can be started again\n');
+
+await t('a failed initialize marks the order abandoned and tells the page to retry', async () => {
+  const before = state.payments.length;
+  state.paystack.failInitialize = true;
+  const res = await buy({ client_ref: UUID() });
+  state.paystack.failInitialize = false;
+  eq(res.status, 502, 'status');
+  eq(res.body.retry, true, 'the page was told to start again');
+  eq(res.body.error.indexOf('Nothing has been charged') !== -1, true, 'the buyer is told nothing was charged');
+  const row = state.payments[state.payments.length - 1];
+  eq(state.payments.length, before + 1, 'one order recorded');
+  eq(row.status, 'abandoned', 'the order is honest about itself');
+  eq(String(row.activation_error).indexOf('never reached') !== -1, true, 'why it is abandoned');
+});
+
+await t('replaying that client_ref says retry instead of handing back an order with no page', async () => {
+  state.paystack.failInitialize = true;
+  const ref = UUID();
+  await buy({ client_ref: ref });
+  state.paystack.failInitialize = false;
+  const before = state.payments.length;
+  const again = await buy({ client_ref: ref });
+  eq(again.status, 200, 'status');
+  eq(again.body.retry, true, 'retry');
+  eq(again.body.authorization_url == null, true, 'a URL appeared from nowhere');
+  eq(state.payments.length, before, 'a second row was written');
+});
+
+await t('and a fresh order after it opens a real checkout', async () => {
+  const res = await buy({ client_ref: UUID() });
+  eq(res.status, 201, 'status');
+  eq(/^https:\/\/checkout\.paystack\.com\//.test(String(res.body.authorization_url)), true, 'checkout URL');
+});
+
 /* ============================================================
    6. referrals — ₦2,000 once, after a verified first payment
    ============================================================ */
@@ -802,6 +883,71 @@ await t('a missing SUPABASE_SERVICE_ROLE_KEY is a not-ready 503, not a retry-me 
   } finally {
     process.env.SUPABASE_SERVICE_ROLE_KEY = saved;
   }
+});
+
+/* The other half of the same deployment fact, and the one that actually
+   happened: the variable IS set and Supabase refuses the value. It looked
+   like a 502 — "we could not complete that just now" — so every visitor
+   was invited to retry a deploy nobody had fixed, and the student buying
+   a Care Pass was told nothing true. Re-running the checkout against the
+   refused key must land on the same not-ready answer as a missing one. */
+await t('a service key Supabase REFUSES is a not-ready 503 too \u2014 not a retry-me 502', async () => {
+  state.refuseKey = true;
+  const saved = { token: process.env.TELEGRAM_BOT_TOKEN, chat: process.env.TELEGRAM_CHAT_ID };
+  process.env.TELEGRAM_BOT_TOKEN = 'stand-in-bot-token';
+  process.env.TELEGRAM_CHAT_ID = 'stand-in-chat';
+  const alertsBefore = state.requests.filter((r) => r.indexOf('api.telegram.org') !== -1).length;
+  try {
+    const terms = await call({ action: 'terms' });
+    eq(terms.status, 503, 'terms status');
+    eq(terms.body.kind, 'not-ready', 'terms class');
+    const before = state.payments.length;
+    const order = await buy();
+    eq(order.status, 503, 'order status');
+    eq(order.body.kind, 'not-ready', 'order class');
+    eq(state.payments.length, before, 'rows written');
+    /* A student can neither read a function log nor fix a Netlify
+       variable, so the alert is the whole operator half of this — and
+       it has to be ONE alert for the deploy, not one per visitor. Two
+       refused calls, one message. */
+    const alerts = state.requests.filter((r) => r.indexOf('api.telegram.org') !== -1).length - alertsBefore;
+    eq(alerts, 1, 'alerts sent for two refused calls');
+  } finally {
+    state.refuseKey = false;
+    if (saved.token === undefined) delete process.env.TELEGRAM_BOT_TOKEN;
+    else process.env.TELEGRAM_BOT_TOKEN = saved.token;
+    if (saved.chat === undefined) delete process.env.TELEGRAM_CHAT_ID;
+    else process.env.TELEGRAM_CHAT_ID = saved.chat;
+  }
+});
+
+/* The provider key is the one secret whose leak turns a payment page into
+   somebody else's revenue. Nothing the browser can download may carry it
+   — not a page, not an asset, not a comment. Read from disk, so this is a
+   claim about what is SERVED rather than about what the function reads. */
+await t('no page or asset the browser can fetch carries the provider secret', async () => {
+  const { readFileSync, readdirSync } = await import('node:fs');
+  const { join, dirname } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const files = [];
+  for (const f of readdirSync(ROOT)) if (/\.html$/.test(f)) files.push(f);
+  for (const f of readdirSync(join(ROOT, 'assets'))) if (/\.(js|css|json)$/.test(f)) files.push('assets/' + f);
+  const leaked = [];
+  for (const f of files) {
+    const text = readFileSync(join(ROOT, f), 'utf8');
+    if (/sk_(live|test)_[A-Za-z0-9]+/.test(text) || /PAYSTACK_SECRET_KEY\s*=\s*['"][^'"]+['"]/.test(text)) leaked.push(f);
+  }
+  eq(leaked, [], 'files carrying a provider secret');
+});
+
+await t('the public status answer never exposes the stored payment page', async () => {
+  const order = await buy({ client_ref: UUID() });
+  const res = await call({ action: 'status', reference: order.body.reference });
+  eq(res.status, 200, 'status');
+  eq('authorization_url' in res.body, false, 'the checkout capability is in a public read');
+  eq('provider_payload' in res.body, false, 'the provider payload is in a public read');
+  eq('client_ref' in res.body, false, 'the idempotency key is in a public read');
 });
 
 /* ============================================================

@@ -322,6 +322,141 @@ export const MUTANTS = [
       + 'the second channel can never open.',
   },
   {
+    id: 'refused-credential-is-just-an-error',
+    file: 'netlify/functions/roommate-match.js',
+    suite: 'test:finance',
+    find: 'err.credentialRefused = res.status === 401 || res.status === 403;',
+    replace: 'err.credentialRefused = false;',
+    why: 'Every call through sb() carries the service key, so a 401 or 403 is the '
+      + 'deploy\u2019s own credential being refused \u2014 a deployment fact. Without the '
+      + 'flag the doors answer "try again in a moment", which is a retry nobody can '
+      + 'ever make work.',
+  },
+  {
+    id: 'care-door-blames-the-student',
+    file: 'netlify/functions/care-credit.js',
+    suite: 'test:care',
+    find: 'if (err && err.credentialRefused) {',
+    replace: 'if (false) {',
+    why: 'The key is in the slot and Supabase refuses it: the student holding the '
+      + 'link did nothing wrong and cannot retry their way out. This branch is what '
+      + 'tells them the site is not switched on instead of "try again".',
+  },
+  {
+    id: 'credential-alert-per-visitor',
+    file: 'netlify/functions/finance.js',
+    suite: 'test:finance',
+    find: "if (!limited('finance-credential-refused', 1)) {",
+    replace: 'if (true) {',
+    why: 'The alert is the only half of a refused credential a student cannot do. '
+      + 'Unmetered, every visitor who retries the checkout sends another message and '
+      + 'the one that matters is lost in the flood.',
+  },
+  {
+    id: 'refused-value-reads-as-accepted',
+    file: 'scripts/require-service-key.mjs',
+    suite: 'test:deploy-key',
+    find: "if (status === 401 || status === 403) return 'refused';",
+    replace: 'if (false) return \'refused\';',
+    why: 'A 401 from the project is the whole point of the live gate: the value is set and '
+      + 'unusable. Read as "accepted", a build ships a site whose every door answers '
+      + '"not switched on yet" — the exact afternoon the check was written for.',
+  },
+  {
+    id: 'tampered-key-need-not-be-refused',
+    file: 'scripts/require-service-key.mjs',
+    suite: 'test:deploy-key',
+    find: "if (bad.state === 'accepted') {",
+    replace: 'if (false) {',
+    why: 'The tampered copy is what proves the probe can see a refusal. Without it a project '
+      + 'that accepts anything — a relation readable without a credential — reports the same '
+      + 'green as a working key.',
+  },
+  {
+    id: 'refused-sender-key-reads-as-fine',
+    file: 'scripts/require-service-key.mjs',
+    suite: 'test:deploy-key',
+    find: "const senderRefused = !!(liveSender && liveSender.state === 'refused') && !senderExcused;",
+    replace: 'const senderRefused = false;',
+    why: 'A sender that refuses the key is the second half of the same outage: the build '
+      + 'passed on the NAME, the deploy shipped a key OpenWA does not know, and every code '
+      + 'was issued and never delivered while the site looked healthy.',
+  },
+  {
+    id: 'refused-email-key-reads-as-fine',
+    file: 'scripts/require-service-key.mjs',
+    suite: 'test:deploy-key',
+    find: "const emailRefused = !!(liveEmail && liveEmail.state === 'refused') && emailSet && !emailExcused;",
+    replace: 'const emailRefused = false;',
+    why: 'The email key is only ADVISED when it is absent, which is why a REFUSED one is easy '
+      + 'to wave through: the status page keeps offering the second channel and the mail '
+      + 'keeps not arriving.',
+  },
+  {
+    id: 'refused-paystack-key-reads-as-fine',
+    file: 'scripts/require-service-key.mjs',
+    suite: 'test:deploy-key',
+    find: "const paystackRefused = !!(livePaystack && livePaystack.state === 'refused') && paystackSet && !paystackExcused;",
+    replace: 'const paystackRefused = false;',
+    why: 'A refused money key is the quietest outage on the site: the Care Pass page still renders, the ' 
+      + 'button still works, and the checkout answers not-ready. The deploy must not publish with it.',
+  },
+  {
+    id: 'refused-telegram-token-reads-as-fine',
+    file: 'scripts/require-service-key.mjs',
+    suite: 'test:deploy-key',
+    find: "const telegramRefused = !!(liveTelegram && liveTelegram.state === 'refused') && telegramSet && !telegramExcused;",
+    replace: 'const telegramRefused = false;',
+    why: 'A revoked bot token means every alert — including the alert about the outage — is dropped. ' 
+      + 'Waved through, the pager is silent and the site looks healthy.',
+  },
+  {
+    id: 'no-all-clear-after-a-gap',
+    file: 'netlify/functions/lib/health-state.js',
+    suite: 'test:db-health',
+    find: 'return { send: gapMs > GRACE_MS, gapMs: gapMs, lastOkAt: previous.lastOkAt };',
+    replace: 'return { send: false, gapMs: gapMs, lastOkAt: previous.lastOkAt };',
+    why: 'The all-clear is the only thing that tells the team an outage ended. Without it the last ' 
+      + 'message they received is "the site cannot reach its database", indefinitely.',
+  },
+  {
+    id: 'all-clear-on-every-healthy-hour',
+    file: 'netlify/functions/lib/health-state.js',
+    suite: 'test:db-health',
+    find: 'return { send: gapMs > GRACE_MS, gapMs: gapMs, lastOkAt: previous.lastOkAt };',
+    replace: 'return { send: true, gapMs: gapMs, lastOkAt: previous.lastOkAt };',
+    why: 'A notice every healthy hour is the daily "all good" this project refuses: after a week ' 
+      + 'nobody reads the channel, and the outage that matters arrives unread.',
+  },
+  {
+    id: 'a-refused-key-is-a-good-key',
+    file: 'netlify/functions/lib/database-probe.js',
+    suite: 'test:db-health',
+    find: 'if (read.status === 401 || read.status === 403) {',
+    replace: 'if (false) {',
+    why: 'The refusal IS the finding. Fallen through, the probe goes on to report a healthy '
+      + 'hour on a deploy where every form, the Care panel and the checkout are down.',
+  },
+  {
+    id: 'the-alert-does-not-say-what-to-fix',
+    file: 'netlify/functions/database-health.js',
+    suite: 'test:db-health',
+    find: "    (HELP[probe.stage] || 'Check the deploy\\'s Supabase variables in Netlify.') + '\\n\\n' +",
+    replace: "    '' + '\\n\\n' +",
+    why: 'The stage alone does not tell anybody what to do at 11pm. The repair sentence is '
+      + 'the half of the alert that ends the outage.',
+  },
+  {
+    id: 'a-revoked-code-never-switches-off',
+    file: 'netlify/functions/finance.js',
+    suite: 'test:referrals',
+    find: 'body: JSON.stringify({ active: active }),',
+    replace: 'body: JSON.stringify({ active: true }),',
+    why: 'Revocation is the only brake on an abused code. Pinned on, a switched-off '
+      + 'code keeps qualifying buyers and counting visits, and the dashboard keeps '
+      + 'calling it live.',
+  },
+  {
     id: 'the-claims-guard-never-fires',
     file: 'supabase-claims.sql',
     suite: 'sql:guards',

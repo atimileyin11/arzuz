@@ -61,11 +61,13 @@ to hand, and stand at the gate when you drop the pin — the walking distance we
 measured from that pin, not estimated, and a measured number is what they trust.</p>
   <h2>What we ask you for</h2>
   <ul>
-    <li>The property — type, street or area, and how many rooms are genuinely vacant right now.</li>
+    <li>The property — type, street or area, the rent per session and what you charged before, if it changed.</li>
+    <li>How many rooms are genuinely vacant right now, and whether two tenants may share a room and split the cost.</li>
+    <li>Who runs the compound day to day — the same four roles the Arzuz team files everyone under.</li>
     <li>A pin at the gate, so we can work out the real walk to campus.</li>
     <li>How someone finds the entrance: the landmark, the gate, the stairs.</li>
-    <li>The rent per session, and who runs the compound day to day.</li>
     <li>What the property has — water, power, security and the rest. We check these when we verify.</li>
+    <li>A short description of the place, in your own words.</li>
     <li>Photos, taken from outside the building. Listings with a photo get three times the enquiries.</li>
     <li>Your WhatsApp number, which stays hidden until a student contacts you.</li>
   </ul>
@@ -104,27 +106,52 @@ ArzuzData.ready.then(function(){
 Arzuz.form({
   table:'listings',
   backHref:'/', backLabel:'\u2190 Back to home',
+  /* THE SAME FIELD SET AS THE ADMIN COMPOSER AND THE INVITE LINK.
+     admin.html (Add Apartment) and complete-listing.html (the draft link
+     landlords edit from WhatsApp) carry: name optional + auto title,
+     type, area, rent + opening ask, vacancy with a unit count, contact
+     person + role, sharing consent, amenities, description, the gate pin
+     plus one access-notes box, photos, and the verify visit. This form
+     asks the same things in the same words, so a listing that starts
+     here opens correctly in both of those places — and the walk-in path
+     drawer the old step 3 carried is gone on purpose: it asked a
+     landlord to trace a route on a map, and almost nobody finished it.
+     One notes box, like the invite link has, is what gets answered. */
   steps:[
    {k:'p', h:"About the property",
-    hint:"Give us a name for the property if it has one \u2014 helps students recognise it. Everything else is required.",
+    hint:"Give us a name for the property if it has one \u2014 helps students recognise it. Leave it blank and a title is built from the area, the same way the Arzuz review link does.",
     f:[["prop_name","Property name or nickname (e.g. Blessing Lodge)","text",{opt:true}],
        ["ty","Property type","sel",PROPERTY_TYPES],
-       ["ar","Street or area name","text"],
-       ["rm","Vacant rooms right now (0 if the place is full)","number"]]},
-   {k:'pin', h:"Where exactly is it?",
-    hint:"Drop a pin at your gate. We calculate the walking distance to campus ourselves \u2014 you do not have to estimate it, and students trust a measured number far more.",
-    f:[["pin","Location","pin"]]},
-   {k:'passage', h:"How does someone walk in?",
-    hint:"Landmarks, the gate, the stairs — the things only someone who knows the compound can tell. Students find the place first time, without calling you twice.",
-    opt:true,
-    f:[["passage","Passage to the apartment","passage",{opt:true}]]},
+       ["ar","Street or area name","text"]]},
    {k:'pr', h:"What are you charging?", ctx:true,
-    f:[["rent","Rent per session (\u20A6)","rent-live"]]},
+    hint:"The rent per session, and what you charged before if it changed \u2014 the same two boxes the Arzuz team sees on the review link.",
+    f:[["rent","Rent per session (\u20A6)","rent-live"],
+       ["ask","Opening ask (\u20A6) \u2014 optional, what you charged before","number",{opt:true}]]},
+   {k:'av', h:"Are there vacant rooms right now?",
+    o:["Vacant rooms available","Fully occupied \u2014 nothing vacant"]},
+   {k:'rm', h:"How many rooms are vacant?",
+    hint:"The genuine count, right now \u2014 0 means the listing is stored as fully occupied.",
+    onlyIf:function(a){ return a.av === 'Vacant rooms available'; },
+    f:[["rm","Number of vacant rooms","number"]]},
+   {k:'split_ok', h:"Can two tenants share a room and split the cost?",
+    hint:"Saying yes opens this listing to students looking for roommates \u2014 the same consent box the Arzuz team ticks on the review link.",
+    o:["Yes \u2014 sharing allowed","No \u2014 one tenant only"]},
    {k:'who', h:"Who takes care of the property day to day?",
     hint:"Arzuz sends repairs and student messages to whoever runs the compound. Tell us who that is — the same four roles the dashboard files everyone under.",
     o:["Landlord","Caretaker","Agent","Admin"]},
+   {k:'pin', h:"Where exactly is it?",
+    hint:"Drop a pin at your gate. We calculate the walking distance to campus ourselves \u2014 you do not have to estimate it, and students trust a measured number far more.",
+    f:[["pin","Location","pin"]]},
+   {k:'access_notes', h:"How does someone find the entrance?",
+    hint:"The landmark, the gate colour, the stairs — what a first-time visitor should look for. The same notes box the Arzuz team reads on the review link.",
+    opt:true,
+    ta:"e.g. Opposite the blue mosque, brown double gate with a small green door, first floor \u2014 stairs at the back."},
    {k:'ut', h:"What does the property have?",
     hint:"Tick everything that works. We check these when we verify.", c:UTILITIES},
+   {k:'desc', h:"Describe the property",
+    hint:"Running water, prepaid meter, paved compound, walk time \u2014 the things students compare. The same description the Arzuz team edits on the review link.",
+    opt:true,
+    ta:"Running water, prepaid meter, paved compound, 5 mins walk to school\u2026"},
    {k:'photo', h:"Add photos of the property",
     hint:"Optional but very effective \u2014 listings with photos get 3\u00d7 more enquiries. Take them from outside the building.",
     opt:true,

@@ -106,6 +106,35 @@ async function fetchListings() {
   return rows;
 }
 
+/* What the visits actually checked. A second query rather than a column
+   on public_listings: the view is the public read surface and this is a
+   one-to-many record, so folding it in would either fan the listing rows
+   out or force an aggregate nobody else needs. Grouped here, so a card
+   receives its own visit and never a neighbour's check.
+
+   4000 is the ceiling, not a promise: eight checks on each of 500
+   listings. More than that is a page nobody scrolls, and the badge says
+   "Inspected" without parts rather than inventing them when it is cut. */
+async function fetchChecks() {
+  const url =
+    SUPABASE_URL.replace(/\/+$/, '') +
+    '/rest/v1/public_listing_checks?select=listing_id,visit_id,kind,detail,checked_at,expires_at' +
+    '&order=checked_at.desc&limit=4000';
+  const res = await fetch(url, {
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
+    signal: AbortSignal.timeout(12000)
+  });
+  if (!res.ok) throw new Error('public_listing_checks answered HTTP ' + res.status);
+  const rows = await res.json();
+  if (!Array.isArray(rows)) throw new Error('public_listing_checks did not return an array');
+  const byListing = {};
+  for (const row of rows) {
+    if (!row || !row.listing_id) continue;
+    (byListing[row.listing_id] = byListing[row.listing_id] || []).push(row);
+  }
+  return byListing;
+}
+
 /* ---------- the handler ---------- */
 
 /* A minute, not five: the board is where a student looks first, and a
@@ -158,9 +187,20 @@ exports.handler = async function () {
     return { statusCode: 200, headers: HEAD, body: apologetic || page };
   }
 
+  /* The evidence is a SECOND read, and a failure of it must not take the
+     board down: `null` means "not read", which the badge renders as
+     "Inspected" with no claim about what was seen — never as "there is
+     no record". The rooms are the page; the checks are the footnote. */
+  let checks = null;
+  try {
+    checks = await fetchChecks();
+  } catch (e) {
+    console.warn('[browse] the visit evidence could not be read:', e && e.message);
+  }
+
   /* No rooms is not an error and there is nothing to draw: the page's own
      holder line IS the empty state. */
-  const html = ArzuzBrowseCard.board(rows);
+  const html = ArzuzBrowseCard.board(rows, checks);
   if (!html) return { statusCode: 200, headers: HEAD, body: page };
 
   return { statusCode: 200, headers: HEAD, body: ArzuzBrowseCard.fill(page, html) };
@@ -169,3 +209,4 @@ exports.handler = async function () {
 /* Exported for scripts/test-browse.mjs. */
 exports.SELECT = SELECT;
 exports.SITE = SITE;
+exports.fetchChecks = fetchChecks;

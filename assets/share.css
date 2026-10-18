@@ -51,6 +51,41 @@
   display: block;
 }
 
+/* The referral card (assets/referral-card.js): a personal code plus the
+   same share card above, so one stylesheet owns both halves. */
+.ref-card {
+  margin: var(--sp-5) 0 0;
+  padding: var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.ref-code-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ref-lbl {
+  font-size: 13px;
+  color: var(--mid);
+}
+.ref-code {
+  font-size: 30px;
+  letter-spacing: .06em;
+  font-family: var(--display);
+}
+.ref-link {
+  font-size: 13px;
+  color: var(--mid);
+  word-break: break-all;
+}
+.ref-dash {
+  font-size: 13.5px;
+  color: var(--mid);
+  margin-top: 10px;
+}
+
 /* min-width:0 is what lets a long line wrap instead of pushing the
    icon out of the card on a narrow phone */
 .share-tx {

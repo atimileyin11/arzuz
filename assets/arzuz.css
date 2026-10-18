@@ -861,6 +861,27 @@ textarea {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* ---------- Step Exit Animation ----------
+   Played by the form engine (assets/app.js) for ~170ms after an answer
+   is tapped and before the next step is drawn. Without it the step
+   swapped the instant the finger landed, which read as a page refresh. */
+.step-anim.step-leaving {
+  animation: stepOut 0.17s ease-in forwards;
+}
+
+@keyframes stepOut {
+  to { opacity: 0; transform: translateY(-10px) scale(0.99); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .step-anim {
+    animation: none;
+  }
+  .step-anim.step-leaving {
+    animation: none;
+  }
+}
+
 /* ---------- Toast Notifications ---------- */
 .arzuz-toast-container {
   position: fixed;
@@ -1971,6 +1992,25 @@ textarea {
   border: 1px solid var(--line); border-radius: 16px;
   padding: 20px 22px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.04);
 }
+
+/* ---------- what we checked (stage 3 of the verification layer) ----------
+   The badge on the photo says how far the check went. This is the part
+   of the page that says what the check WAS — one row per thing an
+   officer saw, with the officer's own sentence about it and the date
+   the record stops being current. Quieter than the price on purpose:
+   evidence is what makes the price believable, not a second headline. */
+.verify-detail > p { margin: 0 0 12px; font-size: 15px; line-height: 1.65; color: var(--body-c); }
+.verify-detail ul { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
+.verify-detail li {
+  font-size: 14px; line-height: 1.55; color: var(--mid);
+  padding-left: 22px; position: relative;
+}
+.verify-detail li::before {
+  content: "\2713"; position: absolute; left: 0; top: 0;
+  color: var(--stamp-vibrant); font-weight: 700;
+}
+.verify-detail li b { color: var(--body-c); }
+.verify-detail .note { font-size: 12.5px; color: var(--mid); margin: 0; }
 
 /* `.rv` deliberately has no rule of its own here: it is the same entrance as
    [data-rise], defined once in the 3D craft layer near the end of this file.

@@ -2648,6 +2648,135 @@ async function testRole(role) {
         return String(bodyEl.innerHTML).indexOf('data-act="vtake"') !== -1 ? true
           : 'the row does not offer Take after being released';
       });
+
+      /* ============================================================
+         STAGE 3 — WHAT THE VISIT SAW
+
+         The form is drawn on a listing this login HOLDS, the payload it
+         would send is the evidence the public badge prints, and the write
+         is one transaction against the mock of public.listing_attest().
+
+         Asserted as the BODY the RPC receives and the ROWS it leaves,
+         because "a request happened" is not the claim — the claim is that
+         an "Inspected" badge cannot exist without the checks behind it.
+         ============================================================ */
+
+      sb.win.verifyQueueWrite('listing_take', first.id);
+      await tick(200);
+      const heldHtml = String(bodyEl.innerHTML);
+
+      check('visit form: every check the public badge can name is offered here', () => {
+        const kinds = sb.win.ArzuzBadge.KINDS.map(k => k.kind);
+        const missing = kinds.filter(k => heldHtml.indexOf('data-ev="' + k + '"') === -1);
+        return missing.length ? 'the officer cannot record ' + missing.join(', ') : true;
+      });
+
+      check('visit form: only a listing this login HOLDING is offered the form', () => {
+        const buttons = (heldHtml.match(/data-act="vattest"/g) || []).length;
+        const heldRow = heldHtml.indexOf(refOf(first)) !== -1;
+        if (!heldRow) return 'the held listing is not on the panel at all';
+        return buttons === 1 ? true
+          : 'the visit form was drawn ' + buttons + ' time(s) for one held listing';
+      });
+
+      sb.win.verifyEvidenceToggle(first.id, 'water', true, 'strong at the kitchen tap');
+      sb.win.verifyEvidenceToggle(first.id, 'power', true, null);
+      const visitPayload = sb.win.verifyEvidencePayload(first.id);
+
+      check('visit form: the payload is the ticked checks, in the shared vocabulary', () => {
+        if (visitPayload.p_id !== first.id) return 'p_id is ' + visitPayload.p_id;
+        const kinds = visitPayload.p_checks.map(c => c.kind);
+        return JSON.stringify(kinds) === JSON.stringify(['water', 'power']) ? true
+          : 'the payload carries ' + JSON.stringify(kinds);
+      });
+
+      check('visit form: the officer\u2019s own sentence travels with its check', () => {
+        const water = visitPayload.p_checks[0];
+        const power = visitPayload.p_checks[1];
+        if (water.detail !== 'strong at the kitchen tap') return 'water detail is ' + JSON.stringify(water.detail);
+        return power.detail === null ? true
+          : 'a check with no sentence sent ' + JSON.stringify(power.detail);
+      });
+
+      check('visit form: a sentence longer than the column keeps is cut before it is sent', () => {
+        sb.win.verifyEvidenceToggle(first.id, 'photos', true, 'x'.repeat(260));
+        const detail = sb.win.verifyEvidencePayload(first.id).p_checks.filter(c => c.kind === 'photos')[0].detail;
+        sb.win.verifyEvidenceToggle(first.id, 'photos', false);
+        return detail.length === 200 ? true
+          : 'a 260-character sentence would have been sent as ' + detail.length + ' characters';
+      });
+
+      /* NOTHING TICKED IS REFUSED BEFORE A REQUEST. The badge's whole
+         promise is that "Inspected" has parts; this is the half of it the
+         page owns. */
+      const saidEmpty = [];
+      const realAlert4 = sb.win.alert;
+      sb.win.alert = m => saidEmpty.push(String(m));
+      const attestCallsBefore = sb.fetchCalls.filter(c => String(c.url).indexOf('listing_attest') !== -1).length;
+      await sb.win.verifyAttest(fresh.id);
+      await tick(60);
+      sb.win.alert = realAlert4;
+
+      check('visit form: a visit with nothing ticked is refused, and sends nothing', () => {
+        if (sb.fetchCalls.filter(c => String(c.url).indexOf('listing_attest') !== -1).length !== attestCallsBefore) {
+          return 'it sent an empty visit to the database anyway';
+        }
+        return saidEmpty.some(m => m.indexOf('Tick at least one') !== -1) ? true
+          : 'the officer was told nothing: ' + JSON.stringify(saidEmpty);
+      });
+
+      /* THE WRITE. Evidence and decision in one call, and the response is
+         not what is trusted here — the ROWS are. */
+      const outAttest = await sb.win.verifyAttest(first.id);
+      await tick(240);
+      const attested = db.listings.find(r => r.id === first.id);
+      const written = sb.win.__MOCK__.evidence().filter(e => e.listing_id === first.id);
+
+      check('visit form: recording a visit makes the decision and keeps the evidence', () => {
+        if (!outAttest) return 'the RPC refused the visit';
+        if (Number(attested.tier) !== 2) return 'the listing is at tier ' + attested.tier;
+        if (String(attested.status) !== 'active') return 'the listing is ' + attested.status;
+        if (!attested.verified_at || !attested.verified_by) return 'no verification record was stamped';
+        if (written.length !== 2) return 'the visit wrote ' + written.length + ' evidence row(s), not 2';
+        const kinds = written.map(e => e.kind).sort().join(',');
+        if (kinds !== 'power,water') return 'the evidence rows are ' + kinds;
+        if (written.filter(e => e.detail === 'strong at the kitchen tap').length !== 1) {
+          return 'the officer\u2019s sentence did not survive the write';
+        }
+        return written.every(e => e.officer === 'mock-' + role + '@arzuz.com') ? true
+          : 'the evidence does not name who recorded it';
+      });
+
+      check('visit form: the draft is forgotten, so a second press cannot write the visit twice', () => {
+        const again = sb.win.verifyEvidencePayload(first.id);
+        return again.p_checks.length === 0 ? true
+          : 'the ticked checks survived the write: ' + JSON.stringify(again.p_checks);
+      });
+
+      check('visit form: the inspected listing leaves the queue', () => {
+        const htmlNow = String(bodyEl.innerHTML);
+        return htmlNow.indexOf(refOf(first)) === -1 ? true
+          : 'the inspected listing is still on the shift\u2019s queue';
+      });
+
+      /* A FUNCTION THAT REFUSES IS NOT A DEAD SESSION. The id is real and
+         the listing is gone from the mock's table, so the RPC answers the
+         P0002 sentence — which the officer must read as a sentence. */
+      sb.win.verifyEvidenceToggle('00000000-0000-4000-8000-00000000dead', 'water', true, null);
+      const saidRefusal = [];
+      const realAlert5 = sb.win.alert;
+      sb.win.alert = m => saidRefusal.push(String(m));
+      await sb.win.verifyAttest('00000000-0000-4000-8000-00000000dead');
+      await tick(200);
+      sb.win.alert = realAlert5;
+
+      check('visit form: a refusal is shown as the function wrote it, and is not a logout', () => {
+        if ($('gateModal').style.display === 'flex') {
+          return 'a refused visit signed the officer out: ' + JSON.stringify(saidRefusal);
+        }
+        return saidRefusal.some(m => m.indexOf('no listing with id') !== -1) ? true
+          : 'the refusal did not carry the function\u2019s sentence: ' + JSON.stringify(saidRefusal);
+      });
     }
 
     sb.loc.hash = priorHash;

@@ -84,6 +84,7 @@
        listings sitemap read the same file, so the page a crawler is handed
        and the page a visitor opens cannot disagree. -->
   <script src="assets/listing-url.js"></script>
+  <script src="assets/verification-badge.js"></script>
   <script src="assets/data.js"></script>
   <script src="assets/attribution.js"></script>
   <script src="assets/notify.js"></script>
@@ -106,6 +107,11 @@
     var CAMPUS = { lat: 8.721, lng: 4.484 };   /* KWASU main gate */
 
     var ROW = null, MEDIA = [], CUR = 0, LNAME = '', LTYPE = '', LRENT = 0;
+    /* What the visit checked, from public_listing_checks. `null` means
+       the read has not happened (or failed) and is deliberately
+       different from [] — only a successful read may say a listing has
+       no record at all. */
+    var CHECKS = null;
     var SHARED_TYPES = ['Shared room', 'Face-me-I-face-you', 'Hostel bunk'];
     var SAVE_KEY = 'arzuz_saved_listings';
 
@@ -151,9 +157,37 @@
        server-rendered page cannot drift apart. The markup stays local: this
        one is a photo badge, the other is a stat chip. */
     function tierBadge(tier){
+      if (window.ArzuzBadge) {
+        var info = ArzuzBadge.summarise(tier, CHECKS, Date.now());
+        return '<span class="h-badge ' + info.cls + '" title="' + esc(info.sentence) + '">' +
+          esc(info.label) + '</span>';
+      }
       var n = Number(tier);
       var cls = n >= 2 ? 'b2' : (n === 1 ? 'b1' : 'b0');
       return '<span class="h-badge ' + cls + '">' + ArzuzListing.tierLabel(tier) + '</span>';
+    }
+
+    /* WHAT WE CHECKED — stage 3. The badge on the photo says how far the
+       check went; this says what the check WAS, with the officer's own
+       sentence about each part and the date the record stops being
+       current. Drawn for every tier, because an "Unverified" badge is
+       also a claim and deserves a sentence. */
+    function renderChecks(){
+      if (!window.ArzuzBadge || !ROW) return '';
+      var info = ArzuzBadge.summarise(ROW.tier, CHECKS, Date.now());
+      var html = '<div class="ld-sec" id="verified" data-rise><h2>What we checked</h2>' +
+        '<div class="ld-card verify-detail">' +
+        '<p>' + esc(info.sentence) + '</p>';
+      if (info.hasEvidence) {
+        html += '<ul>' + info.parts.map(function(part){
+          return '<li><b>' + esc(part.label) + '</b>' +
+            (part.detail ? ' \u2014 ' + esc(part.detail) : '') + '</li>';
+        }).join('') + '</ul>' +
+        '<p class="note">We go back every six months. This record was made on ' +
+          esc(ArzuzBadge.day(info.checked_at)) + ' and is current until ' +
+          esc(ArzuzBadge.day(info.expires_at)) + '.</p>';
+      }
+      return html + '</div></div>';
     }
     function iconFor(u){
       var s = String(u).toLowerCase();
@@ -490,8 +524,9 @@
           o: ['Split with a roommate', 'Book it alone'] });
         steps.push({ k: 'mate_gender', h: 'Roommate preference',
           hint: 'We only introduce people of the same gender by default.', o: ['Same gender as me', 'Any gender'], onlyIf: onlyMate });
-        steps.push({ k: 'mate_budget', h: 'How should the split work?',
-          o: ['I can pay my half', 'I need help covering my half'], onlyIf: onlyMate });
+        steps.push({ k: 'mate_budget', h: 'How should the rent be split?',
+          hint: 'Equal halves means every bill split down the middle. Flexible means you agree based on who takes which room.',
+          o: ['Equal halves \u2014 we split everything 50/50', 'Flexible \u2014 we agree based on the rooms'], onlyIf: onlyMate });
         steps.push({ k: 'mate_style', h: 'Your living style, in one tap',
           hint: "We use it to pair people who won't clash.", o: ['Tidy and quiet', 'Tidy and sociable', 'Relaxed', 'It varies'], onlyIf: onlyMate });
       }
@@ -780,39 +815,54 @@
           LRENT = money(first(p, ['rent']));
           MEDIA = buildMedia(p);
 
-          var bk = renderBooking(p);
-          document.getElementById('ldContent').innerHTML =
-            (MEDIA.length ? renderGallery() :
-              '<div class="gal" data-rise><div class="gal-slide" style="cursor:default">\uD83D\uDCF7 Photos coming soon</div></div>') +
-            renderTitle() +
-            renderDescription(p) +
-            renderFeatures(p) +
-            renderGettingThere(p) +
-            bk.html;
+          /* The visit evidence, read SECOND and never fatally. A failure
+             leaves CHECKS null, so the badge says "Inspected" with no claim
+             about what was seen — the page is the room, the checks are
+             its footnote, and a footnote must not break the room. */
+          var checksUrl = c.SUPABASE_URL.replace(/\/+$/, '') +
+            '/rest/v1/public_listing_checks?select=listing_id,visit_id,kind,detail,checked_at,expires_at' +
+            '&listing_id=eq.' + encodeURIComponent(ROW.id) + '&order=checked_at.desc';
 
-          document.getElementById('ldSkeleton').style.display = 'none';
-          var content = document.getElementById('ldContent');
-          content.style.display = '';
+          return fetch(checksUrl, { headers: { 'apikey': c.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + c.SUPABASE_ANON_KEY } })
+            .then(function(r){ return r.ok ? r.json() : null; })
+            .then(function(list){ CHECKS = Array.isArray(list) ? list : null; })
+            .catch(function(){ CHECKS = null; })
+            .then(function(){
+              var bk = renderBooking(p);
+              document.getElementById('ldContent').innerHTML =
+                (MEDIA.length ? renderGallery() :
+                  '<div class="gal" data-rise><div class="gal-slide" style="cursor:default">\uD83D\uDCF7 Photos coming soon</div></div>') +
+                renderTitle() +
+                renderChecks() +
+                renderDescription(p) +
+                renderFeatures(p) +
+                renderGettingThere(p) +
+                bk.html;
 
-          /* WhatsApp CTAs — the support number stays the contact path */
-          var waMsg = 'Hi Arzuz! I saw "' + LNAME + '" (' + (first(p, ['ar']) || 'Malete') + ', \u20A6' +
-            Number(LRENT).toLocaleString() + ' per session, ref ' + ref8() + '). I want to book it \u2014 is it still available?';
-          var ctaWa = document.getElementById('ctaWa');
-          ctaWa.href = waSupport(waMsg);
-          document.getElementById('stickyCta').style.display = '';
-          document.getElementById('ctaBook').addEventListener('click', function(){
-            document.getElementById('book').scrollIntoView({ behavior: 'smooth', block: 'start' });
-          });
+              document.getElementById('ldSkeleton').style.display = 'none';
+              var content = document.getElementById('ldContent');
+              content.style.display = '';
 
-          paintMeta(p);
-          if (MEDIA.length) wireGallery();
-          wireLightbox();
-          wireKebab();
-          wireDesc();
-          wireGettingThere();
-          wireReveals();
-          wireSubmit(bk.mate);
-          mountForm(bk.mate);
+              /* WhatsApp CTAs — the support number stays the contact path */
+              var waMsg = 'Hi Arzuz! I saw "' + LNAME + '" (' + (first(p, ['ar']) || 'Malete') + ', \u20A6' +
+                Number(LRENT).toLocaleString() + ' per session, ref ' + ref8() + '). I want to book it \u2014 is it still available?';
+              var ctaWa = document.getElementById('ctaWa');
+              ctaWa.href = waSupport(waMsg);
+              document.getElementById('stickyCta').style.display = '';
+              document.getElementById('ctaBook').addEventListener('click', function(){
+                document.getElementById('book').scrollIntoView({ behavior: 'smooth', block: 'start' });
+              });
+
+              paintMeta(p);
+              if (MEDIA.length) wireGallery();
+              wireLightbox();
+              wireKebab();
+              wireDesc();
+              wireGettingThere();
+              wireReveals();
+              wireSubmit(bk.mate);
+              mountForm(bk.mate);
+            });
         })
         .catch(function(err){
           console.warn('[Arzuz] listing load failed:', err.message);

@@ -11,15 +11,20 @@
    is set to true.
    ============================================================ */
 
-/* [lower bound, upper bound, number of students] */
+/* [lower bound, upper bound, number of students]
+   The floor is honest about Malete: rooms at ₦80,000–₦100,000 a session
+   barely exist near KWASU, so a band that starts there promises matches
+   we cannot send. The bands below are what students actually pay — a
+   total per session, rent plus the extra charges — from hostel beds to
+   self-contains. */
 var BANDS = [
- [0,       100000, 34],
- [100000,  150000, 44],
- [150000,  200000, 37],
- [200000,  300000, 21],
- [300000,  500000, 5],
- [500000,  1000000, 1],
- [1000000, 0, 1]
+ [0,       150000, 34],
+ [150000,  200000, 44],
+ [200000,  300000, 37],
+ [300000,  500000, 21],
+ [500000,  800000, 5],
+ [800000,  1200000, 1],
+ [1200000, 0, 1]
 ];
 
 var DEMAND_IS_REAL = false;   // set true once BANDS holds your own data

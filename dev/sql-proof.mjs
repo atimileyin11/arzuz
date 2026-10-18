@@ -113,6 +113,17 @@ const FILES = [
                                  // column-scoped functions. It follows the RPC
                                  // file that made the decision correct, and it
                                  // reads arzuz_role() for every authorization.
+  'supabase-verification-evidence.sql', // STAGE 3: what the visit SAW — one
+                                 // row per check, grouped by visit, written
+                                 // only by public.listing_attest(), which
+                                 // records the evidence and makes the
+                                 // decision in ONE transaction. It follows
+                                 // the queue file (its trail and its
+                                 // listing_verify are both prerequisites)
+                                 // and precedes the closer, whose rule it
+                                 // respects: it grants its own read surface
+                                 // explicitly rather than leaning on the
+                                 // default privileges that file removes.
   'supabase-status-codes.sql',   // the public status page: the code a
                                  // student proves their phone with, the
                                  // lookup throttle that keeps references
@@ -3246,6 +3257,229 @@ await check('all four readings are the desk\u2019s, and every other login is sti
   const anon = await refuses(() => asRole('anon', () => sql(
     `select public.status_history($1)`, [tail])), '42501');
   return anon === true ? true : 'a browser key with no login read a fragment: ' + anon;
+});
+
+/* ============================================================
+   13j. WHAT THE VISIT SAW (stage 3)
+
+   supabase-verification-evidence.sql is the half of verification that
+   makes "Inspected" mean something: one row per check, an append-only
+   trail that nobody with a browser key can write, and a public view
+   that exposes the checks behind a badge for listings already on the
+   board — and nothing else.
+
+   What is proved here is the same shape as 13g, one layer out: that
+   the EVIDENCE is not a claim an officer can type and that the
+   DECISION cannot be made without it. A refusal that wrote evidence
+   anyway would be worse than no evidence at all, so the refusals are
+   checked against the rows afterwards.
+   ============================================================ */
+
+section('13j. What the visit saw \u2014 the evidence, the decision, and who may read it');
+
+/* A live tier-0 production listing: the one an officer visits. And a
+   test-environment listing, which must stay invisible to the public
+   view even after it has been inspected — the view's join is the whole
+   reason a draft cannot grow a badge. */
+await sql(`insert into listings (payload, status, tier, opening_ask_ngn, env)
+           values ($1::jsonb, 'active', 0, 180000, 'production'),
+                  ($2::jsonb, 'active', 0, 90000, 'test')`,
+  [JSON.stringify({ nm: 'Evidence Owner', ph: '08030000011', rent: '180000',
+    ar: 'Malete', ty: 'Self-contain', hp: '' }),
+  JSON.stringify({ nm: 'Test Owner', ph: '08030000012', rent: '90000',
+    ar: 'Malete', ty: 'Room', hp: '' })]);
+const visitListing = await one(`select id from listings where owner_phone = '08030000011'`);
+const testListing = await one(`select id from listings where owner_phone = '08030000012'`);
+
+await check('the evidence table is unreadable and unwritable by every browser key', async () => {
+  const priv = await one(`select has_table_privilege('anon', 'public.listing_evidence', 'select')::int as a_read,
+                                 has_table_privilege('anon', 'public.listing_evidence', 'insert')::int as a_write,
+                                 has_table_privilege('authenticated', 'public.listing_evidence', 'insert')::int as u_write,
+                                 has_table_privilege('authenticated', 'public.listing_evidence', 'update')::int as u_update,
+                                 has_table_privilege('authenticated', 'public.listing_evidence', 'delete')::int as u_delete`);
+  if (priv.a_read !== 0) return 'anon can read the evidence table itself';
+  if (priv.a_write !== 0 || priv.u_write !== 0) return 'a browser key holds INSERT on the evidence';
+  if (priv.u_update !== 0 || priv.u_delete !== 0) return 'a browser key holds UPDATE/DELETE on the evidence';
+
+  /* And the path that would matter if a grant were ever widened: RLS with
+     no permissive policy refuses the row even to an officer. */
+  const written = await refuses(() => asRole('authenticated', () => sql(
+    `insert into public.listing_evidence (listing_id, visit_id, kind, detail, checked_at, expires_at, officer)
+     values ($1::uuid, gen_random_uuid(), 'water', null, now(), now() + interval '180 days', 'x')`,
+    [visitListing.id])), '42501');
+  if (written !== true) return 'an officer inserted evidence by hand: ' + written;
+  const none = await val(`select count(*)::int from public.listing_evidence`);
+  return none === 0 ? true : 'the refused insert left ' + none + ' row(s) behind';
+});
+
+await check('recording a visit is refused to everybody off the shift, and to a missing listing', async () => {
+  const checks = JSON.stringify([{ kind: 'water' }]);
+  const support = await refuses(() => asRole('authenticated', () => sql(
+    `select public.listing_attest($1::uuid, $2::jsonb)`, [visitListing.id, checks]),
+  { role: 'support' }), '42501');
+  if (support !== true) return 'a support login recorded a visit: ' + support;
+
+  const marketing = await refuses(() => asRole('authenticated', () => sql(
+    `select public.listing_attest($1::uuid, $2::jsonb)`, [visitListing.id, checks]),
+  { role: 'marketing' }), '42501');
+  if (marketing !== true) return 'a marketing login recorded a visit: ' + marketing;
+
+  const anon = await refuses(() => asRole('anon', () => sql(
+    `select public.listing_attest($1::uuid, $2::jsonb)`, [visitListing.id, checks])), '42501');
+  if (anon !== true) return 'an anonymous visitor recorded a visit: ' + anon;
+
+  const gone = await refuses(() => asRole('authenticated', () => sql(
+    `select public.listing_attest('00000000-0000-4000-8000-00000000dead'::uuid, $1::jsonb)`, [checks]),
+  { role: 'verification' }), 'P0002');
+  if (gone !== true) return 'a visit was recorded against a listing that does not exist: ' + gone;
+
+  const rows = await val(`select count(*)::int from public.listing_evidence`);
+  return rows === 0 ? true : 'the refusals wrote ' + rows + ' evidence row(s)';
+});
+
+await check('a visit with no checks, or with checks nobody can name, is refused and leaves nothing', async () => {
+  const empty = await refuses(() => asRole('authenticated', () => sql(
+    `select public.listing_attest($1::uuid, '[]'::jsonb)`, [visitListing.id]),
+  { role: 'verification' }), '22023');
+  if (empty !== true) return 'a visit with no checks was accepted: ' + empty;
+
+  const tooMany = await refuses(() => asRole('authenticated', () => sql(
+    `select public.listing_attest($1::uuid, $2::jsonb)`,
+    [visitListing.id, JSON.stringify(new Array(9).fill({ kind: 'water' }))]),
+  { role: 'verification' }), '22023');
+  if (tooMany !== true) return 'a visit with nine checks was accepted: ' + tooMany;
+
+  /* The refusal NAMES the word it did not recognise — the officer has to
+     be able to fix it, and "check constraint violated" is not fixable. */
+  let said = '';
+  try {
+    await asRole('authenticated', () => sql(
+      `select public.listing_attest($1::uuid, $2::jsonb)`,
+      [visitListing.id, JSON.stringify([{ kind: 'vibes' }])]), { role: 'verification' });
+  } catch (err) { said = why(err); }
+  if (!said.includes('is not a check we can publish')) return 'an unknown kind was not refused: ' + (said || 'it was accepted');
+  if (!said.includes('vibes')) return 'the refusal did not name the word: ' + said;
+
+  const rows = await val(`select count(*)::int from public.listing_evidence`);
+  if (rows !== 0) return 'a refused visit wrote ' + rows + ' row(s)';
+  const still = await one(`select tier, status, verified_at from listings where id = $1`, [visitListing.id]);
+  return Number(still.tier) === 0 && still.verified_at === null ? true
+    : 'a refused visit moved the listing: ' + JSON.stringify(still);
+});
+
+await check('recording a real visit writes the checks AND makes the decision', async () => {
+  const out = await asRole('authenticated', () => one(
+    `select public.listing_attest($1::uuid, $2::jsonb) as r`,
+    [visitListing.id, JSON.stringify([
+      { kind: 'water', detail: 'strong at the kitchen tap' },
+      { kind: 'power', detail: null },
+    ])]), { role: 'verification' });
+
+  if (!out || !out.r) return 'the attestation answered nothing';
+  if (Number(out.r.tier) !== 2) return 'the visit did not make it inspected: ' + JSON.stringify(out.r);
+  if (!out.r.visit_id || Number(out.r.checks) !== 2) return 'the answer is ' + JSON.stringify(out.r);
+
+  const row = await one(`select tier, status, verified_at, verified_by, opening_ask_ngn, listed_price_ngn, env
+                           from listings where id = $1`, [visitListing.id]);
+  if (Number(row.tier) !== 2 || String(row.status) !== 'active') return 'the listing reads ' + JSON.stringify(row);
+  if (!row.verified_at || !row.verified_by) return 'no verification record was stamped';
+  /* The columns the visit may NOT move: a price is not an officer's. */
+  if (Number(row.opening_ask_ngn) !== 180000 || String(row.env) !== 'production') {
+    return 'the visit moved something that is not the decision: ' + JSON.stringify(row);
+  }
+
+  const written = await sql(`select kind, detail, checked_at, expires_at, officer
+                               from public.listing_evidence where listing_id = $1 order by kind`,
+    [visitListing.id]);
+  if (written.rows.length !== 2) return 'the visit wrote ' + written.rows.length + ' row(s), not 2';
+  const power = written.rows.find((r) => r.kind === 'power');
+  const water = written.rows.find((r) => r.kind === 'water');
+  if (!water || water.detail !== 'strong at the kitchen tap') return 'the officer\u2019s sentence did not survive: ' + JSON.stringify(water);
+  if (!power || power.detail !== null) return 'a check with no sentence stored ' + JSON.stringify(power);
+
+  /* THE WINDOW IS THE DATABASE'S, not the caller's: 180 days from the
+     moment it was recorded, and the officer account is on the row. */
+  const days = await val(`select extract(day from (expires_at - checked_at))::int
+                            from public.listing_evidence where listing_id = $1 limit 1`, [visitListing.id]);
+  if (Number(days) !== 180) return 'the record expires in ' + days + ' days';
+  /* WHO, read from the token rather than from anything the caller sent:
+     the claims carry no email here, so the account falls back to the
+     subject — and it must be THAT subject, on every row. A caller who
+     could name the officer would be a caller who could blame somebody. */
+  const mine = '00000000-0000-4000-8000-000000000001';
+  return written.rows.every((r) => String(r.officer) === mine) ? true
+    : 'the evidence names ' + JSON.stringify(written.rows.map((r) => r.officer)) +
+      ' instead of the account that recorded it';
+});
+
+await check('the public view shows the checks of a board listing, and never the officer', async () => {
+  const rows = await asRole('anon', () => sql(
+    `select * from public.public_listing_checks where listing_id = $1`, [visitListing.id]));
+  if (rows.rows.length !== 2) return 'anon sees ' + rows.rows.length + ' check(s)';
+  const cols = Object.keys(rows.rows[0]);
+  if (cols.indexOf('officer') !== -1 || cols.indexOf('officer_id') !== -1) {
+    return 'the public view carries the officer\u2019s account: ' + cols.join(', ');
+  }
+  const water = rows.rows.find((r) => r.kind === 'water');
+  return water && water.detail === 'strong at the kitchen tap' && water.expires_at ? true
+    : 'the public row lost what it must carry: ' + JSON.stringify(water);
+});
+
+await check('a listing that is not on the board has no public checks at all', async () => {
+  /* Inspected, and in the test environment: the view's join is what keeps
+     it out, not the tier. */
+  await asRole('authenticated', () => sql(
+    `select public.listing_attest($1::uuid, $2::jsonb)`,
+    [testListing.id, JSON.stringify([{ kind: 'water' }])]), { role: 'verification' });
+
+  const hidden = await asRole('anon', () => val(
+    `select count(*)::int from public.public_listing_checks where listing_id = $1`, [testListing.id]));
+  if (Number(hidden) !== 0) return 'a test-environment listing published ' + hidden + ' check(s)';
+
+  /* And it IS recorded — the officer's visit is not lost, it is simply
+     not public. */
+  const kept = await val(`select count(*)::int from public.listing_evidence where listing_id = $1`,
+    [testListing.id]);
+  if (Number(kept) !== 1) return 'the visit itself was not recorded: ' + kept;
+
+  /* A draft of a REAL listing would be hidden the same way, which is the
+     half of this the join has to get right for a tier-0 room too. */
+  const drafted = await one(`insert into listings (payload, status, tier, opening_ask_ngn, env)
+                              values ($1::jsonb, 'draft', 2, 120000, 'production') returning id`,
+    [JSON.stringify({ nm: 'Draft Owner', ph: '08030000013', rent: '120000', ar: 'Malete', ty: 'Room', hp: '' })]);
+  await sql(`insert into public.listing_evidence (listing_id, visit_id, kind, detail, checked_at, expires_at, officer)
+             values ($1::uuid, gen_random_uuid(), 'price', null, now(), now() + interval '180 days', 'owner@arzuz.com')`,
+    [drafted.id]);
+  const draftChecks = await asRole('anon', () => val(
+    `select count(*)::int from public.public_listing_checks where listing_id = $1`, [drafted.id]));
+  return Number(draftChecks) === 0 ? true : 'a DRAFT listing published ' + draftChecks + ' check(s)';
+});
+
+await check('a re-visit adds a visit and edits nothing that was said before', async () => {
+  const before = await sql(`select id, kind, detail, checked_at from public.listing_evidence
+                             where listing_id = $1 order by kind, id`, [visitListing.id]);
+
+  await asRole('authenticated', () => sql(
+    `select public.listing_attest($1::uuid, $2::jsonb)`,
+    [visitListing.id, JSON.stringify([
+      { kind: 'photos', detail: 'new tiling since the last visit' },
+      { kind: 'access', detail: null },
+    ])]), { role: 'verification' });
+
+  const after = await sql(`select id, kind, detail, checked_at, visit_id from public.listing_evidence
+                            where listing_id = $1 order by kind, id`, [visitListing.id]);
+  if (after.rows.length !== 4) return 'the second visit left ' + after.rows.length + ' row(s), not 4';
+
+  for (const row of before.rows) {
+    const same = after.rows.find((r) => r.id === row.id);
+    if (!same) return 'the first visit\u2019s row ' + row.kind + ' was deleted';
+    if (same.detail !== row.detail || String(same.checked_at) !== String(row.checked_at)) {
+      return 'the first visit\u2019s ' + row.kind + ' row was edited: ' + JSON.stringify(same);
+    }
+  }
+  const visits = await val(`select count(distinct visit_id)::int from public.listing_evidence
+                             where listing_id = $1`, [visitListing.id]);
+  return Number(visits) === 2 ? true : 'the two visits read as ' + visits + ' group(s)';
 });
 
 /* ============================================================

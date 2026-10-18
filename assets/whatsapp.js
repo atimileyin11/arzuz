@@ -82,6 +82,19 @@ var ArzuzWhatsApp = (function(){
     );
   }
 
+  /* The roommate pool confirms from the page, not the server: the matcher
+     Telegram-alerts the team but never messages a student, so without
+     this a questionnaire that went in got silence back. */
+  function roommateMessage(a){
+    var first = a.name || a.first || 'there';
+    return (
+      '\u2705 *You\u2019re in the roommate pool, ' + first + '!*\n\n' +
+      'We\u2019ll message you here the moment a compatible student shows up. ' +
+      'Nobody\u2019s number moves until you both say yes.\n\n' +
+      '\u2014 Arzuz'
+    );
+  }
+
   function bookingMessage(a){
     var NL = String.fromCharCode(10);
     var first = a.name || 'there';
@@ -108,6 +121,9 @@ var ArzuzWhatsApp = (function(){
 
     if (table === 'demand_records') {
       text  = studentMessage(answers);
+      phone = answers.phone;
+    } else if (table === 'roommate_profiles') {
+      text  = roommateMessage(answers);
       phone = answers.phone;
     } else if (table === 'listings') {
       text  = landlordMessage(answers);

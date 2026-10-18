@@ -227,6 +227,25 @@
       margin-bottom: 14px;
       width: fit-content;
     }
+    /* What the visit checked, under the walk line and above the
+       amenities: the badge names the claim, this names its parts. It is
+       deliberately quieter than the price and the walk — evidence is
+       what makes them believable, not a second headline. */
+    .card .checks {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--mid);
+      margin: -4px 0 14px;
+    }
+    .card .checks span {
+      display: block;
+      font-size: 11.5px;
+      color: var(--stamp);
+      margin-top: 2px;
+    }
+    .card .checks.stale {
+      color: #9a5b12;
+    }
     .card .amen {
       display: flex;
       flex-wrap: wrap;
@@ -317,15 +336,24 @@
     <section class="bw-more">
       <h2>What the badges mean</h2>
       <p>Nothing appears above without a badge, and the badge is the honest answer to "how far did
-      you check?":</p>
+      you check?". An <b>Inspected</b> badge names the parts — the checks below the badge are what
+      the officer actually recorded, with the date, and they stop counting after six months:</p>
       <ul>
-        <li><b>Inspected</b> — someone from Arzuz stood in the room. The rent, the utilities and the
-        walking distance are all confirmed on site.</li>
+        <li><b>Inspected</b> — someone from Arzuz stood in the room, and the listing says which of
+        these they checked: water pressure at the tap, the power supply and meter, whether the
+        photos match the room, the price the owner charges, the way in (and whether the road
+        floods), and the gate and security. Each check carries the officer's own sentence about
+        what they saw, and the date. The record is good for six months; after that the badge reads
+        <b>Re-check due</b> rather than pretending the visit is recent.</li>
         <li><b>Community verified</b> — a tenant living in the building told us what they pay and
-        what actually works. The rent is real; nobody from Arzuz has been inside yet.</li>
+        what actually works. The rent is real; nobody from Arzuz has been inside yet, and the badge
+        says so.</li>
         <li><b>Unverified</b> — the owner listed it and we have not checked it. Treat the price as
         the asking price, not the confirmed one.</li>
       </ul>
+      <p>"Inspected" is a claim with parts, so we will not print it for a room whose record has run
+      out or whose visit predates this. A room that says <b>Re-check due</b> is one we owe another
+      visit — ask us and we will go.</p>
 
       <h2>How to read a listing</h2>
       <p>Prices are for one session, not per month, and they are what the owner says they are

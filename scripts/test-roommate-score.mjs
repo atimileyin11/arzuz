@@ -75,7 +75,7 @@ function full(over = {}) {
     smoke: P.smoke.options[0],                // Non-smoker
     noise: P.noise.options[0],                // Quiet
     budget: '90000',
-    split: P.split.options[0],                // I can pay my half
+    split: P.split.options[0],                // Equal halves
     want_gender: W.want_gender.options[0],    // Same gender as me
   }, over);
 }
@@ -205,12 +205,19 @@ await t('a blank gender never filters the pool', () => {
   assert.equal(ArzuzMatch.score(full(), full({ gender: '' })).pass, true);
 });
 
-await t('rent split treats two people who each need covering as a conflict', () => {
+await t('rent split rewards the same arrangement and halves a mixed one', () => {
+  /* The split question was reworded from "I can pay my half / I need help
+     covering my half" to equal-halves vs flexible, so the old conflict
+     (two people who each need covering) no longer exists: two people who
+     want the same arrangement score full, a mixed pair scores half. */
   const fine = ArzuzMatch.splitScore(full(), full());
-  const both = ArzuzMatch.splitScore(
+  const bothFlex = ArzuzMatch.splitScore(
     full({ split: P.split.options[1] }), full({ split: P.split.options[1] }));
+  const mixed = ArzuzMatch.splitScore(
+    full({ split: P.split.options[0] }), full({ split: P.split.options[1] }));
   assert.equal(fine, 1);
-  assert.equal(both, 0);
+  assert.equal(bothFlex, 1);
+  assert.equal(mixed, 0.5);
   assert.equal(ArzuzMatch.splitScore(undefined, undefined), null);
 });
 

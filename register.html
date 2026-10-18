@@ -95,6 +95,7 @@ Students anywhere can register, and the numbers tell us which campus to open nex
 <script src="assets/notify.js"></script>
 <script src="assets/submit.js?v=4"></script>
 <script src="assets/share.js"></script>
+<script src="assets/referral-click.js"></script>
 <script src="assets/whatsapp.js"></script>
 <script src="assets/app.js"></script>
 <script src="assets/motion.js"></script>
@@ -106,11 +107,11 @@ Arzuz.form({
   backHref:'/', backLabel:'\u2190 Back to home',
   steps:[
    {k:'type', h:"What kind of room?", o:ROOM_TYPES.concat(["Not sure yet"])},
-   {k:'budget', h:"What's your maximum for the session?",
-    hint:"Pick the band you can realistically afford.",
-    o:["Under \u20A6100,000","\u20A6100,000 \u2013 \u20A6150,000","\u20A6150,000 \u2013 \u20A6200,000",
-       "\u20A6200,000 \u2013 \u20A6300,000","\u20A6300,000 \u2013 \u20A6500,000",
-       "\u20A6500,000 \u2013 \u20A61,000,000","Above \u20A61,000,000"]},
+   {k:'budget', h:"What's the most you can pay for the session, all in?",
+    hint:"Your total \u2014 rent plus any extra charges \u2014 so we only send rooms you can actually afford.",
+    o:["Under \u20A6150,000","\u20A6150,000 \u2013 \u20A6200,000","\u20A6200,000 \u2013 \u20A6300,000",
+       "\u20A6300,000 \u2013 \u20A6500,000","\u20A6500,000 \u2013 \u20A6800,000",
+       "\u20A6800,000 \u2013 \u20A61,200,000","Above \u20A61,200,000"]},
    {k:'dist', h:"How far from campus can you go?",
     o:["Near \u2014 under 10 min walk","Mid \u2014 10 to 20 min","Far \u2014 over 20 min","Doesn't matter"]},
    {k:'when', h:"When do you need it?",
@@ -160,6 +161,10 @@ Arzuz.form({
 /* Delegated listener lives on the persistent #form container; the form
    engine injects the share card into it when the last step is saved. */
 ArzuzShare.wire(document.getElementById('form'));
+
+/* A personal link lands here: one best-effort click ping per session, so
+   the referrer's dashboard can count the visits, not just the sign-ups. */
+if (window.ArzuzReferralClick) ArzuzReferralClick.boot();
 
 Arzuz.footer();
 </script>

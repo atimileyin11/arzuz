@@ -26,7 +26,12 @@ const RATE_WINDOW_MS = 60_000;
 const MAX_SENDS_PER_WINDOW = 30;
 const recentSends = [];   // best-effort, per function instance
 
-const KNOWN_TABLES = ['demand_records', 'listings', 'scout_submissions', 'booking_requests', 'support_tickets', 'draft_completed'];
+/* roommate_profiles is the handover table: when the matcher is down the
+   roommate page posts the questionnaire through the waitlist door under
+   its own name, and the team still needs the Telegram alert. Without it
+   the send was refused as "Unknown table" and the answers sat in the
+   database with nobody told. */
+const KNOWN_TABLES = ['demand_records', 'listings', 'scout_submissions', 'booking_requests', 'support_tickets', 'draft_completed', 'roommate_profiles'];
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -98,6 +103,9 @@ function formatMessage(table, p) {
     lines.push(`• <b>Area/Street:</b> ${esc(p.ar || p.area) || 'N/A'}`);
     lines.push(`• <b>Availability:</b> ${esc(p.rm || p.rooms) || 'N/A'}`);
     lines.push(`• <b>Rent per Session:</b> ₦${num(p.rent || p.listed_price_ngn).toLocaleString()}`);
+    if (p.ask) lines.push(`• <b>Opening Ask:</b> ₦${num(p.ask).toLocaleString()}`);
+    if (p.split_ok) lines.push(`• <b>Sharing:</b> ${esc(p.split_ok)}`);
+    if (p.desc) lines.push(`• <b>Description:</b> ${esc(p.desc, 300)}`);
     lines.push(`• <b>Run By:</b> ${esc(p.contact_role || p.who) || 'N/A'}`);
     lines.push(`• <b>WhatsApp:</b> ${esc(p.ph || p.owner_phone) || 'N/A'}`);
     if (p.photo) lines.push(`• <b>Photo:</b> <a href="${esc(p.photo, 300)}">view</a>`);
@@ -129,6 +137,14 @@ function formatMessage(table, p) {
     lines.push(`• <b>Availability:</b> ${esc(p.rooms || p.rm) || '—'}`);
     lines.push(`• <b>Contact:</b> ${esc(p.ph) || '—'}${p.contact_role ? ' · ' + esc(p.contact_role) : ''}`);
     lines.push('• <b>Action:</b> open the admin dashboard → Listings → approve or adjust');
+  } else if (table === 'roommate_profiles') {
+    title = '🤝 <b>New Roommate Questionnaire</b>';
+    lines.push(`• <b>Name:</b> ${esc(p.name || p.first) || 'N/A'}`);
+    lines.push(`• <b>Situation:</b> ${esc(p.situation) || 'N/A'}`);
+    lines.push(`• <b>Area:</b> ${esc(p.area) || 'N/A'}`);
+    lines.push(`• <b>Share:</b> ${p.budget ? '₦' + num(p.budget).toLocaleString() + ' a session' : 'N/A'}`);
+    lines.push(`• <b>Split:</b> ${esc(p.split) || 'N/A'}`);
+    lines.push(`• <b>WhatsApp:</b> ${esc(p.phone) || 'N/A'}`);
   } else if (table === 'scout_submissions') {
     title = '🔍 <b>New Building Scout Report</b>';
     lines.push(`• <b>First Name:</b> ${esc(p.first || p.first_name) || 'N/A'}`);

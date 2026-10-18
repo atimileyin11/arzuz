@@ -64,6 +64,7 @@
    ============================================================ */
 
 const { sb, cfg, newToken, hashToken, normalizePhone } = require('./roommate-match.js');
+const { sendAlert } = require('./notify.js');
 
 const SUPABASE_URL =
   process.env.SUPABASE_URL ||
@@ -789,6 +790,25 @@ exports.handler = async function (event) {
     } catch (err) {
       if (isMissingTable(err)) {
         console.error('[care-credit] ' + action + ': Care tables are missing');
+        return json(503, {
+          error: 'Care is not switched on for this site yet. Nothing is wrong with your link — ' +
+            'message us on WhatsApp and we will sort it out.',
+        }, 'not-ready');
+      }
+      /* The key is PRESENT and Supabase refuses it — see the flag in
+         sb(). A different fact from the missing table above and the
+         same answer, deliberately: what a student needs to hear is
+         identical (their link is fine, the site is not switched on,
+         there is nothing to retry), and which of the two it is is the
+         operator's business, not theirs. So the distinction goes to
+         the log and the alert, where someone can act on it. */
+      if (err && err.credentialRefused) {
+        console.error('[care-credit] Supabase refused the credential this deploy holds (' + err.status + ') on ' + action);
+        if (!limited('care-credential-refused', 1)) {
+          await sendAlert('\u26a0\ufe0f Care cannot reach Supabase: the service key this deploy holds was refused on ' +
+            action + '. Check SUPABASE_SERVICE_ROLE_KEY and SUPABASE_URL in Netlify, then redeploy — a variable added ' +
+            'without a deploy is not in the running function.');
+        }
         return json(503, {
           error: 'Care is not switched on for this site yet. Nothing is wrong with your link — ' +
             'message us on WhatsApp and we will sort it out.',

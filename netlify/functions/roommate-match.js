@@ -162,6 +162,18 @@ async function sb(path, options = {}) {
     if (!own) console.error('[roommate-match] Supabase answered HTTP', res.status, String(text).slice(0, 200));
     const err = new Error(own || 'The matching service could not read its database just now.');
     err.status = res.status;
+    /* THE DEPLOY'S OWN CREDENTIAL, REFUSED.
+
+       sb() sends the SERVICE key on every call — no caller overrides
+       Authorization — and the service role holds every grant on every
+       table in this schema. So a 401 or a 403 here is never a
+       student's session expiring and never a policy doing its job: it
+       is the key this deploy was BUILT with being wrong, rotated, or
+       an anon key pasted into the service slot. That is a deployment
+       fact, not a bad minute, and the flag lets a door answer it the
+       way it already answers a key that is simply absent, instead of
+       inviting a retry that cannot succeed. */
+    err.credentialRefused = res.status === 401 || res.status === 403;
     throw err;
   }
   return data;
@@ -255,6 +267,17 @@ function sanitizeProfile(payload) {
   /* name / phone / free text */
   if (payload && payload.name !== undefined) out.name = String(payload.name).trim().slice(0, 60);
   if (payload && payload.area !== undefined) out.area = String(payload.area).trim().slice(0, 80);
+  /* The situation answers are not scored — they decide what the team reads
+     and which follow-up fits — but they must survive sanitizing or the
+     pool holds profiles that no longer say which of the two situations
+     they are. Capped and trimmed like every other kept value. */
+  if (payload && payload.situation !== undefined) out.situation = String(payload.situation).trim().slice(0, 80);
+  if (payload && payload.period !== undefined) out.period = String(payload.period).trim().slice(0, 40);
+  if (payload && payload.total_rent !== undefined) {
+    const tr = Number(payload.total_rent);
+    if (payload.total_rent !== '' && (!Number.isFinite(tr) || tr <= 0 || tr > 100000000)) bad.push('total_rent');
+    else if (payload.total_rent !== '') out.total_rent = String(Math.round(tr));
+  }
   if (payload && payload.note !== undefined) out.note = String(payload.note).trim().slice(0, 600);
   if (payload && payload.phone !== undefined) {
     const phone = normalizePhone(payload.phone);

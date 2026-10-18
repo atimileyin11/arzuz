@@ -142,10 +142,17 @@ function classifyDoor(status, type, message) {
     };
   }
   if (status === 503 && /not switched on/i.test(msg)) {
+    /* TWO causes answer this sentence, and the door cannot say which
+       one it is: the Care tables are missing (gate 1 above settles
+       that), or the key this deploy was BUILT with is being refused by
+       Supabase \u2014 a rotated key, an anon key in the service slot, or
+       a variable added without a redeploy. The state name is kept for
+       the self-test's sake; the why must not pick one. */
     return {
       state: 'no-tables',
       ok: false,
-      why: 'deployed and configured, but the Care tables are missing from the database (gate 1)'
+      why: 'deployed, but the door says it is not switched on \u2014 the Care tables are missing, '
+        + 'or the service key this deploy holds is absent or refused (gate 1 above says which)'
     };
   }
   if (status === 404 && /do not recognise that Care link/i.test(msg)) {
@@ -219,7 +226,7 @@ function selfTest() {
   is('a 503 about SERVICE_ROLE_KEY is "no key", not "no tables"',
     classifyDoor(503, 'application/json', 'Care credits need SUPABASE_SERVICE_ROLE_KEY in Netlify before they can write anything.').state,
     'no-service-key');
-  is('a 503 about the tables points back at gate 1',
+  is('a 503 about the tables points back at gate 1 and at the key',
     classifyDoor(503, 'application/json', 'Care is not switched on for this site yet. Nothing is wrong with your link — message us on WhatsApp and we will sort it out.').state,
     'no-tables');
   is('404 + the function\u2019s own sentence is the PASS — the door answered',
@@ -230,7 +237,11 @@ function selfTest() {
   is('429 is metering, not a broken link', classifyDoor(429, 'application/json', 'a lot of Care requests in a minute').state, 'metered');
   is('a student action answered 401+ places it behind the gate — it must not be',
     classifyDoor(401, 'application/json', 'Sign in to the Arzuz dashboard.').state, 'behind-the-gate');
-  is('a 502 says key and tables are fine but the query failed',
+  /* It used to be described here as "key and tables are fine" \u2014 it is
+     not. A refused credential answers the not-ready 503 now, so a 502
+     is a failure this check has no verdict for, and saying it cleared
+     the key is how a stale key in Netlify was read as a stale deploy. */
+  is('a 502 is an unknown failure, not a verdict that the key is fine',
     classifyDoor(502, 'application/json', 'Care could not open your Care account just now.').state, 'unexpected 502');
   is('nothing but answering is a pass',
     [classifyDoor(404, 'text/html', '').ok, classifyDoor(503, 'application/json', 'SERVICE_ROLE_KEY').ok,
@@ -369,12 +380,19 @@ if (!green) {
     console.log('      Editor, a direct connection, or the Management API are the only doors.)');
     console.log('     Then re-run this check — gate 2\u2019s message changes when it lands.');
   }
-  if (migration.ok && !door.ok) {
-    console.log('  2. Deploy netlify/functions/care-credit.js to the site' +
-      (door.state === 'no-service-key' ? ',' : '.'));
-    if (door.state === 'no-service-key') {
-      console.log('     and set SUPABASE_SERVICE_ROLE_KEY in Netlify \u2192 Environment variables.');
-    }
+  if (migration.ok && !door.ok && (door.state === 'no-service-key' || door.state === 'no-tables')) {
+    /* Gate 1 has just proved every relation exists, so "not switched on"
+       here is the deploy's OWN CREDENTIAL: absent, refused, or added
+       without a deploy (functions only see a variable that existed when
+       they were built). The repair is the variable and a redeploy \u2014
+       deploying the same function again with the same key changes
+       nothing, which is the loop this tool used to send people into. */
+    console.log('  2. Fix the Supabase credential this deploy holds:');
+    console.log('     Netlify \u2192 Environment variables \u2192 SUPABASE_SERVICE_ROLE_KEY (and check');
+    console.log('     SUPABASE_URL), then REDEPLOY \u2014 a variable added without a deploy is');
+    console.log('     not in the running function.');
+  } else if (migration.ok && !door.ok) {
+    console.log('  2. Deploy netlify/functions/care-credit.js to the site.');
   }
   if (migration.ok && door.ok && !page.ok) {
     console.log('  3. Deploy my-care.html — the door answers but the page is not served.');

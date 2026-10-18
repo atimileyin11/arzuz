@@ -369,10 +369,26 @@
         return r.json();
       })
       .then(function (updated) {
+        /* A 200 with an EMPTY array is PostgREST for "matched zero rows":
+           this login holds no row-wide UPDATE on listings (the
+           verification role lost it in supabase-verification-rpc.sql),
+           so the PATCH changed nothing. Painting a success here used to
+           be the bug — the row looked published until the next refresh,
+           and never reached the board. Fall through to the RPC decision
+           instead, which is the write this login is actually allowed. */
+        if (updated && updated.length === 0) {
+          verifyListingRow(id);
+          return;
+        }
         if (updated && updated[0]) Object.assign(row, updated[0]);
         else Object.assign(row, patch);
         renderRoute();
-        if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('Published — this listing is on the browse page now.', 'success');
+        var b = boardState(row);
+        if (ArzuzSubmit && ArzuzSubmit.showToast) {
+          ArzuzSubmit.showToast(b.live
+            ? 'Published — this listing is on the browse page now.'
+            : 'Saved, but still hidden — ' + b.why + '.', b.live ? 'success' : 'error');
+        }
       })
       .catch(function (err) { alert('Could not publish it: ' + err.message); });
   }
@@ -418,8 +434,16 @@
       .then(function (out) {
         if (row) Object.assign(row, (out && out.id) ? out : { status: 'active', tier: tier });
         renderRoute();
+        /* The RPC moves status and tier but never env, so approving a
+           non-production row leaves it off the board by design — and
+           that used to read as "approve does nothing". Say which it
+           was, so nobody has to guess why the room is not on /browse. */
+        var b = boardState(row);
         if (ArzuzSubmit && ArzuzSubmit.showToast) {
-          ArzuzSubmit.showToast('Approved — status and tier are set, and who verified it is on the record.', 'success');
+          ArzuzSubmit.showToast(b.live
+            ? 'Approved — status and tier are set, and it is live on the browse page.'
+            : 'Approved — status and tier are set, but it is still hidden: ' + b.why + '. An admin Publish puts it on the board.',
+            b.live ? 'success' : 'error');
         }
       })
       .catch(function (err) { alert('Could not approve it: ' + err.message); });
@@ -457,6 +481,31 @@
      a listing is overdue. */
   function verifyQueueCard() { return document.getElementById('verifyQueueCard'); }
 
+  /* The visit form, drawn on a listing THIS login holds — the visit is
+     the state a claim exists for. Every control carries data-ev so the
+     delegated listeners below can write the draft, and every id is
+     namespaced by listing so two cards cannot share a checkbox. */
+  function evidenceFormHtml(r) {
+    var kinds = evidenceKinds();
+    if (!kinds.length) {
+      return '<div class="verify-evidence"><div class="verify-empty">The check vocabulary did not load, so this panel cannot name what was checked.</div></div>';
+    }
+    return '<div class="verify-evidence">' +
+      '<div class="verify-evidence-head">What did you check?</div>' +
+      kinds.map(function (k) {
+        return '<div class="verify-check">' +
+          '<label><input type="checkbox" id="ev-' + esc(k.kind) + '-' + esc(r.id) + '"' +
+          ' data-act="ev-kind" data-ev="' + esc(k.kind) + '" data-id="' + esc(r.id) + '"> ' +
+          esc(k.label) + '</label>' +
+          '<input type="text" maxlength="200" placeholder="what you saw, in your own words"' +
+          ' data-act="ev-detail" data-ev="' + esc(k.kind) + '" data-id="' + esc(r.id) + '">' +
+          '</div>';
+      }).join('') +
+      '<button type="button" class="act-btn act-approve" data-act="vattest" data-table="listings" data-id="' + esc(r.id) + '">' +
+      ico('check', 13) + ' Record the visit</button>' +
+      '</div>';
+  }
+
   function queueRowHtml(r) {
     var aging = r.aging;
     var late = !!(aging && aging.overdue);
@@ -475,7 +524,9 @@
         ? '<button type="button" class="act-btn" data-act="vrelease" data-table="listings" data-id="' + esc(r.id) + '">' + ico('refresh', 13) + ' Release</button>'
         : '<button type="button" class="act-btn" data-act="vtake" data-table="listings" data-id="' + esc(r.id) + '">' + ico('check', 13) + ' Take</button>') +
       '<button type="button" class="act-btn act-approve" data-act="verify" data-table="listings" data-id="' + esc(r.id) + '">' + ico('check', 13) + ' Approve</button>' +
-      '</div></div>';
+      '</div>' +
+      (held ? evidenceFormHtml(r) : '') +
+      '</div>';
   }
 
   function renderVerifyQueue() {
@@ -597,6 +648,133 @@
      drives the officer's approve */
   window.renderVerifyQueue = renderVerifyQueue;
   window.verifyQueueWrite = verifyQueueWrite;
+
+  /* ============================================================
+     WHAT THE VISIT SAW — LAUNCH-READINESS.md §8.2, stage 3
+
+     Stage 2 got somebody to the door. It recorded that a listing WAS
+     decided and who decided it — and the badge on the board said
+     "Inspected", which is a word, not a list. The student asking "what
+     exactly did you check?" got a person's recollection.
+
+     So the officer's card carries a short form: the named checks, an
+     optional sentence of their own about each, and a note for the
+     record. Submitting it calls public.listing_attest(), which writes
+     the evidence and makes the decision in ONE transaction — tier 2,
+     active, verified_at/by, plus the checks behind the word. If the
+     function refuses, nothing was written, and the officer sees the
+     function's own sentence rather than a status code.
+
+     WHY A DRAFT STORE RATHER THAN READING THE DOM BACK
+
+     The form is plain markup (checkboxes and inputs with data-ev
+     attributes) and the state lives in EVIDENCE_DRAFT, keyed by listing.
+     Reading the DOM back at submit time would mean querySelector per
+     field on a panel that re-renders under the officer's hands, and
+     would make the payload — which is the whole point of this screen —
+     testable only through a simulated browser. The delegated listeners
+     still exist, so the browser writes the draft exactly the way the
+     harness does; there is one implementation of "what did you tick".
+
+     Nothing here decides what a check MEANS. The vocabulary and the
+     labels are assets/verification-badge.js, which the QUEUE does not
+     own any more than the board does — a check the admin cannot name is
+     a check the public badge could not print. */
+  var EVIDENCE_DRAFT = {};
+
+  function evidenceKinds() {
+    return (window.ArzuzBadge && ArzuzBadge.KINDS) || [];
+  }
+
+  function evidenceDraft(id) {
+    if (!EVIDENCE_DRAFT[id]) EVIDENCE_DRAFT[id] = { checks: {} };
+    return EVIDENCE_DRAFT[id];
+  }
+
+  function verifyEvidenceToggle(id, kind, on, detail) {
+    if (!id || !kind) return null;
+    var d = evidenceDraft(id);
+    var prior = d.checks[kind] || { on: false, detail: '' };
+    d.checks[kind] = {
+      on: on === undefined ? !!prior.on : !!on,
+      /* 200 is the column's own ceiling. Trimmed here too, so the officer
+         sees what the database would keep rather than a silent cut. A null
+         is an EMPTY sentence, never the word "null" — the payload sends
+         null for a check the officer ticked and said nothing about. */
+      detail: detail === undefined ? prior.detail
+        : String(detail === null ? '' : detail).slice(0, 200)
+    };
+    return d.checks[kind];
+  }
+
+  /* The exact body the RPC receives. A function rather than an inline
+     object so the harness can assert the PAYLOAD — which is what the
+     database will store — instead of the fact that some request happened.
+
+     No visit-level note: the officer's words belong on the CHECK they are
+     about, where the public badge prints them. A paragraph attached to
+     the visit would be a sentence nobody reading the badge would see. */
+  function verifyEvidencePayload(id) {
+    var d = evidenceDraft(id);
+    var checks = [];
+    evidenceKinds().forEach(function (k) {
+      var c = d.checks[k.kind];
+      if (c && c.on) checks.push({ kind: k.kind, detail: c.detail ? c.detail : null });
+    });
+    return { p_id: id, p_checks: checks };
+  }
+
+  function verifyAttest(id) {
+    var payload = verifyEvidencePayload(id);
+    if (!payload.p_checks.length) {
+      alert('Tick at least one thing you checked. "Inspected" with nothing behind it is the one thing this badge must never say.');
+      return Promise.resolve(null);
+    }
+    return ArzuzAuth.headers().then(function (h) {
+      return fetch(apiRoot() + '/rest/v1/rpc/listing_attest', {
+        method: 'POST', headers: h, body: JSON.stringify(payload)
+      });
+    })
+      .then(function (r) {
+        if (r.ok) return r.json();
+        /* Same rule as the shift's two refusals: the function's sentence,
+           then the status. listing_attest raises 42501 for the wrong
+           login, which arrives as a 403 — read after the status it would
+           sign the officer out for pressing a button that refused them. */
+        return r.text().then(function (txt) {
+          var err = apiErr(r, txt);
+          var own = String(err.platform || '').match(/^listing_attest: (.+)$/);
+          if (own) {
+            err.message = own[1];
+            err.refusal = true;
+            throw err;
+          }
+          if (r.status === 401 || r.status === 403) {
+            onAuthError(new Error('listing_attest'));
+            throw new Error('Your session has expired, or this login may not record a visit.');
+          }
+          throw err;
+        });
+      })
+      .then(function (out) {
+        delete EVIDENCE_DRAFT[id];
+        renderVerifyQueue();
+        if (ArzuzSubmit && ArzuzSubmit.showToast) {
+          ArzuzSubmit.showToast('Visit recorded — the listing is inspected, and the badge now names ' +
+            payload.p_checks.length + (payload.p_checks.length === 1 ? ' check' : ' checks') +
+            ' for six months.', 'success');
+        }
+        return out;
+      })
+      .catch(function (err) {
+        alert('Could not record the visit: ' + err.message);
+        return null;
+      });
+  }
+
+  window.verifyEvidenceToggle = verifyEvidenceToggle;
+  window.verifyEvidencePayload = verifyEvidencePayload;
+  window.verifyAttest = verifyAttest;
 
   function amenitiesTags(list, max) {
     var arr = toList(list);
@@ -2701,11 +2879,13 @@
     return (b - a) / 864e5;
   }
 
+  /* Coarse groups for the roommate cohort table. The floor follows the
+     public bands (assets/data.js): Malete totals under ₦150,000 a
+     session barely exist, so they share one bucket instead of three. */
   function budgetBandOf(row) {
     var n = Number(pick(row, 'budget_ngn', ['budget']));
     if (!isFinite(n) || n <= 0) return null;
-    if (n < 80000) return 'under \u20a680k';
-    if (n < 150000) return '\u20a680\u2013150k';
+    if (n < 150000) return 'under \u20a6150k';
     if (n < 300000) return '\u20a6150\u2013300k';
     return '\u20a6300k+';
   }
@@ -3367,6 +3547,23 @@
        which is how handlers pile up on the same button. */
     else if (act === 'vtake') verifyQueueWrite('listing_take', id);
     else if (act === 'vrelease') verifyQueueWrite('listing_release', id);
+    else if (act === 'vattest') verifyAttest(id);
+  });
+
+  /* The visit form's own two listeners. A change on a checkbox writes the
+     tick; an input writes the sentence for that check (or the note). Both
+     go through the same two functions the harness drives, so there is one
+     reading of "what did you tick" and not a DOM path and a test path. */
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (!t || !t.dataset || t.dataset.act !== 'ev-kind') return;
+    verifyEvidenceToggle(t.dataset.id, t.dataset.ev, !!t.checked);
+  });
+
+  document.addEventListener('input', function (e) {
+    var t = e.target;
+    if (!t || !t.dataset) return;
+    if (t.dataset.act === 'ev-detail') verifyEvidenceToggle(t.dataset.id, t.dataset.ev, undefined, t.value);
   });
 
   /* 5d. Delegated changes — the pipeline selector.
@@ -3525,8 +3722,11 @@
         '</div></div>';
 
       specs += '<div class="edit-fld full"><label>Description &amp; Features</label><textarea id="edit_desc" rows="2" maxlength="2000" placeholder="Running water, prepaid meter…">' + esc(p.desc || p.description || '') + '</textarea></div>';
+      /* The public landlord form answers this as "Yes \u2014 sharing allowed"
+         / "No \u2014 one tenant only" (owner-list.html); the dashboard and
+         the invite link store a boolean. All three read as one consent. */
       specs += '<div class="edit-fld full"><label class="ck-line"><input type="checkbox" id="edit_split_ok"' +
-        ((p.split_ok === true || p.split_ok === 'yes') ? ' checked' : '') +
+        ((p.split_ok === true || p.split_ok === 'yes' || String(p.split_ok || '').indexOf('Yes') === 0) ? ' checked' : '') +
         '> <span>Landlord consents to this room being shared by two tenants who split the cost <small>(enables roommate matching on the public page)</small></span></label></div>';
 
       /* ---------------- tab 2 — location & access ---------------- */
@@ -4467,7 +4667,17 @@
         renderRoute();
         if (state.shareSchemaMissing) warnShareSchema();
         if (isDraft) openShareModal(inserted, true);
-        else if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('Apartment ' + p.apt_id + ' saved.', 'success');
+        else if (ArzuzSubmit && ArzuzSubmit.showToast) {
+          /* A save with status active + tier 2 still misses the board when
+             env is not production — and nothing said so, which is how a
+             "saved" apartment never appears on /browse. Report the board
+             state with the save, not after the silence. */
+          var live = boardState(inserted);
+          ArzuzSubmit.showToast(live.live
+            ? 'Apartment ' + p.apt_id + ' saved — live on the browse page.'
+            : 'Apartment ' + p.apt_id + ' saved, but hidden — ' + live.why + '.',
+            live.live ? 'success' : 'error');
+        }
       })
       .catch(function (err) { setError('addModalError', (isDraft ? 'Could not create the draft: ' : 'Could not save the apartment: ') + err.message); })
       .then(function () { if (window.ArzuzUI) ArzuzUI.setBusy(btn, false); else if (btn) btn.disabled = false; });
@@ -5648,7 +5858,12 @@
           '<input type="text" id="finRefPayout" maxlength="80" placeholder="e.g. TRF-\u2026" value="' + esc(fin.referralPayout) + '"></div>' +
           '<div style="display:flex;gap:8px;align-items:center;margin-top:6px">' +
           '<button type="button" class="btn-inline" data-fin="referral">Record it</button>' +
-          '<span class="sub" id="finRefNote">' + (fin.noticeKind === 'good' && fin.notice ? esc(fin.notice) : '') + '</span></div>'
+          '<span class="sub" id="finRefNote">' + (fin.noticeKind === 'good' && fin.notice ? esc(fin.notice) : '') + '</span></div>' +
+          '<div class="edit-fld" style="margin-top:10px"><label>Switch a referral code off or back on (e.g. a code being abused)</label>' +
+          '<input type="text" id="finRefCode" maxlength="32" placeholder="e.g. KOLA-4821" value="' + esc(fin.referralCodeValue || '') + '"></div>' +
+          '<div style="display:flex;gap:8px;align-items:center;margin-top:6px">' +
+          '<button type="button" class="btn-inline" data-fin="referral-code-off">Switch off</button>' +
+          '<button type="button" class="btn-inline" data-fin="referral-code-on">Switch back on</button></div>'
         : '<p class="sub">Support reads the pipeline; only the admin login may move a payout.</p>');
   }
 
@@ -5718,12 +5933,41 @@
     });
   }
 
+  /* Switching a code off stops new buyers using it without touching
+     rewards already earned; switching it back on restores it. Either
+     way the server re-checks the admin login first. */
+  function financeReferralCode(revoked) {
+    var codeEl = $('finRefCode');
+    fin.referralCodeValue = codeEl ? String(codeEl.value || '').trim().toUpperCase() : '';
+    if (!/^[A-Z0-9]{4,32}$/.test(fin.referralCodeValue)) {
+      return financeNote('A referral code is the 4\u201332 letters-and-digits word on the share card.');
+    }
+    return financePost({
+      action: 'referral_code',
+      code: fin.referralCodeValue,
+      revoked: !!revoked
+    }).then(function () {
+      fin.notice = 'Code ' + fin.referralCodeValue + (revoked ? ' switched off.' : ' switched back on.');
+      fin.noticeKind = 'good';
+      fin.referralCodeValue = '';
+      if (ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('Referral code updated.', 'success');
+      return financeLoad();
+    }).catch(function (err) {
+      fin.notice = err.message;
+      fin.noticeKind = 'bad';
+      renderFinancePanel();
+      return null;
+    });
+  }
+
   document.addEventListener('click', function (e) {
     var b = e.target.closest ? e.target.closest('[data-fin]') : null;
     if (!b || b.disabled) return;
     var act = b.getAttribute('data-fin');
     if (act === 'refund') return financeRefund();
     if (act === 'referral') return financeReferral();
+    if (act === 'referral-code-off') return financeReferralCode(true);
+    if (act === 'referral-code-on') return financeReferralCode(false);
   });
 
   /* Exposed for the boot harness, which cannot dispatch a document click:
@@ -5735,6 +5979,7 @@
     load: financeLoad,
     refund: financeRefund,
     referral: financeReferral,
+    referralCode: financeReferralCode,
     state: function () { return fin; }
   };
 

@@ -55,6 +55,24 @@
    ============================================================ */
 
 const { sendAlert, esc } = require('./notify.js');
+/* The site's ONE classifier of a failed call — the same module the pages
+   and the other clocks read, so one failure reads the same everywhere. */
+const ApiErrors = require('../../assets/api-errors.js');
+
+/* OPS-ALERT COOLDOWN — the same one the verification clock keeps (see
+   netlify/functions/verification-aging.js): the log line fires every
+   run, but the phone only fires for a new failure or an old reminder
+   (24h for a missing migration, 6h for the transient kinds). Per
+   function instance. */
+var lastOpsAlertAt = {};
+function opsAlertDue(key, kind, now) {
+  var at = now || Date.now();
+  var cool = kind === 'not-ready' ? 24 * 3600 * 1000 : 6 * 3600 * 1000;
+  var last = lastOpsAlertAt[key] || 0;
+  if (at - last < cool) return false;
+  lastOpsAlertAt[key] = at;
+  return true;
+}
 
 /* The Supabase plumbing has exactly one owner (claims.js → its own sb),
    and the readiness check has one owner too (roommate-match.js). Nothing
@@ -272,13 +290,20 @@ exports.handler = async function () {
     console.error('[claims-digest] read failed:', err.message);
     /* The one failure that IS worth a phone: a digest that stops running
        does it silently, and the whole reason this job exists is that
-       nobody is looking at the dashboard. */
-    await sendAlert(
-      '\u26a0\ufe0f <b>The Care visit digest could not run</b>\n\n' +
-      esc(err.message) +
-      '\n\nNothing is lost \u2014 the queue and every claim are still in the dashboard. Only the daily ' +
-      'summary failed, and it will not say so again tomorrow unless it fails again.'
-    );
+       nobody is looking at the dashboard. Still on cooldown, though —
+       a digest that fails the same way every morning must not page
+       every morning about it. */
+    var digestKey = 'read-failed:' + String(err.message || '').slice(0, 120);
+    if (opsAlertDue(digestKey, ApiErrors.kindOf(err))) {
+      await sendAlert(
+        '\u26a0\ufe0f <b>The Care visit digest could not run</b>\n\n' +
+        esc(err.message) +
+        '\n\nNothing is lost \u2014 the queue and every claim are still in the dashboard. Only the daily ' +
+        'summary failed, and it will not say so again tomorrow unless it fails again.'
+      );
+    } else {
+      console.error('[claims-digest] telegram reminder suppressed — same failure, still inside its cooldown');
+    }
     return done('read-failed');
   }
 
@@ -306,3 +331,7 @@ exports.digestText = digestText;
 exports.worthSending = worthSending;
 exports.WINDOW_HOURS = WINDOW_HOURS;
 exports.LIST_LIMIT = LIST_LIMIT;
+/* Resettable so the suite can prove the second identical failure stays
+   quiet without waiting out the cooldown. */
+exports.opsAlertDue = opsAlertDue;
+exports._resetOpsAlerts = function () { lastOpsAlertAt = {}; };

@@ -528,6 +528,31 @@ console.log('\n8. Which kind of broken \u2014 the site\u2019s one classifier, an
       : 'the alert was ' + JSON.stringify(calls.alerts));
 }
 
+console.log('\n9. The phone stays quiet about the SAME failure twice');
+{
+  /* The hourly spam this cooldown ends: a queue nobody can read fails
+     identically every hour, and every one of those runs used to page
+     Telegram — a channel that cries hourly is one nobody reads. The log
+     line still fires per run; the phone fires once per window. */
+  reset();
+  chaser._resetOpsAlerts();
+  queueThrows = new TypeError('fetch failed');
+  const firstMiss = JSON.parse((await chaser.handler({})).body);
+  const secondMiss = JSON.parse((await chaser.handler({})).body);
+  check('the first identical failure pages, the repeat inside the window does not', () =>
+    firstMiss.outcome === 'queue-unreadable' && secondMiss.outcome === 'queue-unreadable' &&
+      calls.alerts.length === 1
+      ? true : 'alerts: ' + JSON.stringify(calls.alerts));
+  /* NOTE: check() is sync, so the run is driven by hand and only the
+     assertion sits inside it — an async body would answer a promise
+     the counter never awaits. */
+  queueThrows = Object.assign(new Error('upstream connect error or disconnect/reset before headers'), { status: 502 });
+  const other = JSON.parse((await chaser.handler({})).body);
+  check('and a DIFFERENT failure still speaks immediately (driven)', () =>
+    other.outcome === 'queue-unreadable' && calls.alerts.length === 2
+      ? true : 'alerts: ' + JSON.stringify(calls.alerts));
+}
+
 console.log('\n\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014');
 console.log('TOTAL ' + (passed + failures.length) + ' \u00b7 PASS ' + passed + ' \u00b7 FAIL ' + failures.length);
 if (failures.length) process.exitCode = 1;

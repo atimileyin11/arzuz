@@ -953,7 +953,14 @@
      (netlify/functions/listings-sitemap.js) so the Crawl column and the
      <changefreq> the engines are given are one number, not two. -->
 <script src="assets/listing-score.js?v=1"></script>
-<script src="assets/admin.js?v=30"></script>
+<!-- The public badge's vocabulary and wording (stage 3 of the
+     verification layer). The officer's visit form names the SAME
+     checks the badge prints, so the two cannot drift: this module is
+     the only list. browse.html and listing.html load it too, and
+     netlify/functions/rooms.js requires it, so a check added here
+     reaches every surface at once. -->
+<script src="assets/verification-badge.js?v=1"></script>
+<script src="assets/admin.js?v=31"></script>
 <script>
 /* shell-only wiring that has no place in admin.js */
 (function(){

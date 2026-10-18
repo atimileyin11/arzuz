@@ -1109,10 +1109,42 @@ const FUNCTION_FILES = readdirSync(FN_DIR).filter((f) => f.endsWith('.js'));
     answer's `kind`), and section 8 of scripts/test-verification-queue.mjs
     resolves the require to prove no second copy of the vocabulary has been
     written into it. Being exempt from the wire is not being exempt from
-    knowing what broke. */
+    knowing what broke.
+
+    upload-health.js is the fourth timer, and it is the one entry here that
+    is exempt from the CLASS as well — for a reason worth writing down,
+    because the exemption list is not a place to file things quietly. It is
+    scheduled every half hour in netlify.toml and answers 403 to every
+    external request before its code runs (a scheduled function cannot be
+    curled, which is how that was learned), so there is no route and no
+    caller. Its answer names the STAGE the probe failed at — sign, rejects,
+    probe — which is finer than a class, and that stage is what the alert
+    and the thrown log line carry; classifying a Cloudinary 401 into one of
+    six browser-facing classes would be a second vocabulary for a fact the
+    probe already states more precisely. If a page ever starts calling it,
+    THIS paragraph is what will be wrong, and the check below is the thing
+    that says so.
+
+    database-health.js is the FIFTH timer and the second entry exempt from
+    the class as well, for the same reason as the fourth: it is scheduled
+    hourly in netlify.toml, it answers 403 to every external request
+    before its code runs, and its answer is a log line plus a Telegram
+    alert. What it reports is a STAGE — key, probe, unreachable, door —
+    and that stage is more precise than any of the six browser-facing
+    classes: 'key' says the credential this deploy holds was refused, and
+    no page reads a 503 there to decide whether to retry, because no page
+    calls it. Folding that into the browser vocabulary would be a second
+    vocabulary for a fact the probe already states more precisely, which
+    is the whole reasoning behind upload-health's entry. If a page ever
+    starts calling it, THIS paragraph is what will be wrong.
+
+    Its lib (netlify/functions/lib/database-probe.js) is not a function
+    file and is not in this list; scripts/require-service-key.mjs — the
+    build gate that shares the same reading — is not a function either
+    and stamps the build's own failure, not a door's. */
 const NO_JSON = ['listing-og.js', 'video-embed.js', 'roommate-digest.js',
   'rooms.js', 'listings-sitemap.js', 'browse.js', 'claims-aging.js', 'claims-digest.js',
-  'verification-aging.js'];
+  'verification-aging.js', 'upload-health.js', 'database-health.js'];
 
 check('every function that answers JSON stamps its failures with the shared class', () => {
   const guilty = FUNCTION_FILES.filter((f) => !NO_JSON.includes(f)

@@ -217,19 +217,50 @@ as a 404 on the live site (deploy guard verified).
 4. **Approve and publish the Care Pass terms** — sales stay off until then, and
    `/care-pass` will say so rather than offering a checkout.
 
+## 5b. A checkout that never opened, and a checkout replayed
+
+Two failures that are not "the code is wrong" but "the buyer cannot pay",
+both found by asking what happens to the ORDER when the provider misbehaves:
+
+1. **A replayed order had no payment page.** Paystack refuses a second
+   `transaction/initialize` for a reference it already holds, so an order
+   replay (a double tap, a reload, a response that never arrived) used to
+   return the same order with **no `authorization_url`** — the page set
+   `state.phase = 'paying'` and navigated nowhere. The buyer saw a Pay button
+   that did nothing. The provider's own answer is now stored on the order
+   (`provider_payload.checkout`) the moment it arrives, and the replay hands
+   back **the same payment page**. Nothing re-initializes, so nothing can
+   open a second transaction against a reference the provider already has.
+2. **A dead provider bricked the checkout.** If `initialize` failed, the
+   order stayed `pending` with no URL and every later attempt replayed it —
+   a permanently unusable order and no sentence on screen saying why. It is
+   now marked `abandoned` with the reason, and the page is told `retry`, which
+   makes it forget the stored `client_ref` and write a **fresh order**. One
+   automatic attempt, then the sentence — a provider outage must not become a
+   loop of invisible orders. `initialize` does not move money, so this can
+   never charge anybody twice.
+
+**The payment-specific security checks** (all in `scripts/test-finance.mjs`):
+no page or asset the browser can fetch carries the provider secret (read from
+DISK, so it is a claim about what is served); the public `status` answer
+exposes neither the checkout capability, the provider payload nor the
+idempotency key; an unsigned or wrongly-signed webhook is refused **before any
+database read**; the amount is re-checked against the order on both doors; the
+pass link goes only to the `client_ref` that paid.
+
 ## 6. Tests executed, and their results
 
 | Suite | Result |
 |---|---|
-| `node scripts/test-finance.mjs` | **48 passed, 0 failed**, exit 0 |
+| `node scripts/test-finance.mjs` | **55 passed, 0 failed**, exit 0 (48 before §5b's seven) |
 | `node scripts/test-claims.mjs` | **47 passed, 0 failed**, exit 0 |
 | `node dev/my-care-test.js` (the claim pages included) | **63 passed, 0 failed**, exit 0 |
 | `node dev/admin-boot-test.js` (finance panel, all three roles) | **TOTAL 230 · PASS 230 · FAIL 0**, exit 0 |
-| `node scripts/test-care-pass-page.mjs` | **TOTAL 46 · PASS 46 · FAIL 0**, exit 0 |
+| `node scripts/test-care-pass-page.mjs` | **TOTAL 47 · PASS 47 · FAIL 0**, exit 0 (46 before the fresh-order check) |
 | `node scripts/test-site-audit.mjs` (changed pages, real Chrome, 2 widths) | **TOTAL 61 · PASS 61 · FAIL 0** |
 | `node scripts/test-admin-worst.mjs` (worst case + demo, real Chrome) | **TOTAL 69 · PASS 69 · FAIL 0** |
 | `node scripts/test-seo.mjs` | **PASS 269 · FAIL 0** |
-| `npm test` | **19 of 19 suites passed**, exit 0 |
+| `npm test` | **every suite the repo has passed**, exit 0 (19 of them when this was written; the count only grows) |
 
 **Negative controls, Phase 3 and 4 (each proved by letting it fail, then
 restored):**
@@ -302,7 +333,7 @@ above, which are now fixed and pinned by tests.
 ```bash
 cd arzuz-site
 npm install
-npm test                    # 19 suites, every one reported
+npm test                    # every suite the repo has, each reported separately
 node scripts/test-finance.mjs
 node scripts/test-claims.mjs
 node dev/my-care-test.js    # the customer pages, claims included

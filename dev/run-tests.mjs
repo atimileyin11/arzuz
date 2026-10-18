@@ -72,6 +72,11 @@ const ORDER = [
   'test:roommate-page',
   'test:care',
   'test:finance',
+  /* the self-service referral loop: mint, clicks, the referrer dashboard,
+     the two notification pages and the code switch — beside the money
+     rules it extends, because a green finance suite must not be quotable
+     about doors it never knocked on */
+  'test:referrals',
   'test:claims',
   /* the verification shift's own suite, beside the other queue work: the
      ordering and the clock are pure policy, so it needs no database —
@@ -79,6 +84,11 @@ const ORDER = [
      stubbed, and what it proves is that a lateness is announced once, and
      that a job nobody did comes back */
   'test:verify-queue',
+  /* stage 3's public badge: pure policy, no DOM and no database. The
+     module is what a student reads, so its wording is tested beside the
+     queue's clocks — a badge that claims more than the evidence says is
+     the failure both of them exist to prevent. */
+  'test:verify-badge',
   'test:care-pass',
   'test:my-care',
   'test:admin',
@@ -92,6 +102,10 @@ const ORDER = [
      trust: it must be able to see a bad signature, or its green means
      nothing. Offline — it stands up its own endpoint. */
   'test:upload-probe',
+  /* the same shape of check, one layer down: the credential every door
+     on the site writes through is TRIED against the project, and the
+     probe must be able to see a refusal or its green means nothing */
+  'test:db-health',
   /* the runner's own detector, which must be able to fire: a watcher
      that never reports anything looks exactly like a quiet tree */
   'test:tree-watch',
@@ -349,16 +363,24 @@ if (uncovered.length || forgotten.length || registryError) {
   console.log(line);
 }
 
+/* "nothing failed" is only true of the suites. A run that passed every one
+   of them and still exits 1 — because a suite has no mutant, or one exists
+   that this runner never runs — has to say so on the line people quote,
+   or the summary contradicts the exit code. */
+const uncoveredNote = (uncovered.length ? ' \u00b7 ' + uncovered.length + ' suite(s) have no mutant' : '') +
+  (registryError ? ' \u00b7 the mutant registry could not be read' : '');
+
 if (forgotten.length) {
   console.log('RESULT: ' + passed + ' of ' + results.length + ' passed \u00b7 ' +
-    forgotten.length + ' suite(s) exist in package.json but were NOT run');
+    forgotten.length + ' suite(s) exist in package.json but were NOT run' + uncoveredNote);
 } else if (only) {
   console.log('RESULT (PARTIAL, ' + selected.length + ' of ' + ORDER.length + '): ' +
     passed + ' passed' + (failed.length ? ' \u00b7 ' + failed.length + ' failed' : '') +
     ' \u2014 this is not the gate; run `npm test` before believing the tree is green');
 } else {
   console.log('RESULT: ' + passed + ' of ' + results.length + ' suites passed' +
-    (failed.length ? ' \u00b7 ' + failed.length + ' failed' : ' \u00b7 nothing failed'));
+    (failed.length ? ' \u00b7 ' + failed.length + ' failed' : ' \u00b7 nothing failed') +
+    uncoveredNote);
 }
 
 if (failed.length) {

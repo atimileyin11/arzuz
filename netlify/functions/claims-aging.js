@@ -41,6 +41,10 @@
 
 const { sb, cfg } = require('./roommate-match.js');
 const { sendAlert, esc } = require('./notify.js');
+/* The site's ONE classifier of a failed call — the same module the pages
+   and the verification clock read, so one failure reads the same
+   everywhere (and a missing migration reads as the deploy fact it is). */
+const ApiErrors = require('../../assets/api-errors.js');
 const { CLOCK, HANDOVER, agingOf, statusSinceFor, handoverQuiet, handoverBack } = require('./claims.js');
 
 /* Every status that is on a clock, from the one table that defines
@@ -51,6 +55,21 @@ const CLOCKED_STATUSES = Object.keys(CLOCK);
    a runaway table cannot turn one run into a thousand queries. */
 const PAGE = 200;
 const MAX_PAGES = 5;
+
+/* OPS-ALERT COOLDOWN — the same one the verification clock keeps (see
+   netlify/functions/verification-aging.js): the log line fires every
+   run, but the phone only fires for a new failure or an old reminder.
+   An hourly "the clock could not run" about the same un-run migration
+   is how the channel gets muted. Per function instance. */
+var lastOpsAlertAt = {};
+function opsAlertDue(key, kind, now) {
+  var at = now || Date.now();
+  var cool = kind === 'not-ready' ? 24 * 3600 * 1000 : 6 * 3600 * 1000;
+  var last = lastOpsAlertAt[key] || 0;
+  if (at - last < cool) return false;
+  lastOpsAlertAt[key] = at;
+  return true;
+}
 
 async function openClaims() {
   const rows = [];
@@ -275,10 +294,15 @@ exports.handler = async function () {
     model = await collect(null);
   } catch (err) {
     console.error('[claims-aging] read failed:', err && err.message);
-    await sendAlert(
-      '⚠️ <b>The claim clock could not run</b>\n\n' + esc(err.message, 300) +
-      '\n\nThe dashboard still has every claim — only the deadline check failed.'
-    );
+    var readKey = 'read-failed:' + String((err && err.message) || '').slice(0, 120);
+    if (opsAlertDue(readKey, ApiErrors.kindOf(err))) {
+      await sendAlert(
+        '⚠️ <b>The claim clock could not run</b>\n\n' + esc(err.message, 300) +
+        '\n\nThe dashboard still has every claim — only the deadline check failed.'
+      );
+    } else {
+      console.error('[claims-aging] telegram reminder suppressed — same failure, still inside its cooldown');
+    }
     return done('read-failed');
   }
 
@@ -327,3 +351,7 @@ exports.collect = collect;
 exports.nudgeText = nudgeText;
 exports.handoverWork = handoverWork;
 exports.CLOCKED_STATUSES = CLOCKED_STATUSES;
+/* Resettable so the suite can prove the second identical failure stays
+   quiet without waiting out the cooldown. */
+exports.opsAlertDue = opsAlertDue;
+exports._resetOpsAlerts = function () { lastOpsAlertAt = {}; };

@@ -58,6 +58,11 @@ const SCRIPTS = [
      queue clock did not load" and never draws a single row. That is what
      the boot suite said the first time the panel's checks ran. */
   'assets/verification-queue.js',
+  /* the public badge's vocabulary and wording — stage 3. admin.html loads
+     it immediately before admin.js, and the officer's visit form draws its
+     checks from it, so a sandbox without this line boots a panel that
+     cannot name a single thing the officer checked. */
+  'assets/verification-badge.js',
   'assets/admin.js'
 ].map(rel => ({ rel, code: fs.readFileSync(path.join(ROOT, rel.split('?')[0]), 'utf8') }));
 

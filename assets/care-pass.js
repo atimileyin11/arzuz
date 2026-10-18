@@ -426,6 +426,11 @@ var ArzuzCarePass = (function () {
       ', and it is what your claims are decided against. ' +
       (t.refund ? esc(t.refund) + '.' : 'Refunds follow the published terms.') + '</p>';
     out += supportLine('About my Care Pass ' + (state.reference || ''));
+    /* The happiest moment is also the emptiest — a personal referral code
+       belongs here, minted for the buyer's own number and shared in one
+       tap (assets/referral-card.js). Mounted by paint(), not here, so a
+       re-paint never mints twice. */
+    out += '<div id="cpRefCard"></div>';
     return out;
   }
 
@@ -559,11 +564,38 @@ var ArzuzCarePass = (function () {
     }
   }
 
+  /* A code the friend's link carried pre-fills the optional field, so a
+     referred buyer who would have left it blank is still referred. Only
+     when the field is untouched and the tag has a code's shape — a
+     channel tag must never appear in this box. */
+  function prefillReferral() {
+    var cref = $('cpReferral');
+    if (!cref || cref.value) return;
+    var tag = '';
+    try { tag = (window.ArzuzRef && ArzuzRef.tag) ? ArzuzRef.tag() : ''; } catch (e) {}
+    if (!/^az-[a-z0-9]{4,8}$/.test(tag)) return;
+    cref.value = tag.toUpperCase();
+    var hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent = 'Filled in from your friend\u2019s link — change it if a different friend sent you.';
+    try { cref.parentNode.appendChild(hint); } catch (e) {}
+  }
+
   function paint() {
     render();
     var lookupTarget = $('passLookup');
     if (lookupTarget) setHtml('passLookup', renderLookup());
     bind();
+    prefillReferral();
+    /* The active screen carries the mount point; the card mints once per
+       phone (the server is idempotent), and a paint without a mount
+       point or without a buyer number simply draws no card. */
+    var slot = $('cpRefCard');
+    if (slot && !slot.getAttribute('data-ref-mounted') && state.buyerPhone &&
+        window.ArzuzReferralCard && ArzuzReferralCard.mount) {
+      slot.setAttribute('data-ref-mounted', 'yes');
+      ArzuzReferralCard.mount(slot, { phone: state.buyerPhone, name: state.buyerName });
+    }
   }
 
   /* ------------------------------------------------------------
@@ -596,7 +628,7 @@ var ArzuzCarePass = (function () {
     });
   }
 
-  function order() {
+  function order(retried) {
     if (state.phase !== 'ready' || state.busy) return Promise.resolve(null);
     var f = form();
     state.notice = null;
@@ -618,6 +650,10 @@ var ArzuzCarePass = (function () {
     }
 
     state.busy = true;
+    /* The number the referral code will belong to — stashed now, because
+       the checkout form is gone by the time the pass opens. */
+    state.buyerPhone = f.phone;
+    state.buyerName = f.name;
     var btn = $('cpPay');
     if (btn) { btn.disabled = true; btn.textContent = 'Opening Paystack\u2026'; }
 
@@ -631,8 +667,31 @@ var ArzuzCarePass = (function () {
       area: f.area,
       property: f.property,
       room: f.room,
-      referral_code: f.referral_code
+      referral_code: f.referral_code,
+      /* The tag the friend's link carried. The server only honours it
+         when it has a code's shape — a channel tag stays a channel. */
+      attribution_tag: (window.ArzuzRef && ArzuzRef.tag) ? ArzuzRef.tag() : ''
     }).then(function (res) {
+      /* THE ORDER EXISTED BUT ITS PAYMENT PAGE NEVER OPENED. The server
+         has marked that row abandoned and told the page to start again —
+         re-initializing the same reference would be refused by Paystack,
+         and the buyer would be looking at a Pay button that does nothing.
+         The stored client_ref is the thing that made it replay, so it is
+         forgotten here and a genuinely fresh order is written. One
+         automatic attempt, then the sentence is shown: a provider that is
+         down must not become a loop of invisible orders. */
+      if (res && res.retry) {
+        forgetOrder();
+        state.order = null;
+        state.reference = '';
+        state.busy = false;
+        if (!retried) return order(true);
+        state.phase = 'ready';
+        state.notice = res.error || 'Our payment page did not open. Nothing has been charged — try again.';
+        state.noticeKind = 'bad';
+        paint();
+        return null;
+      }
       state.order = res;
       state.reference = res.reference || '';
       rememberOrder(state.reference, res);

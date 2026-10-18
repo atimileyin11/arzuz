@@ -31,11 +31,15 @@
 
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./listing-url.js'), require('./api-errors.js'));
+    module.exports = factory(
+      require('./listing-url.js'),
+      require('./api-errors.js'),
+      require('./verification-badge.js')
+    );
   } else {
-    root.ArzuzBrowseCard = factory(root.ArzuzListing, root.ArzuzApiErrors);
+    root.ArzuzBrowseCard = factory(root.ArzuzListing, root.ArzuzApiErrors, root.ArzuzBadge);
   }
-})(typeof self !== 'undefined' ? self : this, function (ArzuzListing, ArzuzApiErrors) {
+})(typeof self !== 'undefined' ? self : this, function (ArzuzListing, ArzuzApiErrors, ArzuzBadge) {
   'use strict';
 
   var VERSION = '1.0.0';
@@ -67,11 +71,32 @@
     return Number(tier) >= 2 ? 'b2' : (Number(tier) === 1 ? 'b1' : 'b0');
   }
 
-  /* The badge, not the word: the same three labels the room page prints,
-     from the same module. */
-  function badge(tier) {
-    return '<span class="h-badge ' + tierClass(tier) + '" style="margin:0">' +
-      esc(ArzuzListing.tierLabel(tier)) + '</span>';
+  /* The badge, not the word: the same labels and the same reasoning the
+     room page prints, from ArzuzBadge. `checks` is that listing's rows
+     from public_listing_checks, or undefined when the read failed — a
+     card that cannot see the evidence says "Inspected" and nothing more,
+     rather than claiming there is no record. */
+  function badge(tier, checks) {
+    var info = ArzuzBadge
+      ? ArzuzBadge.summarise(tier, checks, Date.now())
+      : { cls: tierClass(tier), label: ArzuzListing.tierLabel(tier) };
+    return '<span class="h-badge ' + info.cls + '" style="margin:0" title="' +
+      esc(info.sentence || info.label) + '">' + esc(info.label) + '</span>';
+  }
+
+  /* One line under the card: what was checked, and when. It is the
+     difference between a badge and a claim — the student can read the
+     parts without opening the room. */
+  function checksLine(tier, checks) {
+    if (!ArzuzBadge || Number(tier) < 2) return '';
+    var info = ArzuzBadge.summarise(tier, checks, Date.now());
+    if (!info.hasEvidence && !info.expired) return '';
+    var names = info.parts.map(function (p) { return p.short; }).join(' \u00B7 ');
+    var when = ArzuzBadge.day(info.checked_at);
+    return '<div class="checks' + (info.expired ? ' stale' : '') + '">' +
+      esc(info.expired ? 'Re-check due' : names) +
+      (when ? '<span>' + (info.expired ? 'last visit ' : 'checked ') + esc(when) + '</span>' : '') +
+      '</div>';
   }
 
   function utilities(p) {
@@ -101,7 +126,7 @@
   /* One room, as a card. The fields are the ones a student chooses with:
      what it is called, where it is, what it costs, how far it is, and how
      far the check went. */
-  function card(row) {
+  function card(row, checks) {
     if (!row) return '';
     var p = row.payload || {};
     var href = ArzuzListing.path(row);
@@ -138,7 +163,7 @@
           : '\uD83D\uDCF7 Photo coming soon') +
         (chips ? '<span class="media-chips">' + chips + '</span>' : '') +
         '<span class="ph-cr">\u00A9 Arzuz</span>' +
-        '<span class="badge">' + badge(row.tier) + '</span>' +
+        '<span class="badge">' + badge(row.tier, checks) + '</span>' +
       '</div>' +
       '<div class="body">' +
         '<h3>' + esc(name) + '</h3>' +
@@ -151,6 +176,7 @@
           ? '<div class="price">' + esc(ngn(rent)) + '</div><div class="per">per session</div>'
           : '') +
         (walk ? '<div class="walk">' + esc(walk) + '</div>' : '') +
+        checksLine(row.tier, checks) +
         (ut.length
           ? '<div class="amen">' + ut.slice(0, 4).map(function (u) {
               return '<span>' + esc(u) + '</span>';
@@ -164,8 +190,11 @@
     '</div>';
   }
 
-  function board(rows) {
-    var cards = (rows || []).map(card).filter(Boolean);
+  function board(rows, checksById) {
+    var map = checksById && typeof checksById === 'object' ? checksById : {};
+    var cards = (rows || []).map(function (row) {
+      return card(row, map[row.id]);
+    }).filter(Boolean);
     if (!cards.length) return '';
     return '<div class="grid">' + cards.join('') + '</div>';
   }
@@ -200,6 +229,7 @@
     esc: esc,
     ngn: ngn,
     badge: badge,
+    checksLine: checksLine,
     utilities: utilities,
     card: card,
     board: board,

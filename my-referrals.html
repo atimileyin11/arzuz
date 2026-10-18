@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your referrals — Arzuz</title>
+<meta name="description" content="See what your Arzuz referral code earned: visits, registrations, rewards and payouts.">
+<!-- Private: a code plus a phone number opens this, so crawlers stay out
+     (same posture as /my-care and /complete-listing). -->
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="assets/icons/favicon.ico" sizes="any">
+<link rel="icon" href="assets/icons/icon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/arzuz.css">
+<link rel="stylesheet" href="assets/share.css">
+<style>
+  .ref-wrap { max-width: 720px; margin: 0 auto; padding: 34px 24px 70px; }
+  .ref-wrap .lede { font-size: 16px; line-height: 1.6; color: var(--body-c); max-width: 60ch; }
+  .ref-box { background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: 22px; margin: 22px 0; }
+  .ref-box h2 { font-size: 19px; margin-bottom: 6px; }
+  .ref-box p.sub { font-size: 14px; color: var(--mid); line-height: 1.55; margin-bottom: 14px; }
+  .ref-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .ref-row input { flex: 1 1 160px; font-size: 15px; padding: 11px 12px; border-radius: 9px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink); }
+  .ref-nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 16px 0; }
+  .ref-num { border: 1px solid var(--line); border-radius: 10px; padding: 12px; text-align: center; }
+  .ref-num b { display: block; font-size: 24px; font-family: var(--display); }
+  .ref-num span { font-size: 12px; color: var(--mid); }
+  .ref-table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
+  .ref-table th, .ref-table td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  .ref-earn { font-size: 15px; line-height: 1.6; }
+  .ref-card .ref-code-row { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; }
+  .ref-card .ref-lbl { font-size: 13px; color: var(--mid); }
+  .ref-card .ref-code { font-size: 30px; letter-spacing: .06em; font-family: var(--display); }
+  .ref-card .ref-link { font-size: 13px; color: var(--mid); word-break: break-all; }
+  .ref-card .ref-dash { font-size: 13.5px; color: var(--mid); margin-top: 10px; }
+  .ref-err { color: #b3261e; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="ref-wrap">
+  <h1 class="page-h1">Your referrals</h1>
+  <p class="lede">Share Arzuz, get paid. Every friend who buys their first Care Pass through
+  your link earns you <b>₦2,000</b> — once per friend, paid after we confirm it. No app,
+  no login: your code plus your number opens this page.</p>
+
+  <div class="ref-box" id="refLookBox">
+    <h2>See what your code earned</h2>
+    <p class="sub">Enter the code and the WhatsApp number it belongs to.</p>
+    <div class="ref-row">
+      <input id="refCode" placeholder="e.g. AZ-4F2K" autocapitalize="characters" autocomplete="off" maxlength="12">
+      <input id="refPhone" placeholder="Your WhatsApp number" inputmode="tel" autocomplete="tel">
+      <button type="button" class="h-btn h-p" id="refLookBtn">Show earnings</button>
+    </div>
+    <p class="ref-err" id="refLookErr" aria-live="polite"></p>
+    <div id="refStats"></div>
+  </div>
+
+  <div class="ref-box" id="refMintBox">
+    <h2>No code yet? Get one</h2>
+    <p class="sub">One code per number, yours for good. It takes ten seconds.</p>
+    <div class="ref-row">
+      <input id="refMintName" placeholder="Your first name" autocomplete="given-name" maxlength="80">
+      <input id="refMintPhone" placeholder="Your WhatsApp number" inputmode="tel" autocomplete="tel">
+      <button type="button" class="h-btn h-p" id="refMintBtn">Get my code</button>
+    </div>
+    <p class="ref-err" id="refMintErr" aria-live="polite"></p>
+    <div id="refMintOut"></div>
+  </div>
+</div>
+<script src="assets/config.js"></script>
+<script src="assets/api-errors.js?v=1"></script>
+<script src="assets/attribution.js"></script>
+<script src="assets/share.js"></script>
+<script src="assets/referral-card.js"></script>
+<script src="assets/app.js"></script>
+<script src="assets/motion.js"></script>
+<script>
+(function () {
+  Arzuz.chrome('student');
+  Arzuz.footer();
+
+  var ENV = (window.ARZUZ_CONFIG && window.ARZUZ_CONFIG.ENV) || 'production';
+
+  function esc(s) {
+    return String(s === null || s === undefined ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  }
+  function naira(k) {
+    var n = Math.round(Number(k) || 0) / 100;
+    return '\u20A6' + n.toLocaleString('en-NG');
+  }
+  function day(iso) {
+    try { return new Date(iso).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' }); }
+    catch (e) { return ''; }
+  }
+  function post(body) {
+    return fetch('/api/finance', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json(); });
+  }
+
+  var STATUS_WORDS = {
+    pending_qualification: 'counting — waiting on review',
+    under_review: 'under review',
+    approved: 'approved — payout next',
+    payout_pending: 'payout on the way',
+    paid: 'paid',
+    rejected: 'not qualified',
+    reversed: 'reversed'
+  };
+
+  /* Prefill from a personal link: opening YOUR link here fills the code. */
+  try {
+    var tag = (window.ArzuzRef && ArzuzRef.tag) ? ArzuzRef.tag() : '';
+    if (/^az-[a-z0-9]{4,8}$/.test(tag)) document.getElementById('refCode').value = tag.toUpperCase();
+  } catch (e) {}
+
+  document.getElementById('refLookBtn').addEventListener('click', function () {
+    var code = document.getElementById('refCode').value;
+    var phone = document.getElementById('refPhone').value;
+    var err = document.getElementById('refLookErr');
+    var out = document.getElementById('refStats');
+    err.textContent = '';
+    out.innerHTML = '<p class="sub">Looking it up…</p>';
+    post({ action: 'referral_stats', code: code, phone: phone, env: ENV }).then(function (b) {
+      if (!b || !b.ok) {
+        out.innerHTML = '';
+        err.textContent = (b && b.error) || 'We could not open that — check the code and number.';
+        return;
+      }
+      var h = '<div class="ref-nums">' +
+        '<div class="ref-num"><b>' + b.clicks.count + '</b><span>link visits' + (b.clicks.capped ? '+' : '') + '</span></div>' +
+        '<div class="ref-num"><b>' + b.registrations.length + '</b><span>signed up</span></div>' +
+        '<div class="ref-num"><b>' + b.referrals.length + '</b><span>bought a pass</span></div>' +
+        '<div class="ref-num"><b>' + esc(naira(b.earnings.paid_kobo)) + '</b><span>paid out</span></div>' +
+        '</div>';
+      h += '<p class="ref-earn">Pending: <b>' + esc(naira(b.earnings.pending_kobo)) + '</b>' +
+        (b.active ? '' : ' · <b>this code is switched off</b> — old earnings stand, new shares earn nothing.') + '</p>';
+      if (b.referrals.length) {
+        h += '<table class="ref-table"><tr><th>Bought</th><th>Reward</th><th>Status</th></tr>' +
+          b.referrals.map(function (r) {
+            return '<tr><td>' + esc(day(r.created_at)) + '</td><td>' + esc(naira(r.reward_kobo)) +
+              '</td><td>' + esc(STATUS_WORDS[r.status] || r.status) + '</td></tr>';
+          }).join('') + '</table>';
+      } else {
+        h += '<p class="sub">No pass bought through your link yet — visits above are friends who opened it but have not bought. Keep sharing.</p>';
+      }
+      out.innerHTML = h;
+    }).catch(function () {
+      out.innerHTML = '';
+      err.textContent = 'We could not reach Arzuz just now — try again in a moment.';
+    });
+  });
+
+  document.getElementById('refMintBtn').addEventListener('click', function () {
+    var name = document.getElementById('refMintName').value;
+    var phone = document.getElementById('refMintPhone').value;
+    var err = document.getElementById('refMintErr');
+    var out = document.getElementById('refMintOut');
+    err.textContent = '';
+    out.innerHTML = '<p class="sub">Minting your code…</p>';
+    post({ action: 'referral_mint', name: name, phone: phone, env: ENV }).then(function (b) {
+      if (!b || !b.code) {
+        out.innerHTML = '';
+        err.textContent = (b && b.error) || 'We could not mint a code — check the number.';
+        return;
+      }
+      window.ArzuzReferralCard.show(out, b.code);
+      document.getElementById('refCode').value = b.code;
+      document.getElementById('refPhone').value = phone;
+    }).catch(function () {
+      out.innerHTML = '';
+      err.textContent = 'We could not reach Arzuz just now — try again in a moment.';
+    });
+  });
+})();
+</script>
+</body>
+</html>

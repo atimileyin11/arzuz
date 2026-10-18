@@ -337,7 +337,11 @@ var Arzuz = (function(){
     h += '</div>';
 
     el.innerHTML = h;
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    /* Instant reset, not a smooth scroll: the old step just played its
+       exit and the new step is about to play its entrance. A smooth
+       scroll here chased the animation down the page and read as a
+       refresh — the top is simply where every step starts. */
+    window.scrollTo(0, 0);
 
     // Handle interactive Leaflet map if current step has a pin field
     var hasPinField = s.f && s.f.some(function(f){ return f[2] === 'pin'; });
@@ -376,6 +380,24 @@ var Arzuz = (function(){
       }
     });
 
+    /* SMOOTH STEP CHANGES. Tapping an option used to swap the whole step
+       the instant the finger landed — a full innerHTML replace plus a
+       smooth scroll to top — which read as the page refreshing. Now the
+       tap marks the answer, the old step plays a short exit
+       (.step-leaving in arzuz.css), and the next step is drawn as the
+       exit finishes. The lock ignores extra taps mid-transition: slow
+       phones fire twice, and two advances used to skip a step. */
+    var advancing = false;
+    function advance(fn){
+      if (advancing) return;
+      advancing = true;
+      var card = el.querySelector('.step-anim');
+      if (card) card.classList.add('step-leaving');
+      setTimeout(function(){
+        try { fn(); } finally { advancing = false; }
+      }, 170);
+    }
+
     // Option buttons event listener
     /* SCOPED TO THE REAL OPTIONS, and that is the whole point of the
        `.opts` prefix. This used to be a bare `.opt`, which also matched
@@ -392,7 +414,7 @@ var Arzuz = (function(){
         F.answers[s.k] = b.dataset.v;
         el.querySelectorAll('.opts .opt').forEach(function(o){o.classList.remove('sel')});
         b.classList.add('sel');
-        setTimeout(next, 160);
+        advance(next);
       });
     });
 
@@ -441,19 +463,32 @@ var Arzuz = (function(){
     });
 
     var bk = document.getElementById('fBack');
-    if(bk) bk.addEventListener('click', prev);
+    if(bk) bk.addEventListener('click', function(){ advance(prev); });
 
     var skipBtn = document.getElementById('fSkip');
     if(skipBtn) {
       skipBtn.addEventListener('click', function(){
+        advance(function(){
+          var i = F.step + 1;
+          while(i < F.steps.length && !shown(i)) i++;
+          if(i < F.steps.length){ F.step = i; draw(); }
+          else finish();
+        });
+      });
+    }
+
+    /* Validated FIRST so a missing field errors immediately on this step
+       instead of playing the exit and erroring on the next draw. */
+    document.getElementById('fNext').addEventListener('click', function(){
+      collect();
+      if(!validateCurrentStep()) return;
+      advance(function(){
         var i = F.step + 1;
         while(i < F.steps.length && !shown(i)) i++;
         if(i < F.steps.length){ F.step = i; draw(); }
         else finish();
       });
-    }
-
-    document.getElementById('fNext').addEventListener('click', next);
+    });
   }
 
   /* ============================================================

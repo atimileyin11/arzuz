@@ -188,6 +188,11 @@ const MIRRORS = [
     js: [{ file: 'scripts/test-status.mjs', name: 'TRAIL_NOTES', gate: true }],
   },
   {
+    sql: 'listing_evidence.kind',
+    why: 'the six checks a visit may record \u2014 what an officer can attest at the door, and what the public badge prints as the reason a listing reads "Inspected". The mock refuses any other word with the migration\'s own sentence, so a kind the constraint does not allow cannot be planted in a fixture and then asserted on.',
+    js: [{ file: 'dev/admin-mock.js', name: 'EVIDENCE_KINDS', gate: true }],
+  },
+  {
     sql: 'repair_claims.eligibility',
     why: 'covered / not covered, the answer the decision writes. The admin mock gates on it inline, restated here as a named list so it can be compared at all.',
     js: [{ file: 'dev/admin-mock.js', name: 'ELIGIBILITY', gate: true }],

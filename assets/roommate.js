@@ -145,7 +145,30 @@ var ArzuzRoommate = (function () {
     if (typeof Arzuz === 'undefined' || typeof ArzuzMatch === 'undefined') return;
     var A = ArzuzMatch.PROFILE, B = ArzuzMatch.WANTS;
 
+    /* The two situations, asked first because they change what comes next:
+       a student who already holds a room needs someone to JOIN it (for a
+       stretch of time, at a known rent), while a student with no room yet
+       needs a PARTNER to find one together. One questionnaire, two short
+       branches — and the team can see which one each profile is. */
+    var HAVE = 'I have a place \u2014 I need someone to join me';
+    var FIND = 'I need a partner \u2014 we find a place together';
+    var havePlace = function (a) { return a.situation === HAVE; };
+
     var steps = [
+      { k: 'situation', h: 'Which one describes you?',
+        hint: 'There are two kinds of roommate search, and they need different things from each other.',
+        o: [HAVE, FIND] },
+
+      /* ---- only for students who already hold the room ---- */
+      { k: 'total_rent', h: 'What is the total rent for the place, per session (\u20A6)?',
+        hint: 'The whole rent for the room, not your half \u2014 so a partner knows what they are joining before anyone talks money.',
+        onlyIf: havePlace,
+        f: [['total_rent', 'Total rent (\u20A6)', 'number']] },
+      { k: 'period', h: 'How long do you need them for?',
+        hint: 'Some rooms need a partner for a few weeks, others for the whole session.',
+        onlyIf: havePlace,
+        o: ['A few weeks', 'One session', 'Longer than a session'] },
+
       /* ---- part one: my profile ---- */
       { k: 'gender', h: A.gender.label,
         hint: 'Part one of two: who you are. Nobody sees these answers \u2014 another student is shown a percentage, never your profile.',
@@ -159,10 +182,10 @@ var ArzuzRoommate = (function () {
         o: A.smoke.options },
       { k: 'noise',  h: A.noise.label,  o: A.noise.options },
       { k: 'budget', h: 'What is your share of the rent?',
-        hint: 'Your half, for the session, in naira. We pair you with students in a similar range instead of matching a \u20A660,000 half with a \u20A6200,000 one.',
+        hint: 'Your half, for the session, in naira. We pair you with students in a similar range instead of matching a \u20A6150,000 half with a \u20A6500,000 one.',
         f: [['budget', 'Your share (\u20A6)', 'number']] },
       { k: 'split',  h: A.split.label,
-        hint: 'Be honest here \u2014 it is the one thing a roommate cannot fix later.',
+        hint: 'Equal halves means every bill split down the middle. Flexible means you agree based on who takes which room. Be honest here \u2014 it is the one thing a roommate cannot fix later.',
         o: A.split.options },
       { k: 'area',   h: 'Which area are you looking in?',
         hint: 'Malete, Oke-Odo, Yikpata \u2014 anywhere near the campus gate.',
@@ -184,7 +207,7 @@ var ArzuzRoommate = (function () {
       { k: 'want_noise',  h: 'Noise level \u2014 how much does it matter?',    o: B.want_noise.options },
       { k: 'want_budget', h: 'Budget \u2014 how much does it matter?',         o: B.want_budget.options },
       { k: 'want_split',  h: B.want_split.label,
-        hint: 'Choose \u201cEqual split only\u201d if you cannot carry a bigger share than your half.',
+        hint: 'Choose \u201cEqual split only\u201d if you need every bill split down the middle.',
         o: B.want_split.options },
       { k: 'dealbreakers', h: B.dealbreakers.label,
         hint: 'Tick every one that is a hard no. Tick none if none are \u2014 either answer is fine, and we will never show you someone who breaks one you ticked.',
@@ -271,6 +294,15 @@ var ArzuzRoommate = (function () {
         paintLink(res.token);
         return loadAndPaint(res.token);
       }).then(function () {
+        /* The matcher Telegram-alerts the team server-side, but it never
+           messages the student — so the page sends the pool confirmation
+           itself, exactly like every other form's confirmation. Without
+           this a questionnaire that went in got silence back. */
+        try {
+          if (typeof ArzuzWhatsApp !== 'undefined' && typeof Arzuz !== 'undefined') {
+            ArzuzWhatsApp.sendConfirmation(TABLE, Arzuz.answers());
+          }
+        } catch (e) { console.warn('[ArzuzRoommate] WhatsApp confirmation failed:', e.message); }
         return { ok: true, queued: false };
       }).catch(function (err) {
         return handOver(orig, answers, err);
