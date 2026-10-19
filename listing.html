@@ -512,8 +512,8 @@
     function mountForm(mate){
       var steps = [
         { k: 'ct', h: "Who's booking?",
-          hint: 'We use this to confirm the viewing with you on WhatsApp. Your number is never shown publicly.',
-          f: [['name', 'Your first name', 'text'], ['phone', 'WhatsApp number', 'tel']] },
+          hint: 'We use this to confirm the viewing with you on WhatsApp. Your number is never shown publicly. An email is optional \u2014 it is the second way we reach you, and how you can open your status page if you change your number.',
+          f: [['name', 'Your first name', 'text'], ['phone', 'WhatsApp number', 'tel'], ['email', 'Email', 'email', { opt: true }]] },
         { k: 'when', h: 'When do you want to move in?',
           o: ['This session', 'Next session', 'Within 3 months', 'Flexible'] }
       ];

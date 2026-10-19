@@ -978,6 +978,8 @@ console.log('\nroommate-digest.js — the daily summary\n');
 
 delete require.cache[require.resolve('../netlify/functions/notify.js')];
 delete require.cache[require.resolve('../netlify/functions/roommate-digest.js')];
+delete require.cache[require.resolve('../netlify/functions/lib/alert-throttle.js')];
+try { require('../netlify/functions/lib/alert-throttle.js').clearMem(); } catch (e) {}
 const digest = require('../netlify/functions/roommate-digest.js');
 
 const HOUR = 36e5;

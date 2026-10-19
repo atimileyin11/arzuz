@@ -120,8 +120,8 @@ Arzuz.form({
     hint:"The most useful thing you can tell us \u2014 it reaches us before it reaches any agent.",
     o:["No","Yes, this month","Yes, next session","Not sure"]},
    {k:'ct', h:"Where should we reach you?",
-    hint:"So we can credit you when a student moves in through your listing.",
-    f:[["first","First name","text"],["last","Last name","text"],["phone","WhatsApp number","tel"]]}
+    hint:"So we can credit you when a student moves in through your listing. An email is optional \u2014 if you give us one it is the second way we reach you, and it is how you can open your status page if you ever change your number.",
+    f:[["first","First name","text"],["last","Last name","text"],["phone","WhatsApp number","tel"],["email","Email","email",{opt:true}]]}
   ],
   done:
    '<div class="done" data-rise><div class="m"><span>az</span></div><h3>That is genuinely useful.</h3>'+

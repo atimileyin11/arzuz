@@ -690,8 +690,17 @@ var Arzuz = (function(){
         }
 
         if (val) {
+          // Email validation — optional everywhere, but a malformed one is
+          // refused inline so a student is not later told "the code is on
+          // its way" to a mailbox that does not exist. Same rule as the
+          // server (netlify/functions/waitlist.js via notify.js).
+          if (type === 'email' || id === 'email') {
+            if (!/^[^\s@,;"<>]+@[^\s@,;"<>]+\.[A-Za-z]{2,}$/.test(val)) {
+              setFieldError(id, 'That email address does not look complete \u2014 check it, or leave it blank.');
+            }
+          }
           // Name validation
-          if (['first', 'last', 'nm', 'g_name'].indexOf(id) !== -1) {
+          else if (['first', 'last', 'nm', 'g_name'].indexOf(id) !== -1) {
             if (!isValidName(val)) {
               setFieldError(id, 'Please enter a valid full name (at least 2 characters).');
             }
