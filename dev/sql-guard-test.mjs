@@ -241,11 +241,14 @@ const EXPECTED = [
     missing: 'ledger_entries (supabase-finance.sql)',
   },
 
-  /* Not a preflight: these two live INSIDE the call-out functions, and
-     they guard the same thing the advisory lock does — that a call-out
-     is only ever spent against a real pass. A null plan has to raise
-     rather than reserve against nothing, so they are driven directly
-     in section 3b rather than through a rung. */
+  /* These are not preflights: the call-out and payout guards live inside
+     their functions. They are driven directly in section 3b/4c2 rather
+     than through the prerequisite ladder. */
+  /* A null plan must not reserve against nothing. */
+  /* Each payout refusal must be exercised with a targeted fixture, and
+     failed attempts run in rollback transactions to leave no ledger rows. */
+  /* One EXPECTED entry is required for every distinct raise message. */
+  /* The launch waitlist follows the claims workflow. */
   {
     key: 'claims.reserve',
     file: 'supabase-claims.sql',
@@ -260,6 +263,57 @@ const EXPECTED = [
     missing: 'a null plan_id',
     kind: 'argument',
   },
+  {
+    key: 'claims.payout.arguments',
+    file: 'supabase-claims.sql',
+    fragment: 'claim_settle_payout: invalid claim, worker, transfer reference or amount',
+    missing: 'a complete claim, worker, transfer reference and positive amount',
+    kind: 'argument',
+  },
+  {
+    key: 'claims.payout.exists',
+    file: 'supabase-claims.sql',
+    fragment: 'claim_settle_payout: no such claim',
+    missing: 'a claim that exists',
+    kind: 'argument',
+  },
+  {
+    key: 'claims.payout.worker',
+    file: 'supabase-claims.sql',
+    fragment: 'claim_settle_payout: the named worker changed',
+    missing: 'the worker currently named on the claim',
+    kind: 'argument',
+  },
+  {
+    key: 'claims.payout.posting',
+    file: 'supabase-claims.sql',
+    fragment: 'claim_settle_payout: no matching reported payable',
+    missing: 'a positive reported payable in the same environment',
+    kind: 'argument',
+  },
+  {
+    key: 'claims.payout.reconcile',
+    file: 'supabase-claims.sql',
+    fragment: 'claim_settle_payout: the repair cost and payable do not reconcile',
+    missing: 'the matching repair expense and provider payable',
+    kind: 'argument',
+  },
+  {
+    key: 'claims.payout.duplicate',
+    file: 'supabase-claims.sql',
+    fragment: 'claim_settle_payout: a settlement movement already exists but does not match this transfer',
+    missing: 'no conflicting or partial settlement movements',
+    kind: 'argument',
+  },
+  {
+    key: 'claims.payout.amount',
+    file: 'supabase-claims.sql',
+    fragment: 'claim_settle_payout: settlement must exactly clear the reported provider payable',
+    missing: 'a settlement amount equal to the reported payable',
+    kind: 'argument',
+  },
+
+  /* The launch waitlist, which is last
 
   /* The launch waitlist, which is last in the chain and guards on two
      things in order: the tables it extends, then the role model its
@@ -1528,12 +1582,97 @@ await check('  …and neither attempt left a call-out on the ledger', async () =
    driven too, and the row is read back to prove it landed.
    ------------------------------------------------------------ */
 
-section('4c. The verification RPC refuses what it must, and does the rest');
-
 async function one2(text, params) {
   const r = await sql2(text, params);
   return r.rows[0] || null;
 }
+
+section('4c. The verification RPC refuses what it must, and does the rest');
+
+/* ------------------------------------------------------------
+   4c2 · THE PROVIDER PAYOUT'S OWN REFUSALS
+
+   These are the seven data-integrity guards in the atomic settlement
+   RPC. A payout must name a real claim and its current worker, match
+   the claim's actual cost and both original journal postings, and must
+   not overwrite a partial or conflicting settlement. Every refusal is
+   driven against the real SQL function using a transaction that is
+   rolled back after the assertion, so the positive case can exercise
+   the same claim and the journal stays untouched by refused requests.
+   ------------------------------------------------------------ */
+
+section('4c2. The provider payout refuses malformed or unreconciled movements');
+
+async function payoutRefusal(key, args) {
+  const want = guard(key);
+  let raised = '';
+  try {
+    await sql2('begin');
+    await sql2(`select public.claim_settle_payout($1, $2, $3, $4, null, 'harness', 'production')`, args);
+  } catch (err) {
+    raised = why(err);
+  } finally {
+    try { await sql2('rollback'); } catch (err) { /* a failed statement already aborted the transaction */ }
+  }
+  if (!raised) return 'the payout succeeded — ' + want.missing + ' was accepted';
+  return raised.includes(want.fragment) ? true : 'it raised something else:\n      ' + raised;
+}
+
+const PAYOUT_REF = 'AZ-C-PAYOUT-GUARD-1';
+const PAYOUT_AMOUNT = 10000;
+const PAYOUT_VALID = [PAYOUT_REF, PAYOUT_AMOUNT, 'Current Worker', 'BANK-GUARD-1234'];
+
+await sql2(`insert into repair_claims (reference, plan_id, status, issue, provider_name, actual_kobo)
+  values ($1, gen_random_uuid(), 'awaiting_customer', 'a guard test repair', 'Current Worker', $2)`,
+[PAYOUT_REF, PAYOUT_AMOUNT]);
+
+await check('the payout refuses an invalid transfer reference before writing', () =>
+  payoutRefusal('claims.payout.arguments', [PAYOUT_REF, PAYOUT_AMOUNT, 'Current Worker', 'pending']));
+
+await check('the payout refuses a claim reference that does not exist', () =>
+  payoutRefusal('claims.payout.exists', ['AZ-C-PAYOUT-MISSING', PAYOUT_AMOUNT, 'Current Worker', 'BANK-GUARD-1234']));
+
+await check('the payout refuses a worker who is not the one named on the claim', async () => {
+  return payoutRefusal('claims.payout.worker', [PAYOUT_REF, PAYOUT_AMOUNT, 'Other Worker', 'BANK-GUARD-1234']);
+});
+
+await check('the payout refuses a claim without a matching reported payable', () =>
+  payoutRefusal('claims.payout.reconcile', [PAYOUT_REF, PAYOUT_AMOUNT, 'Current Worker', 'BANK-GUARD-1234']));
+
+await check('the payout refuses incomplete or mismatched repair postings', async () => {
+  await sql2(`insert into ledger_entries
+    (entry_ref, business_line, account, direction, amount_kobo, source, memo, env)
+    values ($1, 'care', 'expense', 'debit', $2, 'repair_claim', 'guard expense', 'production')`,
+  [PAYOUT_REF + ':cost', PAYOUT_AMOUNT]);
+  await payoutRefusal('claims.payout.reconcile', [PAYOUT_REF, PAYOUT_AMOUNT, 'Current Worker', 'BANK-GUARD-1234']);
+  await sql2(`insert into ledger_entries
+    (entry_ref, business_line, account, direction, amount_kobo, source, memo, env)
+    values ($1, 'care', 'payable', 'credit', $2, 'repair_claim', 'guard payable', 'production')`,
+  [PAYOUT_REF + ':payable', PAYOUT_AMOUNT]);
+  await sql2(`update ledger_entries set amount_kobo = $1 where entry_ref = $2`, [PAYOUT_AMOUNT - 1, PAYOUT_REF + ':payable']);
+  return payoutRefusal('claims.payout.reconcile', [PAYOUT_REF, PAYOUT_AMOUNT, 'Current Worker', 'BANK-GUARD-1234']);
+});
+
+await check('the payout refuses an amount that does not exactly clear the payable', async () => {
+  await sql2(`update ledger_entries set amount_kobo = $1 where entry_ref = $2`, [PAYOUT_AMOUNT, PAYOUT_REF + ':payable']);
+  return payoutRefusal('claims.payout.amount', [PAYOUT_REF, PAYOUT_AMOUNT - 1, 'Current Worker', 'BANK-GUARD-1234']);
+});
+
+await check('the payout refuses a conflicting prior movement without replacing it', async () => {
+  await sql2(`insert into ledger_entries
+    (entry_ref, business_line, account, direction, amount_kobo, source, memo, env)
+    values ($1, 'care', 'payable', 'debit', $2, 'repair_payout', 'Paid · transfer BANK-OLD-9999', 'production'),
+           ($3, 'care', 'cash', 'credit', $2, 'repair_payout', 'Transfer · transfer BANK-OLD-9999', 'production')`,
+  [PAYOUT_REF + ':settle', PAYOUT_AMOUNT, PAYOUT_REF + ':cash']);
+  return payoutRefusal('claims.payout.duplicate', PAYOUT_VALID);
+});
+
+await check('the refused payout attempts leave no new ledger or audit rows', async () => {
+  const movements = await val2(`select count(*)::int from ledger_entries where entry_ref like '${PAYOUT_REF}:%'`);
+  const events = await val2(`select count(*)::int from claim_events where reference = '${PAYOUT_REF}'`);
+  return movements === 4 && events === 0 ? true
+    : 'found ' + movements + ' payout-related ledger rows and ' + events + ' audit events';
+});
 
 /* A session that looks exactly like a signed-in request: the claims GoTrue
    signs into the token, then the role PostgREST sets from them. */

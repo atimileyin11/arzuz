@@ -1809,12 +1809,52 @@ await check('the claims summary reports per status, and total money is kobo', as
 });
 
 await check('a repair cost is a posting, not a column: the books take it', async () => {
-  await sql(`insert into ledger_entries (entry_ref, business_line, account, direction, amount_kobo, source, memo)
-             values ('AZ-C-ROW-1:cost', 'care', 'expense', 'debit', 250000, 'repair_claim', 'parts and labour'),
-                    ('AZ-C-ROW-1:payable', 'care', 'payable', 'credit', 250000, 'repair_claim', 'owed to the worker')`);
+  await sql(`update repair_claims set provider_name = 'Harness Worker', actual_kobo = 250000 where id = $1`, [claimRow]);
+  await sql(`insert into ledger_entries (entry_ref, business_line, account, direction, amount_kobo, source, memo, env)
+             values ('AZ-C-ROW-1:cost', 'care', 'expense', 'debit', 250000, 'repair_claim', 'parts and labour', 'production'),
+                    ('AZ-C-ROW-1:payable', 'care', 'payable', 'credit', 250000, 'repair_claim', 'owed to the worker', 'production')`);
   const r = await one(`select costs_kobo, payable_kobo from business_line_summary where business_line = 'care'`);
   if (Number(r.costs_kobo) < 250000) return 'the repair cost is not in the care line: ' + r.costs_kobo;
   return Number(r.payable_kobo) >= 250000 ? true : 'the provider payable is missing: ' + r.payable_kobo;
+});
+
+await check('the payout RPC settles only a reconciled payable and is idempotent', async () => {
+  const args = ['AZ-C-ROW-1', 250000, 'Harness Worker', 'BANK-HARNESS-0001', null, 'SQL proof', 'production'];
+  const first = await val(`select claim_settle_payout($1, $2, $3, $4, $5, $6, $7)`, args);
+  if (!first || first.ok !== true || first.already === true) return 'the first payout did not post: ' + JSON.stringify(first);
+
+  const movements = await one(`select count(*)::int as n,
+      coalesce(sum(case when direction = 'debit' then amount_kobo else -amount_kobo end), 0)::bigint as residual
+    from ledger_entries where entry_ref in ('AZ-C-ROW-1:settle', 'AZ-C-ROW-1:cash')`);
+  if (Number(movements.n) !== 2 || Number(movements.residual) !== 0)
+    return 'the payout pair has ' + movements.n + ' row(s) and a ' + movements.residual + ' kobo residual';
+
+  const summary = await one(`select payable_kobo, cash_out_kobo
+    from business_line_summary where business_line = 'care'`);
+  if (Number(summary.payable_kobo) !== 0) return 'the payable after settlement is ' + summary.payable_kobo;
+  if (Number(summary.cash_out_kobo) < 250000) return 'cash out did not include the payout: ' + summary.cash_out_kobo;
+
+  const trail = await one(`select event, actor_role, data->>'provider_transfer_ref' as provider_transfer_ref
+    from claim_events where reference = 'AZ-C-ROW-1' and event = 'payout_settled'`);
+  if (!trail || trail.event !== 'payout_settled' || trail.actor_role !== 'admin' || trail.provider_transfer_ref !== 'BANK-HARNESS-0001')
+    return 'the payout audit event is missing or incomplete: ' + JSON.stringify(trail);
+
+  const retry = await val(`select claim_settle_payout($1, $2, $3, $4, $5, $6, $7)`, args);
+  if (!retry || retry.ok !== true || retry.already !== true)
+    return 'same-reference replay was not an idempotent success: ' + JSON.stringify(retry);
+  const count = await val(`select count(*)::int from ledger_entries where entry_ref in ('AZ-C-ROW-1:settle', 'AZ-C-ROW-1:cash')`);
+  if (count !== 2) return 'the replay changed the pair row count to ' + count;
+
+  const conflicting = await refuses(() => sql(`select claim_settle_payout($1, $2, $3, $4, $5, $6, $7)`,
+    ['AZ-C-ROW-1', 250000, 'Harness Worker', 'BANK-HARNESS-9999', null, 'SQL proof', 'production']), 'P0001');
+  if (conflicting !== true) return 'a different reference was not refused: ' + conflicting;
+  return true;
+});
+
+await check('the posted payout clears the liability with a balanced cash movement', async () => {
+  const r = await one(`select payable_kobo, cash_out_kobo from business_line_summary where business_line = 'care'`);
+  return Number(r.payable_kobo) === 0 && Number(r.cash_out_kobo) >= 250000 ? true
+    : 'after payout the view reports payable=' + r.payable_kobo + ', cash out=' + r.cash_out_kobo;
 });
 
 /* ============================================================

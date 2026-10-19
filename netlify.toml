@@ -472,6 +472,13 @@
   status = 404
   force = true
 
+# Implementation acceptance and operational notes stay in the repository,
+# not on the public website (publish = "." exposes root files by default).
+[[redirects]]
+  from = "/IMPLEMENTATION-PLAN.md"
+  to   = "/404.html"
+  status = 404
+  force = true
 
 # Same rule as the SQL files, for the dev tooling: publish = "." puts these
 # on the public web the moment they are committed. They describe what the
