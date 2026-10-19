@@ -95,6 +95,7 @@ const state = {
   codes: {},       // code -> { code, owner_ref, owner_name, active, env }
   clicks: [],      // { code, user_agent, env, created_at }
   demand: [],      // { ref, created_at, 'payload->>ref' }
+  listed: [],      // listings rows carrying the same payload tag
   referrals: [],   // referral rows
   reportRows: [],  // referral_report view rows
   telegrams: [],   // captured sendMessage payloads
@@ -187,6 +188,10 @@ global.fetch = async function (url, init = {}) {
 
   if (table === 'demand_records' && method === 'GET') {
     return resp(200, state.demand.filter((r) => filterMatch(r, q)));
+  }
+
+  if (table === 'listings' && method === 'GET') {
+    return resp(200, state.listed.filter((r) => filterMatch(r, q)));
   }
 
   if (table === 'referrals') {
@@ -400,6 +405,15 @@ await t('clicks, signups, rewards and earnings are aggregated', async () => {
   eq(res.body.earnings.paid_kobo, 200000, 'paid out');
   eq(res.body.earnings.pending_kobo, 200000, 'pending — the rejected reward is in neither pile');
   eq(res.body.active, true, 'the code is live');
+});
+
+await t('a property listed through the link shows apart from signups', async () => {
+  state.listed.push({ ref: 'wl-list-1', created_at: '2026-10-10T00:00:00.000Z', 'payload->>ref': DASH_CODE.toLowerCase() });
+  const res = await call({ action: 'referral_stats', code: DASH_CODE, phone: DASH_PHONE });
+  eq(res.status, 200, 'status');
+  eq((res.body.listed || []).length, 1, 'one listing');
+  eq(res.body.registrations.length, 1, 'signups untouched');
+  eq(res.body.referrals.length, 3, 'rewards untouched — a listing never qualifies');
 });
 
 await t('five thousand visits raise the capped flag instead of a sixth thousand reads', async () => {
@@ -717,6 +731,24 @@ await t('register and care-pass carry the beacon, after attribution', async () =
     if (attrAt !== -1 && !(attrAt < beaconAt)) {
       throw new Error(page + ' boots the beacon before attribution filed the tag');
     }
+  }
+});
+
+await t('register mints the personal code on its done screen', async () => {
+  /* The done screen used to share only a channel tag, so a newly
+     registered student had no personal link without a second journey
+     to /referrals. The page must load the card module and mount it
+     with the number just given — and only on a saved row (the
+     reference box), never on a queued or refused save. */
+  const html = source('register.html');
+  if (html.indexOf('assets/referral-card.js') === -1) {
+    throw new Error('register.html does not load the referral card module');
+  }
+  if (html.indexOf('ArzuzReferralCard.mount') === -1) {
+    throw new Error('register.html never mounts the personal card');
+  }
+  if (html.indexOf('Your reference:') === -1) {
+    throw new Error('the personal card is not gated on a saved row');
   }
 });
 

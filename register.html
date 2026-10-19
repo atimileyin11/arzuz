@@ -96,6 +96,7 @@ Students anywhere can register, and the numbers tell us which campus to open nex
 <script src="assets/submit.js?v=4"></script>
 <script src="assets/share.js"></script>
 <script src="assets/referral-click.js"></script>
+<script src="assets/referral-card.js"></script>
 <script src="assets/whatsapp.js"></script>
 <script src="assets/app.js"></script>
 <script src="assets/motion.js"></script>
@@ -165,6 +166,39 @@ ArzuzShare.wire(document.getElementById('form'));
 /* A personal link lands here: one best-effort click ping per session, so
    the referrer's dashboard can count the visits, not just the sign-ups. */
 if (window.ArzuzReferralClick) ArzuzReferralClick.boot();
+
+/* A personal link LEAVES here too. Until now the done screen only shared
+a channel tag (student-share), so a newly registered student — the person
+most likely to send the link — had no personal code without a second
+journey to /referrals. When the row is actually saved (the reference box
+is on screen, not a queued or refused save), mint their code in place
+with the number they just gave: one code per phone, so this is idempotent. */
+(function () {
+  var form = document.getElementById('form');
+  if (!form || !('MutationObserver' in window)) return;
+  function mountPersonal() {
+    try {
+      var done = form.querySelector('.done');
+      if (!done || done.getAttribute('data-ref-mounted')) return;
+      /* Saved first, told second: only a done screen carrying the
+         reference minted by the door gets the personal card. */
+      if (form.innerHTML.indexOf('Your reference:') === -1) return;
+      if (!window.ArzuzReferralCard || !window.Arzuz || !Arzuz.answers) return;
+      var a = Arzuz.answers() || {};
+      var phone = String(a.phone || '').trim();
+      if (!phone) return;
+      var name = (String(a.first || '') + ' ' + String(a.last || '')).trim();
+      done.setAttribute('data-ref-mounted', 'yes');
+      var slot = document.createElement('div');
+      slot.id = 'regRefSlot';
+      slot.style.marginTop = '18px';
+      done.appendChild(slot);
+      ArzuzReferralCard.mount(slot, { phone: phone, name: name });
+    } catch (e) { /* a missing card never fails the done screen */ }
+  }
+  new MutationObserver(mountPersonal).observe(form, { childList: true, subtree: true });
+  mountPersonal();
+})();
 
 Arzuz.footer();
 </script>

@@ -562,6 +562,29 @@ var ArzuzCarePass = (function () {
         if (state.linkToken) write(TOKEN_KEY, state.linkToken);
       });
     }
+    /* Live confirmation on the referral box — a yes-line only, never a
+       refusal. A typed code with the code's shape earns confirmation;
+       anything else earns silence, because a hand-made legacy code that
+       is not AZ-shaped still travels when typed (the server honours any
+       typed value), so warning would talk a real referral out of the box. */
+    var cref = $('cpReferral');
+    if (cref) {
+      cref.addEventListener('input', function () {
+        var v = String(cref.value || '').trim().toUpperCase().replace(/[\s_]+/g, '-');
+        var ok = /^AZ-[A-Z0-9]{4,8}$/.test(v);
+        var note = $('cpReferralNote');
+        if (!note) {
+          note = document.createElement('p');
+          note.id = 'cpReferralNote';
+          note.className = 'hint';
+          try { cref.parentNode.appendChild(note); } catch (e) { return; }
+        }
+        note.textContent = ok
+          ? '\u2713 That looks like a referral code \u2014 your friend gets credited after your first pass is paid for.'
+          : '';
+        note.style.display = ok ? '' : 'none';
+      });
+    }
   }
 
   /* A code the friend's link carried pre-fills the optional field, so a

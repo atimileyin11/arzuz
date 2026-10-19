@@ -411,9 +411,14 @@ async function actionReferralStats(body) {
   if (owner.owner_ref !== phone) {
     return { status: 403, body: { error: 'That code belongs to a different number.' } };
   }
-  const [clickRows, regRows, refRows] = await Promise.all([
+  /* Listings carry the same payload tag (assets/submit.js stamps every
+     public form), so a friend who lists a property through the link is
+     attributed too — shown apart from signups, and never rewarded:
+     only a verified pass payment qualifies. */
+  const [clickRows, regRows, listRows, refRows] = await Promise.all([
     sb('referral_clicks?select=id&code=eq.' + encodeURIComponent(code) + '&limit=5000', { method: 'GET' }),
     sb('demand_records?select=ref,created_at&payload->>ref=eq.' + encodeURIComponent(code.toLowerCase()) + '&limit=200', { method: 'GET' }),
+    sb('listings?select=ref,created_at&payload->>ref=eq.' + encodeURIComponent(code.toLowerCase()) + '&limit=200', { method: 'GET' }),
     sb('referrals?select=status,reward_kobo,created_at,decided_at,paid_at&code=eq.' + encodeURIComponent(code) + '&order=created_at.desc&limit=200', { method: 'GET' }),
   ]);
   let pendingKobo = 0;
@@ -431,6 +436,7 @@ async function actionReferralStats(body) {
       active: !!owner.active,
       clicks: { count: (clickRows || []).length, capped: (clickRows || []).length >= 5000 },
       registrations: (regRows || []).map((r) => ({ ref: r.ref, at: r.created_at })),
+      listed: (listRows || []).map((r) => ({ ref: r.ref, at: r.created_at })),
       referrals: (refRows || []).map((r) => ({
         status: r.status, reward_kobo: r.reward_kobo,
         created_at: r.created_at, decided_at: r.decided_at, paid_at: r.paid_at,

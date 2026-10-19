@@ -140,6 +140,13 @@
         '</div>';
       h += '<p class="ref-earn">Pending: <b>' + esc(naira(b.earnings.pending_kobo)) + '</b>' +
         (b.active ? '' : ' · <b>this code is switched off</b> — old earnings stand, new shares earn nothing.') + '</p>';
+      /* Friends who listed a property through the link are attributed
+         too — counted apart from signups, and never rewarded: only a
+         verified pass payment qualifies. */
+      if ((b.listed || []).length) {
+        h += '<p class="sub">' + b.listed.length + (b.listed.length === 1 ? ' friend listed' : ' friends listed') +
+          ' a property through your link — thank them; listings earn no reward, passes do.</p>';
+      }
       if (b.referrals.length) {
         h += '<table class="ref-table"><tr><th>Bought</th><th>Reward</th><th>Status</th></tr>' +
           b.referrals.map(function (r) {
