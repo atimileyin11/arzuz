@@ -37,6 +37,7 @@
    ============================================================ */
 
 import crypto from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -44,6 +45,7 @@ const require = createRequire(import.meta.url);
 const SECRET = 'test-secret-not-a-real-one';
 const KEY = 'test-key';
 const CLOUD = 'test-cloud';
+const publicFormSource = readFileSync(new URL('../assets/app.js', import.meta.url), 'utf8');
 
 let pass = 0;
 const failures = [];
@@ -130,11 +132,25 @@ check('max_file_size is sent, but is NOT inside the signed string', () => {
     : 'the hash moved when max_file_size was added back — Cloudinary excludes it, so the upload would 401';
 });
 
-check('every signed parameter is one the page actually sends', () => {
+check('the context in the response is part of the signed string', () => {
+  const withoutContext = Object.assign({}, sent);
+  delete withoutContext.context;
+  const expected = cloudinaryHash(sent, SECRET).hash;
+  const omitted = cloudinaryHash(withoutContext, SECRET).hash;
+  return body.signature === expected && body.signature !== omitted
+    ? true
+    : 'the signature did not change when context was removed, but Cloudinary signs it';
+});
+
+check('every signed parameter is one the signer returns', () => {
   const signedNames = ['context', 'eager', 'folder', 'timestamp'];
   const missing = signedNames.filter((k) => sent[k] === undefined || sent[k] === '');
-  return missing.length === 0 || 'the page never sends ' + missing.join(', ');
+  return missing.length === 0 || 'the signer did not return ' + missing.join(', ');
 });
+
+check('the public property form sends the signed context to Cloudinary', () =>
+  publicFormSource.indexOf("fd.append('context', sig.context);") !== -1
+    || 'assets/app.js omits context, so Cloudinary refuses every signed upload');
 
 check('the signature covers enough to be worth anything', () => {
   const signedNames = ['context', 'eager', 'folder', 'timestamp'];
@@ -190,6 +206,15 @@ check('no credentials is 500 classed not-ready, and names the three variables', 
     .every((v) => said.indexOf(v) !== -1);
   return (bareOut.statusCode === 500 && bareBody.kind === 'not-ready' && names)
     ? true : 'status ' + bareOut.statusCode + ', kind ' + bareBody.kind + ', names all three: ' + names;
+});
+
+const legacyFields = Object.assign({}, sent);
+delete legacyFields.context;
+check('the pre-context browser payload is rejected (guards deployed old clients)', () => {
+  const omitted = cloudinaryHash(legacyFields, SECRET).hash;
+  return body.signature !== omitted
+    ? true
+    : 'a request that omits the signed context still matches the signature';
 });
 
 /* ------------------------------------------------------------ */

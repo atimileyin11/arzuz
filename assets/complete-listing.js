@@ -408,26 +408,53 @@
       if (!menu) return;
       var v = str(input.value).trim();
       var hits = matchesFor(v);
-      var html = hits.slice(0, 8).map(function (u, i) {
-        return '<button type="button" role="option" data-tag-pick="' + esc(u) + '"' + (i === hi ? ' class="hi"' : '') + '>' + esc(u) + '</button>';
-      }).join('');
-      if (v && !has(v) && !hits.some(function (h) { return h.toLowerCase() === v.toLowerCase(); })) {
-        html += '<button type="button" role="option" class="cl-new" data-tag-pick="' + esc(v) + '">Create “' + esc(v) + '”</button>';
+      var groups = {};
+      hits.forEach(function (name, index) {
+        var group = typeof utilityGroup === 'function' ? utilityGroup(name) : 'Amenities';
+        (groups[group] || (groups[group] = [])).push({ name: name, index: index });
+      });
+      function hasExactHit(value) {
+        var key = str(value).trim().toLowerCase();
+        return !!key && hits.some(function (name) { return name.toLowerCase() === key; });
       }
-      if (!html) html = '<button type="button" disabled class="cl-none" style="cursor:default">' + (v ? 'Nothing matches.' : 'All presets are already on this listing.') + '</button>';
+      var order = ['Water', 'Electricity', 'Sanitation', 'Security', 'Cooking', 'Connectivity', 'Other features', 'Amenities'];
+      Object.keys(groups).forEach(function (group) { if (order.indexOf(group) === -1) order.push(group); });
+      var html = order.filter(function (group) { return groups[group] && groups[group].length; }).map(function (group) {
+        return '<div class="cl-sug-group" role="group" aria-label="' + esc(group) + '"><span aria-hidden="true">' + esc(group) + '</span>' +
+          groups[group].map(function (item) {
+            var active = item.index === hi;
+            return '<button type="button" role="option" id="clAmenityOption' + item.index + '" data-tag-index="' + item.index + '" data-tag-pick="' + esc(item.name) + '"' +
+              (active ? ' class="hi" aria-selected="true"' : ' aria-selected="false"') + '>' + esc(item.name) + '</button>';
+          }).join('') + '</div>';
+      }).join('');
+      var addOther = !!v && !has(v) && !hasExactHit(v);
+      if (addOther) {
+        html += '<button type="button" role="option" id="clAmenityOption' + hits.length + '" data-tag-index="' + hits.length + '" class="cl-new' +
+          (hi === hits.length ? ' hi' : '') + '" aria-selected="' + (hi === hits.length ? 'true' : 'false') + '" data-tag-pick="' + esc(v) + '">Add other: “' + esc(v) + '”</button>';
+      }
+      if (!html) html = '<button type="button" disabled class="cl-none" style="cursor:default">' + (v ? 'Nothing matches. Type the service or feature as it is on this property to add it.' : 'All suggestions are already on this listing. Type a property-specific feature to add it.') + '</button>';
       menu.innerHTML = html;
       menu.classList.toggle('open', !!open);
       input.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open && hi >= 0 && menu.querySelector('#clAmenityOption' + hi)) {
+        input.setAttribute('aria-activedescendant', 'clAmenityOption' + hi);
+      } else {
+        input.removeAttribute('aria-activedescendant');
+      }
+      if (open && hi >= 0) {
+        var activeOption = menu.querySelector('#clAmenityOption' + hi);
+        if (activeOption && activeOption.scrollIntoView) activeOption.scrollIntoView({ block: 'nearest' });
+      }
     }
     function add(name) {
       var n = str(name).trim().replace(/\s+/g, ' ');
+      hi = -1;
       if (n.length > MAX_TAG) {
         n = n.slice(0, MAX_TAG);
         toast('Amenity names are capped at ' + MAX_TAG + ' characters.', 'info');
       }
       if (n && !has(n)) { selected.push(n); markDirty(); }
       input.value = '';
-      hi = -1;
       paintChips(); sync(); paintMenu(true);
     }
     function removeAt(i) {
@@ -449,6 +476,7 @@
         var b = e.target && e.target.closest ? e.target.closest('[data-tag-pick]') : null;
         if (!b) return;
         if (b.disabled) return;
+        hi = -1;
         add(b.getAttribute('data-tag-pick'));
         input.focus();
       });
@@ -456,23 +484,31 @@
     input.addEventListener('input', function () { hi = -1; paintMenu(true); });
     input.addEventListener('keydown', function (e) {
       var key = e.key;
-      var hits = matchesFor(input.value).slice(0, 8);
+      var hits = matchesFor(input.value);
+      var optionCount = hits.length + (input.value.trim() && !has(input.value.trim()) && !hits.some(function (name) {
+        return name.toLowerCase() === input.value.trim().toLowerCase();
+      }) ? 1 : 0);
       if (key === 'Enter' || key === ',') {
         e.preventDefault();
-        if (hi >= 0 && hits[hi]) add(hits[hi]);
+        if (hi >= 0 && hi < hits.length && hits[hi]) add(hits[hi]);
         else if (input.value.trim()) add(input.value);
+        hi = -1;
       } else if (key === 'ArrowDown') {
         e.preventDefault();
-        hi = Math.min(hi + 1, Math.max(hits.length - 1, 0));
+        hi = optionCount ? Math.min(hi + 1, optionCount - 1) : -1;
         paintMenu(true);
       } else if (key === 'ArrowUp') {
         e.preventDefault();
         hi = Math.max(hi - 1, -1);
         paintMenu(true);
       } else if (key === 'Escape') {
+        hi = -1;
         paintMenu(false);
       } else if (key === 'Backspace' && !input.value && selected.length) {
         removeAt(selected.length - 1);
+      } else if (key === 'Tab') {
+        hi = -1;
+        paintMenu(false);
       }
     });
     input.addEventListener('focus', function () { paintMenu(true); });
@@ -482,7 +518,7 @@
 
     return {
       get: function () { return selected.slice(); },
-      set: function (list) { selected = (list || []).slice(); paintChips(); sync(); paintMenu(false); }
+      set: function (list) { selected = (list || []).slice(); hi = -1; paintChips(); sync(); paintMenu(false); }
     };
   }
 
@@ -1377,8 +1413,20 @@
        team cannot work without */
     if (sending) {
       var problems = [];
-      if (!$('cl_ar').value.trim()) problems.push({ id: 'cl_ar', tab: 'specs', msg: 'Add the area / location so the team knows where this is.' });
-      if (!$('cl_rent').value.trim()) problems.push({ id: 'cl_rent', tab: 'specs', msg: 'Add the rent price for the session.' });
+      var required = [
+        { id: 'cl_ar', msg: 'Add the area or neighbourhood so students can find the property.' },
+        { id: 'cl_rent', msg: 'Add the rent for one session. Use the amount the landlord actually charges.' }
+      ];
+      required.forEach(function (field) {
+        var el = $(field.id);
+        if (!el) return;
+        var empty = !String(el.value || '').trim();
+        var invalid = !empty && el.validity && !el.validity.valid;
+        el.setAttribute('aria-invalid', empty || invalid ? 'true' : 'false');
+        if (empty || invalid) problems.push({ id: field.id, tab: 'specs', msg: invalid
+          ? 'Check the rent amount. Enter a whole amount between ₦0 and ₦99,999,999.'
+          : field.msg });
+      });
       if (problems.length) {
         if (TABS) TABS(problems[0].tab);
         setNote($('clError'), problems[0].msg);

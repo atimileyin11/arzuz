@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Complete your apartment — Arzuz</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
@@ -76,7 +76,36 @@
     border: 1px solid var(--line, #e8e2f0); }
   .cl-tag-field:focus-within { border-color: var(--stamp, #8B5CF6); }
   .cl-tag-field input { flex: 1 1 150px; min-width: 120px; border: 0 !important; outline: 0;
-    background: transparent !important; font-size: 14px; padding: 5px 2px; box-shadow: none !important; }
+    background: transparent !important; font-size: 16px; padding: 5px 2px; box-shadow: none !important; }
+  .cl-sug-group + .cl-sug-group { border-top: 1px solid var(--line, #e8e2f0); margin-top: 5px; padding-top: 5px; }
+  .cl-sug-group > span { display: block; padding: 5px 10px 2px; color: var(--body-c, #544a63);
+    font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+  .cl-sug [aria-selected="true"], .cl-sug button.hi { background: rgba(139, 92, 246, .14); }
+  .cl-tag button { min-width: 32px; min-height: 32px; }
+  @media (max-width: 620px) {
+    .cl-wrap { padding: 18px 12px calc(70px + env(safe-area-inset-bottom)); }
+    .cl-card { padding: 18px 14px; }
+    .cl-grid .fld input, .cl-grid .fld select, .cl-grid .fld textarea { font-size: 16px; }
+  }
+  .cl-card :focus-visible { outline: 2px solid var(--stamp, #8B5CF6); outline-offset: 2px; }
+  .cl-card input[aria-invalid="true"], .cl-card select[aria-invalid="true"] {
+    border-color: #dc2626 !important; box-shadow: 0 0 0 2px rgba(220, 38, 38, .12) !important;
+  }
+  .cl-sug-group > span { pointer-events: none; }
+  #clAmenityInput[aria-activedescendant] { scroll-margin: 8px; }
+  .cl-actions { padding-bottom: env(safe-area-inset-bottom); }
+  @media (hover: hover) and (pointer: fine) {
+    .cl-sug button:hover { background: rgba(139, 92, 246, .14); }
+  }
+  .cl-btn:active, .cl-tab:active, .cl-seg-btn:active { transform: scale(.98); }
+  @media (prefers-reduced-motion: reduce) {
+    .cl-btn, .cl-tab, .cl-seg-btn { transition: none; }
+  }
+  .cl-card :is(input, select, textarea) { max-width: 100%; }
+  .cl-tag-field { touch-action: manipulation; }
+  html { -webkit-tap-highlight-color: transparent; }
+  button, a { touch-action: manipulation; }
+
   .cl-tag { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; padding: 4px 5px 4px 11px;
     border-radius: 999px; font-size: 12.5px; font-weight: 600; background: rgba(139, 92, 246, .12);
     border: 1px solid rgba(139, 92, 246, .3); color: var(--ink, #16121d); }
@@ -340,15 +369,16 @@
         <div class="cl-grid">
           <div class="fld"><label>Apartment / Lodge name
             <small>optional — a title is built from the area if you leave it blank</small></label>
-            <input type="text" id="cl_prop_name" maxlength="70" placeholder="e.g. Blessing Lodge"></div>
+            <input type="text" id="cl_prop_name" maxlength="70" autocomplete="organization" placeholder="e.g. Blessing Lodge"></div>
           <div class="fld"><label>Property / Room type</label>
             <select id="cl_ty"></select></div>
 
           <div class="fld"><label>Area / Location <span aria-hidden="true">*</span></label>
-            <input type="text" id="cl_ar" maxlength="80" placeholder="e.g. Behind KWASU Gate, Malete"></div>
+            <input type="text" id="cl_ar" maxlength="80" autocomplete="address-level2" placeholder="e.g. Behind KWASU Gate, Malete"></div>
           <div class="fld"><label>Rent Price (₦ per session) <span aria-hidden="true">*</span></label>
             <input type="number" id="cl_rent" min="0" max="99999999" step="1" maxlength="8"
-                   placeholder="e.g. 180000" inputmode="numeric"></div>
+                   placeholder="e.g. 180000" inputmode="numeric" autocomplete="off" aria-describedby="clRentHelp">
+            <small id="clRentHelp">Enter the whole-naira rent for one session, without commas or a currency sign.</small></div>
 
           <div class="fld"><label>Opening Ask (₦)
             <small>optional — what you were asking before Arzuz showed you demand data</small></label>
@@ -385,11 +415,14 @@
             for roommates)</small></span></label></div>
 
           <div class="fld full"><label>Amenities &amp; Utilities
-            <small>tick a suggestion, or type your own and press Enter</small></label>
+            <small>Choose the property’s actual setup or costs: a shared borehole, prepaid meter, generator backup,
+              caretaker, or who pays for meter top-ups. Type another detail if the suggestions do not fit.</small></label>
+
             <div class="cl-tag-field" id="clAmenityField">
               <span id="clAmenityChips" style="display:contents;"></span>
-              <input type="text" id="clAmenityInput" maxlength="60" placeholder="e.g. solar, borehole, prepaid meter…"
-                     autocomplete="off" role="combobox" aria-expanded="false" aria-controls="clAmenitySuggest">
+              <input type="text" id="clAmenityInput" maxlength="60" placeholder="Search water, power, sanitation…"
+                     autocomplete="off" role="combobox" aria-label="Search amenities and utilities" aria-expanded="false" aria-controls="clAmenitySuggest"
+                     aria-autocomplete="list" aria-haspopup="listbox">
               <div class="cl-sug" id="clAmenitySuggest" role="listbox" aria-label="Amenity suggestions"></div>
             </div></div>
 

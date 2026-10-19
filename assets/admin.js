@@ -6147,6 +6147,7 @@
     actual: '',
     parts: '',
     evidence: '',
+    transferRef: '',
     outcome: 'completed',
     resolution: ''
   };
@@ -6207,13 +6208,14 @@
 
   /* The three the function refuses from a support login. Kept here so
      the panel can print which rule is why a control is missing. */
-  var CLAIM_ADMIN_ONLY = ['decide', 'report_work', 'resolve'];
+  var CLAIM_ADMIN_ONLY = ['decide', 'report_work', 'resolve', 'settle_payout'];
 
   var CLAIM_ACT_LABEL = {
     decide: 'decide coverage',
     assign: 'name a worker',
     progress: 'mark the work started',
     report_work: 'record the cost',
+    settle_payout: 'record a provider payout',
     resolve: 'close a dispute'
   };
 
@@ -6697,6 +6699,23 @@
         '<button type="button" class="btn-inline" data-claim-act="report_work">Report the work</button></div>';
     }
 
+    if (claim.actual_kobo !== null && claim.actual_kobo !== undefined && Number(claim.actual_kobo) > 0) {
+      var payout = claim.payout_settled || null;
+      out += '<h3>' + ico('coin', 16) + ' Care provider payout</h3>' +
+        '<p class="sub">Actual cost: <b>' + esc(naira(claim.actual_kobo)) + '</b> · payable belongs to <b>' +
+        esc(claim.provider_name || 'no named worker') + '</b>. The transfer happens outside Arzuz; only record it here after your bank/provider confirms it.</p>' +
+        (payout
+          ? '<div class="ops-row"><span class="ic">' + ico('check', 15) + '</span><span class="tx"><b>Marked settled</b><span>' +
+            'Transfer reference: ' + esc(payout.provider_transfer_ref || 'not recorded') +
+            (payout.settled_at ? ' · ' + esc(fmtDate(payout.settled_at)) : '') + '</span></span></div>'
+          : (claimsCanDecide()
+            ? '<div class="edit-fld"><label for="claimTransferRef">Confirmed transfer reference</label>' +
+              '<input type="text" id="claimTransferRef" maxlength="120" autocomplete="off" placeholder="e.g. bank transfer reference" value="' + esc(clq.transferRef) + '"></div>' +
+              '<p class="sub">Do not use a claim number or “pending”. Confirm the money left the account first.</p>' +
+              '<button type="button" class="btn-inline" data-claim-act="settle_payout">I confirmed the transfer — record payout</button>'
+            : '<p class="sub">Only the admin login can mark a confirmed transfer as settled.</p>'));
+    }
+
     if (mine.indexOf('resolve') !== -1) {
       out += '<h3>' + ico('alert', 16) + ' Resolve the dispute</h3>' +
         '<p class="sub">A disputed claim is closed by name. If the outcome is not <b>completed</b> the committed ' +
@@ -6783,6 +6802,9 @@
           : '\u2014') +
         kv('Estimate', money(claim.estimate_kobo, 'a quote')) +
         kv('Actual', money(claim.actual_kobo, 'posted to the books')) +
+        kv('Provider payable', money(claim.actual_kobo, claim.actual_kobo > 0
+          ? (claim.payout_settled ? 'settled' : 'unpaid — see payout checkpoint below')
+          : 'no payable recorded')) +
         kv('Filed', esc(claim.created_at ? fmtDate(claim.created_at) : '')) +
         kv('Pass', '<span style="font-family:var(--mono);font-size:12px">' + esc(claim.plan_id) + '</span>') +
       '</div>' +
@@ -7048,6 +7070,7 @@
       clq.actual = '';
       clq.parts = '';
       clq.evidence = '';
+      clq.transferRef = '';
       clq.resolution = '';
       if (window.ArzuzSubmit && ArzuzSubmit.showToast) ArzuzSubmit.showToast('Claim updated.', 'success');
       return claimsLoad();
@@ -7178,6 +7201,18 @@
     });
   }
 
+  function claimSettlePayout() {
+    var claim = claimById(clq.selected);
+    if (!claim) return claimsNote('Pick a claim from the queue first.');
+    clq.transferRef = claimInput('claimTransferRef').trim();
+    if (clq.transferRef.length < 4) return claimsNote('Enter the real bank or payment-provider transfer reference after confirming the transfer.');
+    return claimsAct({ action: 'settle_payout', id: claim.id, provider_transfer_ref: clq.transferRef },
+      function (body) {
+        return 'Recorded: ' + naira(body.amount_kobo) + ' was transferred to ' + claim.provider_name +
+          ' for ' + claim.reference + '. Reference: ' + body.provider_transfer_ref + '. No transfer was initiated here.';
+      });
+  }
+
   function claimResolve() {
     var claim = claimById(clq.selected);
     if (!claim) return claimsNote('Pick a claim from the queue first.');
@@ -7226,6 +7261,7 @@
       if (what === 'assign') return claimAssign();
       if (what === 'progress') return claimProgress();
       if (what === 'report_work') return claimReportWork();
+      if (what === 'settle_payout') return claimSettlePayout();
       if (what === 'resolve') return claimResolve();
       if (what === 'filter') return claimFilter();
       if (what === 'more') return claimWiden();
@@ -7251,6 +7287,7 @@
     assign: claimAssign,
     progress: claimProgress,
     report: claimReportWork,
+    settlePayout: claimSettlePayout,
     resolve: claimResolve,
     state: function () { return clq; }
   };

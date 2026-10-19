@@ -106,7 +106,7 @@ const HOUR_MS = 60 * 60 * 1000;
 
 /* Actions only the admin login may take: eligibility, money, and
    closing a dispute by name. */
-const ADMIN_ONLY = ['decide', 'report_work', 'resolve', 'post_cost'];
+const ADMIN_ONLY = ['decide', 'report_work', 'resolve', 'settle_payout', 'post_cost'];
 
 /* ------------------------------------------------------------
    wire helpers
@@ -278,6 +278,7 @@ function studentClaim(row) {
     estimate_kobo: row.estimate_kobo === null || row.estimate_kobo === undefined ? null : Number(row.estimate_kobo),
     actual_kobo: row.actual_kobo === null || row.actual_kobo === undefined ? null : Number(row.actual_kobo),
     parts: row.parts || [],
+    payout_settled: row.payout_settled || null,
     customer_confirmed_at: row.customer_confirmed_at || null,
     disputed_at: row.disputed_at || null,
     dispute_reason: row.dispute_reason || null,
@@ -873,8 +874,34 @@ async function actionQueue(actor, body) {
     { method: 'GET' }
   );
   const summary = await sb('claims_summary?select=*', { method: 'GET' });
+  const payoutRefs = (Array.isArray(rows) ? rows : []).filter((r) => Number(r.actual_kobo) > 0)
+    .map((r) => [r.reference + ':settle', r.reference + ':cash']).reduce((all, refs) => all.concat(refs), []);
+  let payoutRows = [];
+  if (payoutRefs.length) {
+    payoutRows = await sb('ledger_entries?select=entry_ref,account,direction,amount_kobo,source,business_line,env,memo,created_at&entry_ref=in.(' +
+      payoutRefs.map(encodeURIComponent).join(',') + ')', { method: 'GET' });
+  }
+  const rowsWithPayout = (Array.isArray(rows) ? rows : []).map((r) => {
+    const actual = Number(r.actual_kobo);
+    const entries = (Array.isArray(payoutRows) ? payoutRows : []).filter((e) =>
+      e.entry_ref === r.reference + ':settle' || e.entry_ref === r.reference + ':cash');
+    const payable = entries.filter((e) => e.entry_ref === r.reference + ':settle')[0];
+    const cash = entries.filter((e) => e.entry_ref === r.reference + ':cash')[0];
+    const env = r.env || 'production';
+    const exact = (e, account, direction) => !!e && e.account === account && e.direction === direction &&
+      Number(e.amount_kobo) === actual && e.source === 'repair_payout' && e.business_line === 'care' &&
+      (e.env || 'production') === env;
+    const settled = actual > 0 && exact(payable, 'payable', 'debit') && exact(cash, 'cash', 'credit');
+    return Object.assign({}, r, {
+      payout_settled: settled ? {
+        amount_kobo: actual,
+        provider_transfer_ref: (String(payable.memo || '').match(/ · transfer (.+)$/) || [])[1] || null,
+        settled_at: payable.created_at || null,
+      } : null,
+    });
+  });
 
-  const page = Array.isArray(rows) ? rows : [];
+  const page = rowsWithPayout;
   let claims = page;
   let clocked = 0;
   let overdue = 0;
@@ -1147,11 +1174,25 @@ async function actionReportWork(actor, body) {
   if (['assigned', 'in_progress'].indexOf(claim.status) === -1) {
     return { status: 409, body: { error: 'Work can only be reported on a claim with a worker on it (' + claim.status + ').' } };
   }
+  if (!String(claim.provider_name || '').trim()) {
+    return { status: 409, body: { error: 'Name the worker before reporting this repair; the payable must belong to the person who did it.' } };
+  }
+  if (claim.actual_kobo !== undefined && claim.actual_kobo !== null) {
+    return { status: 409, body: { error: 'This claim already has an actual cost. Do not overwrite its posted payable.' } };
+  }
+  const hasCost = body.actual_kobo !== undefined && body.actual_kobo !== null;
 
   const actual = body.actual_kobo === undefined || body.actual_kobo === null ? null : kobo(body.actual_kobo);
-  if (body.actual_kobo !== undefined && body.actual_kobo !== null && actual === null) {
+  if (actual === 0) {
+    return { status: 400, body: { error: 'Enter a positive actual cost, or leave it blank if no provider payable is being recorded.' } };
+  }
+  if (hasCost && actual === null) {
     return { status: 400, body: { error: 'actual_kobo must be a whole number of kobo.' } };
   }
+  if (actual !== null && claim.estimate_kobo != null && actual > Number(claim.estimate_kobo) * 3) {
+    return { status: 400, body: { error: 'The actual cost is over three times the estimate. Check the amount against the quote before posting it.' } };
+  }
+
   const parts = Array.isArray(body.parts)
     ? body.parts.slice(0, 20).map((p) => ({
       name: String((p && p.name) || '').slice(0, 80),
@@ -1184,7 +1225,7 @@ async function actionReportWork(actor, body) {
       direction: 'credit',
       amount_kobo: actual,
       source: 'repair_claim',
-      memo: 'Owed to ' + (claim.provider_name || 'the worker') + ' for ' + claim.reference,
+      memo: 'Owed to ' + claim.provider_name + ' for ' + claim.reference,
       actor_ref: actor.id,
       actor_name: actor.name,
       env: claim.env,
@@ -1204,6 +1245,75 @@ async function actionReportWork(actor, body) {
     actor_ref: actor.id, actor_name: actor.name, actor_role: actor.role,
   });
   return { status: 200, body: { ok: true, status: 'awaiting_customer', actual_kobo: actual } };
+}
+
+async function actionSettlePayout(actor, body) {
+  const id = String(body.id || '').trim();
+  const transferRef = String(body.provider_transfer_ref || '').trim();
+  if (!id) return { status: 400, body: { error: 'Select the repair claim this transfer belongs to.' } };
+  if (!transferRef || transferRef.length < 4 || transferRef.length > 120 || /^(test|todo|tbd|pending|na|none|unknown|placeholder|0+)$/i.test(transferRef)) {
+    return { status: 400, body: { error: 'Enter the real transfer reference from the bank or payment provider (4–120 characters). Placeholder references are not accepted.' } };
+  }
+
+  const claim = await claimById(id);
+  if (!claim) return { status: 404, kind: 'rejected', body: { error: 'No such repair claim.' } };
+  if (!claim.provider_name || !String(claim.provider_name).trim()) {
+    return { status: 409, body: { error: 'This payable has no named worker. Correct the claim record before settling it.' } };
+  }
+  if (claim.actual_kobo === null || claim.actual_kobo === undefined || !Number.isSafeInteger(Number(claim.actual_kobo)) || Number(claim.actual_kobo) <= 0) {
+    return { status: 409, body: { error: 'This claim has no positive, posted actual cost to settle.' } };
+  }
+
+  const expected = Number(claim.actual_kobo);
+  const rows = await sb('ledger_entries?select=entry_ref,account,direction,amount_kobo,source,business_line,env&entry_ref=in.(' +
+    encodeURIComponent(claim.reference + ':cost') + ',' + encodeURIComponent(claim.reference + ':payable') + ')', { method: 'GET' });
+  const entries = Array.isArray(rows) ? rows : [];
+  const cost = entries.filter((e) => e.entry_ref === claim.reference + ':cost')[0];
+  const payable = entries.filter((e) => e.entry_ref === claim.reference + ':payable')[0];
+  const exact = (e, account, direction) => !!e && e.business_line === 'care' && e.account === account &&
+    e.direction === direction && Number(e.amount_kobo) === expected && e.source === 'repair_claim' &&
+    (e.env || 'production') === (claim.env || 'production');
+  if (!exact(cost, 'expense', 'debit') || !exact(payable, 'payable', 'credit')) {
+    return { status: 409, body: { error: 'The Care ledger does not contain the matching repair expense and provider payable. Nothing was settled; reconcile the entries first.' } };
+  }
+  const settledRef = claim.reference + ':settle';
+  const cashRef = claim.reference + ':cash';
+  const existing = await sb('ledger_entries?select=entry_ref,account,direction,amount_kobo,source,business_line,env,memo,created_at&entry_ref=in.(' +
+    encodeURIComponent(settledRef) + ',' + encodeURIComponent(cashRef) + ')', { method: 'GET' });
+  if (Array.isArray(existing) && existing.length) {
+    const priorPayable = existing.filter((e) => e.entry_ref === settledRef)[0];
+    const priorCash = existing.filter((e) => e.entry_ref === cashRef)[0];
+    const exactSettlement = (e, account, direction) => !!e && e.business_line === 'care' && e.account === account &&
+      e.direction === direction && Number(e.amount_kobo) === expected && e.source === 'repair_payout' &&
+      (e.env || 'production') === (claim.env || 'production') && String(e.memo || '').endsWith(' · transfer ' + transferRef);
+    if (existing.length === 2 && exactSettlement(priorPayable, 'payable', 'debit') && exactSettlement(priorCash, 'cash', 'credit')) {
+      return { status: 200, body: { ok: true, settled: true, already: true, reference: claim.reference,
+        amount_kobo: expected, provider_transfer_ref: transferRef } };
+    }
+    return { status: 409, body: { error: 'A settlement movement already exists for this claim, but it does not match this transfer. Reconcile it before retrying.' } };
+  }
+
+  /* One balanced, idempotent database transaction is essential here.
+     Two REST inserts cannot be atomic: if the first succeeds and the
+     second fails, the payable is reduced without the matching cash
+     movement. A small, claim-scoped RPC posts the pair together. */
+  const settlement = await sb('rpc/claim_settle_payout', {
+    method: 'POST',
+    body: JSON.stringify({
+      p_claim_ref: claim.reference,
+      p_amount_kobo: expected,
+      p_provider_name: claim.provider_name,
+      p_transfer_ref: transferRef,
+      p_actor_ref: actor.id,
+      p_actor_name: actor.name,
+      p_env: claim.env || 'production',
+    }),
+  });
+  if (!settlement || settlement.ok !== true) {
+    return { status: 409, body: { error: 'The Care ledger could not confirm an atomic payout posting. Nothing was marked settled.' } };
+  }
+
+  return { status: 200, body: { ok: true, settled: true, already: !!settlement.already, reference: claim.reference, amount_kobo: expected, provider_transfer_ref: transferRef } };
 }
 
 async function actionResolve(actor, body) {
@@ -2361,11 +2471,12 @@ exports.handler = async function (event) {
           : action === 'progress' ? await actionProgress(actor, body)
             : action === 'report_work' ? await actionReportWork(actor, body)
               : action === 'resolve' ? await actionResolve(actor, body)
-                : null;
+                : action === 'settle_payout' ? await actionSettlePayout(actor, body)
+                  : null;
     if (!out) {
       return json(400, {
         error: 'Unknown action. Student (with a pass link): ' + STUDENT_ACTIONS.join(', ') +
-          '. Team: queue, decide, assign, progress, report_work, resolve.',
+          '. Team: queue, decide, assign, progress, report_work, resolve, settle_payout.',
       });
     }
     return json(out.status, out.body, out.kind);

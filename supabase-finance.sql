@@ -593,7 +593,12 @@ select
   coalesce(sum(case when l.account = 'unearned' and l.direction = 'debit'  then l.amount_kobo end), 0)::bigint as unearned_released_kobo,
   coalesce(sum(case when l.account = 'refund'   then l.amount_kobo end), 0)::bigint as refunds_kobo,
   coalesce(sum(case when l.account = 'expense'  then l.amount_kobo end), 0)::bigint as costs_kobo,
-  coalesce(sum(case when l.account = 'payable'  then l.amount_kobo end), 0)::bigint as payable_kobo
+  -- Payables are liabilities: credits create the amount owed, debits
+  -- settle it. A gross sum would leave a paid repair looking unpaid and
+  -- would make the cash/payable identity fail after settlement.
+  coalesce(sum(case when l.account = 'payable' and l.direction = 'credit' then l.amount_kobo
+                    when l.account = 'payable' and l.direction = 'debit'  then -l.amount_kobo
+               end), 0)::bigint as payable_kobo
 from ledger_entries l
 group by l.business_line;
 

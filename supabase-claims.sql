@@ -456,7 +456,7 @@ alter table claim_events add constraint claim_events_event_check
     'progress', 'work_reported', 'customer_confirmed', 'disputed',
     'released', 'resolution', 'cancelled', 'note',
     'notified', 'overdue_nudge', 'accepted', 'declined', 'proposed', 'chased', 'unanswered',
-    'day_agreed', 'day_proposed'
+    'day_agreed', 'day_proposed', 'payout_settled'
   ));
 
 
@@ -583,6 +583,130 @@ revoke all on function claim_reserve_callout(uuid, text, text, text, text, text)
   from public, anon, authenticated;
 revoke all on function claim_release_callout(uuid, text, text, text, text, text, text)
   from public, anon, authenticated;
+
+
+-- ------------------------------------------------------------
+-- 4b. THE ATOMIC PROVIDER PAYOUT CHECKPOINT
+--   The operator has already transferred money outside Arzuz. This RPC
+--   only records that confirmed movement: one debit to the payable and
+--   one credit to cash, in the transaction that holds the claim lock.
+--   The claim-scoped unique references prevent duplicate or partial
+--   settlements, including two admins acting at the same time.
+-- ------------------------------------------------------------
+create or replace function claim_settle_payout(
+  p_claim_ref text,
+  p_amount_kobo bigint,
+  p_provider_name text,
+  p_transfer_ref text,
+  p_actor_ref uuid,
+  p_actor_name text,
+  p_env text
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_claim repair_claims%rowtype;
+  v_payable ledger_entries%rowtype;
+  v_cost ledger_entries%rowtype;
+  v_ref text;
+  v_cash_ref text;
+begin
+  if length(btrim(coalesce(p_claim_ref, ''))) < 5
+     or length(btrim(coalesce(p_provider_name, ''))) < 2
+     or length(btrim(coalesce(p_transfer_ref, ''))) < 4
+     or length(btrim(coalesce(p_transfer_ref, ''))) > 120
+     or lower(btrim(p_transfer_ref)) in ('test','todo','tbd','pending','na','none','unknown','placeholder','0+')
+     or p_amount_kobo is null or p_amount_kobo <= 0 then
+    raise exception 'claim_settle_payout: invalid claim, worker, transfer reference or amount';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext('care_claim_payout:' || p_claim_ref));
+
+  select * into v_claim from repair_claims where reference = p_claim_ref;
+  if not found then raise exception 'claim_settle_payout: no such claim'; end if;
+  if btrim(coalesce(v_claim.provider_name, '')) <> btrim(p_provider_name)
+     or btrim(coalesce(v_claim.provider_name, '')) = '' then
+    raise exception 'claim_settle_payout: the named worker changed';
+  end if;
+  if coalesce(v_claim.env, 'production') <> coalesce(p_env, 'production')
+     or v_claim.actual_kobo is null or v_claim.actual_kobo <= 0 then
+    raise exception 'claim_settle_payout: no matching reported payable';
+  end if;
+
+  select * into v_cost from ledger_entries
+   where entry_ref = p_claim_ref || ':cost';
+  select * into v_payable from ledger_entries
+   where entry_ref = p_claim_ref || ':payable';
+  if v_cost.entry_ref is null or v_cost.business_line <> 'care' or v_cost.account <> 'expense'
+     or v_cost.direction <> 'debit' or v_cost.amount_kobo <> v_claim.actual_kobo
+     or v_cost.source <> 'repair_claim' or coalesce(v_cost.env, 'production') <> coalesce(v_claim.env, 'production')
+     or v_payable.entry_ref is null or v_payable.business_line <> 'care' or v_payable.account <> 'payable'
+     or v_payable.direction <> 'credit' or v_payable.amount_kobo <> v_claim.actual_kobo
+     or v_payable.source <> 'repair_claim' or coalesce(v_payable.env, 'production') <> coalesce(v_claim.env, 'production') then
+    raise exception 'claim_settle_payout: the repair cost and payable do not reconcile';
+  end if;
+
+  v_ref := p_claim_ref || ':settle';
+  v_cash_ref := p_claim_ref || ':cash';
+  select * into v_payable from ledger_entries where entry_ref = v_ref;
+  select * into v_cost from ledger_entries where entry_ref = v_cash_ref;
+  if v_payable.entry_ref is not null or v_cost.entry_ref is not null then
+    if v_payable.entry_ref is not null and v_cost.entry_ref is not null
+       and v_payable.business_line = 'care' and v_payable.account = 'payable'
+       and v_payable.direction = 'debit' and v_payable.amount_kobo = p_amount_kobo
+       and v_payable.source = 'repair_payout' and coalesce(v_payable.env, 'production') = coalesce(v_claim.env, 'production')
+       and v_cost.business_line = 'care' and v_cost.account = 'cash'
+       and v_cost.direction = 'credit' and v_cost.amount_kobo = p_amount_kobo
+       and v_cost.source = 'repair_payout' and coalesce(v_cost.env, 'production') = coalesce(v_claim.env, 'production')
+       and right(v_payable.memo, length(' · transfer ' || btrim(p_transfer_ref))) = ' · transfer ' || btrim(p_transfer_ref)
+       and right(v_cost.memo, length(' · transfer ' || btrim(p_transfer_ref))) = ' · transfer ' || btrim(p_transfer_ref) then
+      return jsonb_build_object('ok', true, 'already', true, 'amount_kobo', p_amount_kobo, 'entry_ref', v_ref);
+    end if;
+    raise exception 'claim_settle_payout: a settlement movement already exists but does not match this transfer';
+  end if;
+  if p_amount_kobo <> v_claim.actual_kobo then
+    raise exception 'claim_settle_payout: settlement must exactly clear the reported provider payable';
+  end if;
+
+  insert into ledger_entries
+    (entry_ref, business_line, account, direction, amount_kobo, source, memo, actor_ref, actor_name, env)
+  values
+    (v_ref, 'care', 'payable', 'debit', p_amount_kobo, 'repair_payout',
+     'Paid to ' || btrim(p_provider_name) || ' for ' || p_claim_ref || ' · transfer ' || btrim(p_transfer_ref),
+     p_actor_ref, p_actor_name, coalesce(p_env, 'production'));
+  insert into ledger_entries
+    (entry_ref, business_line, account, direction, amount_kobo, source, memo, actor_ref, actor_name, env)
+  values
+    (v_cash_ref,
+     'care', 'cash', 'credit', p_amount_kobo, 'repair_payout',
+     'Transfer to ' || btrim(p_provider_name) || ' for ' || p_claim_ref || ' · transfer ' || btrim(p_transfer_ref),
+     p_actor_ref, p_actor_name, coalesce(p_env, 'production'));
+
+  insert into claim_events
+    (claim_id, reference, from_status, to_status, event, reason, data,
+     actor_ref, actor_name, actor_role, env)
+  values
+    (v_claim.id, v_claim.reference, v_claim.status, v_claim.status, 'payout_settled',
+     'Admin recorded the already-completed transfer to ' || btrim(p_provider_name) || ': ' || btrim(p_transfer_ref),
+     jsonb_build_object('amount_kobo', p_amount_kobo, 'provider_name', btrim(p_provider_name),
+       'provider_transfer_ref', btrim(p_transfer_ref), 'settled_entry_ref', v_ref),
+     p_actor_ref, p_actor_name, 'admin', coalesce(p_env, 'production'));
+
+  return jsonb_build_object('ok', true, 'amount_kobo', p_amount_kobo, 'entry_ref', v_ref);
+end $$;
+
+revoke all on function claim_settle_payout(text, bigint, text, text, uuid, text, text)
+  from public, anon, authenticated;
+
+
+grant execute on function claim_reserve_callout(uuid, text, text, text, text, text)
+  to service_role;
+grant execute on function claim_release_callout(uuid, text, text, text, text, text, text)
+  to service_role;
+grant execute on function claim_settle_payout(text, bigint, text, text, uuid, text, text)
+  to service_role;
 
 
 -- ------------------------------------------------------------

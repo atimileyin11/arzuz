@@ -561,6 +561,7 @@ var Arzuz = (function(){
         fd.append('signature',  sig.signature);
         fd.append('folder',     sig.folder);
         fd.append('eager',      sig.eager);
+        if (sig.context) fd.append('context', sig.context);
         if (sig.max_file_size) fd.append('max_file_size', sig.max_file_size);
 
         var url = 'https://api.cloudinary.com/v1_1/' + sig.cloud_name + '/image/upload';

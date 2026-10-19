@@ -102,12 +102,25 @@ const { POLICY } = ArzuzVerify;
    NAMED as unhandled rather than guessed at, so a vocabulary that grows
    upstream cannot quietly start reading as one of the cases below. */
 const WHAT_TO_DO = {
-  'not-ready': 'this deploy is missing something the database needs — a migration has not been run',
+  'not-ready': 'this deploy is missing something the database needs — a migration or database object is not available',
   offline: 'the database could not be reached at all',
   busy: 'the database is rate-limiting this clock',
   rejected: 'the database refused the call itself',
   error: 'the database answered with an error'
 };
+
+/* This service-role-only queue can be refused because the key is invalid,
+   not only because its RPC is missing. A 401/403 proves nothing about a
+   migration; it says the deployed credential was rejected. */
+function actionFor(err, kind) {
+  if (err && (err.credentialRefused || err.status === 401 || err.status === 403)) {
+    return 'Supabase refused the service key this deploy holds. Check SUPABASE_SERVICE_ROLE_KEY and SUPABASE_URL in Netlify; replace the key from this same Supabase project, then redeploy.';
+  }
+  if (kind === 'not-ready') {
+    return 'Supabase could not find a required queue function or relation. Check the matching Supabase migration and deploy version before applying SQL.';
+  }
+  return WHAT_TO_DO[kind] || 'the database refused this call in a way the classifier does not name';
+}
 
 /* One failure in, everything a run needs out: the class, what to do about
    it, and the operator's own line. */
@@ -115,7 +128,7 @@ function broken(err) {
   const kind = ApiErrors.kindOf(err);
   return {
     kind: kind,
-    action: WHAT_TO_DO[kind] || 'the database refused this call in a way the classifier does not name',
+    action: actionFor(err, kind),
     detail: ApiErrors.detail(err)
   };
 }
@@ -322,9 +335,10 @@ exports.handler = async function () {
     rows = await readQueue();
   } catch (err) {
     /* Could not read the queue at all. A chaser that dies quietly is
-       worse than no chaser, so this is the one case that always speaks —
-       and the class is the part that says WHERE to look: a not-ready is a
-       migration nobody has run, an error is a bad minute. */
+       worse than no chaser, so this is the one case that always speaks.
+       A missing RPC and a refused service key both look like a not-ready
+       at this layer, so actionFor() distinguishes the credential refusal
+       before suggesting anyone run SQL. */
     const trouble = broken(err);
     console.error('[verification-aging] could not read the queue (' + trouble.kind + '):', trouble.detail);
     /* The log above fires every run; the phone fires only for a new

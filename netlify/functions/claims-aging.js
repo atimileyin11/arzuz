@@ -71,6 +71,25 @@ function opsAlertDue(key, kind, now) {
   return true;
 }
 
+/* Both a missing claims migration and a rejected service key can surface
+   while the scheduled function reads the queue. Never tell an operator to
+   run SQL for an invalid Netlify credential. */
+function clockFailure(err) {
+  const kind = ApiErrors.kindOf(err);
+  const detail = ApiErrors.detail(err);
+  let action;
+  if (err && (err.credentialRefused || err.status === 401 || err.status === 403)) {
+    action = 'Supabase refused the service key this deploy holds. Check SUPABASE_SERVICE_ROLE_KEY and SUPABASE_URL in Netlify; replace it with a key from this same Supabase project, then redeploy.';
+  } else if (kind === 'not-ready') {
+    action = 'Supabase could not find a required claims relation. Verify the claims migration and deployed function version before applying SQL.';
+  } else if (kind === 'offline') {
+    action = 'Supabase could not be reached from this function; check project/network status before changing keys.';
+  } else {
+    action = 'Check the Supabase response and function logs; do not retry a payout until the database is healthy.';
+  }
+  return { kind: kind, detail: detail, action: action };
+}
+
 async function openClaims() {
   const rows = [];
   for (let page = 0; page < MAX_PAGES; page += 1) {
@@ -293,11 +312,13 @@ exports.handler = async function () {
   try {
     model = await collect(null);
   } catch (err) {
-    console.error('[claims-aging] read failed:', err && err.message);
-    var readKey = 'read-failed:' + String((err && err.message) || '').slice(0, 120);
-    if (opsAlertDue(readKey, ApiErrors.kindOf(err))) {
+    const trouble = clockFailure(err);
+    console.error('[claims-aging] read failed (' + trouble.kind + '):', trouble.detail);
+    var readKey = 'read-failed:' + trouble.kind + ':' + String(trouble.detail || '').slice(0, 120);
+    if (opsAlertDue(readKey, trouble.kind)) {
       await sendAlert(
-        '⚠️ <b>The claim clock could not run</b>\n\n' + esc(err.message, 300) +
+        '⚠️ <b>The claim clock could not run</b>\n\n' +
+        '<b>' + esc(trouble.kind, 40) + '</b> — ' + esc(trouble.action, 220) + '\n' + esc(trouble.detail, 300) +
         '\n\nThe dashboard still has every claim — only the deadline check failed.'
       );
     } else {
@@ -351,6 +372,7 @@ exports.collect = collect;
 exports.nudgeText = nudgeText;
 exports.handoverWork = handoverWork;
 exports.CLOCKED_STATUSES = CLOCKED_STATUSES;
+exports.clockFailure = clockFailure;
 /* Resettable so the suite can prove the second identical failure stays
    quiet without waiting out the cooldown. */
 exports.opsAlertDue = opsAlertDue;

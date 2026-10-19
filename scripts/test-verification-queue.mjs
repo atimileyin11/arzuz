@@ -453,8 +453,7 @@ console.log('\n8. Which kind of broken \u2014 the site\u2019s one classifier, an
   });
 
   /* THE MIGRATION NOBODY HAS RUN. This is the failure this clock meets first
-     in a fresh project, and the one it used to report as a general error:
-     PostgREST\u2019s own sentence, with no hint that the fix is a file. */
+     in a fresh project, and one that must be distinguished from a bad connection. */
   reset();
   queueThrows = Object.assign(
     new Error('Could not find the function public.verification_queue(p_args, p_limit) in the schema cache'),
@@ -466,11 +465,28 @@ console.log('\n8. Which kind of broken \u2014 the site\u2019s one classifier, an
       : 'the run answered ' + JSON.stringify(unrun));
   check('and the alert names the class and says what to do about it', () =>
     calls.alerts.length === 1 && /<b>not-ready<\/b>/.test(calls.alerts[0]) &&
-      /migration has not been run/.test(calls.alerts[0]) ? true
+      /required queue function or relation/.test(calls.alerts[0]) &&
+      /Check the matching Supabase migration/.test(calls.alerts[0]) &&
+      /deploy version/.test(calls.alerts[0]) ? true
       : 'the alert was ' + JSON.stringify(calls.alerts));
   check('and the database\u2019s own sentence survives into it \u2014 a class alone is not a diagnosis', () =>
     /in the schema cache/.test(calls.alerts[0]) ? true
       : 'the alert lost the operator\u2019s line: ' + JSON.stringify(calls.alerts));
+
+  /* A REJECTED SERVICE KEY also arrives at this queue call as a 401, but
+     that is a Netlify credential problem, never evidence to run SQL. */
+  reset();
+  queueThrows = Object.assign(new Error('Invalid API key'), {
+    status: 401, credentialRefused: true,
+  });
+  const refusedKeyRun = JSON.parse((await chaser.handler({})).body);
+  check('a refused service key is still classified not-ready by the shared wire vocabulary', () =>
+    refusedKeyRun.kind === 'not-ready' && refusedKeyRun.outcome === 'queue-unreadable' ? true
+      : 'the run answered ' + JSON.stringify(refusedKeyRun));
+  check('but its operator alert names the key and does not tell anyone to run a migration', () =>
+    calls.alerts.length === 1 && /service key this deploy holds/.test(calls.alerts[0]) &&
+      /SUPABASE_SERVICE_ROLE_KEY/.test(calls.alerts[0]) && !/migration/.test(calls.alerts[0])
+      ? true : 'the alert was ' + JSON.stringify(calls.alerts));
 
   /* A DATABASE THAT ANSWERED BADLY, and one that never answered at all. The
      first is a bad minute and will very likely be fine next hour. The second

@@ -133,6 +133,12 @@ function sift(rows, q) {
     const val = String(raw);
     if (val === 'is.null') { out = out.filter((r) => r[key] == null); continue; }
     if (/^eq\./.test(val)) { out = out.filter((r) => String(r[key]) === val.slice(3)); continue; }
+    if (/^like\./.test(val)) {
+      const pattern = val.slice(5).replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+      const re = new RegExp('^' + pattern + '$');
+      out = out.filter((r) => re.test(String(r[key] == null ? '' : r[key])));
+      continue;
+    }
     /* `in.(a,b)` — the list filter the clock uses to read two event kinds
        in one query. Read literally, or the job would see every row and
        decide a claim had already been nudged when it had not. */
@@ -331,16 +337,59 @@ global.fetch = async function (url, init = {}) {
     if (method === 'GET') return resp(200, sift(state.events, q));
   }
 
+  if (table === 'rpc/claim_settle_payout' && method === 'POST') {
+    const ref = body.p_claim_ref;
+    const expected = Number(body.p_amount_kobo);
+    const claim = state.claims.find((c) => c.reference === ref);
+    if (!claim || claim.actual_kobo !== expected || claim.provider_name !== body.p_provider_name) {
+      return fail(409, 'claim_settle_payout claim/work mismatch', 'P0001');
+    }
+    const pair = state.ledger.filter((e) => e.entry_ref === ref + ':cost' || e.entry_ref === ref + ':payable');
+    const exact = (account, direction) => pair.some((e) => e.account === account && e.direction === direction &&
+      e.business_line === 'care' && e.source === 'repair_claim' && Number(e.amount_kobo) === expected &&
+      (e.env || 'production') === (claim.env || 'production'));
+    if (!exact('expense', 'debit') || !exact('payable', 'credit')) {
+      return fail(409, 'claim_settle_payout missing repair postings', 'P0001');
+    }
+    const settledRef = ref + ':settle';
+    const cashRef = ref + ':cash';
+    const settled = state.ledger.filter((e) => e.entry_ref === settledRef);
+    const cash = state.ledger.filter((e) => e.entry_ref === cashRef);
+    if (settled.length || cash.length) {
+      if (settled.length === 1 && cash.length === 1 && settled[0].amount_kobo === expected && cash[0].amount_kobo === expected &&
+          settled[0].memo.endsWith(' · transfer ' + body.p_transfer_ref) && cash[0].memo.endsWith(' · transfer ' + body.p_transfer_ref)) {
+        return resp(200, { ok: true, already: true, amount_kobo: expected, entry_ref: settledRef });
+      }
+      return fail(409, 'claim_settle_payout conflicting prior settlement', 'P0001');
+    }
+    const transfer = ' · transfer ' + body.p_transfer_ref;
+    const time = new Date().toISOString();
+    state.ledger.push(
+      { id: ++state.seq, created_at: time, entry_ref: settledRef, business_line: 'care', account: 'payable', direction: 'debit', amount_kobo: expected, source: 'repair_payout', memo: 'Paid to ' + body.p_provider_name + ' for ' + ref + transfer, actor_ref: body.p_actor_ref, actor_name: body.p_actor_name, env: body.p_env },
+      { id: ++state.seq, created_at: time, entry_ref: cashRef, business_line: 'care', account: 'cash', direction: 'credit', amount_kobo: expected, source: 'repair_payout', memo: 'Transfer to ' + body.p_provider_name + ' for ' + ref + transfer, actor_ref: body.p_actor_ref, actor_name: body.p_actor_name, env: body.p_env }
+    );
+    return resp(200, { ok: true, amount_kobo: expected, entry_ref: settledRef });
+  }
+
   if (table === 'ledger_entries') {
     if (method === 'POST') {
       if (state.ledger.some((e) => e.entry_ref === body.entry_ref)) {
         return fail(409, 'duplicate key value violates unique constraint "ledger_entries_entry_ref_key"', '23505');
       }
+      if (body.source === 'repair_payout') return fail(403, 'repair_payout must use the atomic claim_settle_payout RPC', '42501');
       const row = Object.assign({ id: ++state.seq, created_at: new Date().toISOString() }, body);
       state.ledger.push(row);
       return resp(201, [row]);
     }
-    if (method === 'GET') return resp(200, sift(state.ledger, q));
+    if (method === 'GET') {
+      let filtered = sift(state.ledger, q);
+      const entryLike = q.get('entry_ref');
+      if (entryLike && entryLike.indexOf('like.') === 0) {
+        const prefix = entryLike.slice(5).replace(/\*$/, '');
+        filtered = state.ledger.filter((e) => String(e.entry_ref || '').startsWith(prefix));
+      }
+      return resp(200, filtered);
+    }
   }
 
   if (table === 'repair_claims') {
@@ -389,7 +438,7 @@ global.fetch = async function (url, init = {}) {
            follows a silence, and the job taken back because of it. */
         'proposed', 'chased', 'unanswered',
         /* And the customer's half of that conversation. */
-        'day_agreed', 'day_proposed'];
+        'day_agreed', 'day_proposed', 'payout_settled'];
       if (vocabulary.indexOf(body.event) === -1) {
         return fail(400, 'claim_events_event_check', '23514');
       }
@@ -851,6 +900,55 @@ await t('reporting work moves the claim to awaiting_customer, not to completed',
   eq(row.actual_kobo, 180000, 'actual cost');
   eq(row.parts.length, 2, 'parts');
   return row.customer_confirmed_at === null ? true : 'the team completed the job on the customer\u2019s behalf';
+});
+
+await t('only admin records a confirmed provider payout, as a balanced idempotent ledger pair', async () => {
+  const claim = claimRow(workRef);
+  const before = state.ledger.length;
+  asSupport();
+  const refused = await team({ action: 'settle_payout', id: claim.id, provider_transfer_ref: 'BANK-REF-1234' });
+  eq(refused.status, 403, 'support role');
+  eq(state.ledger.length, before, 'support created ledger rows');
+
+  asAdmin();
+  const empty = await team({ action: 'settle_payout', id: claim.id, provider_transfer_ref: 'pending' });
+  eq(empty.status, 400, 'placeholder reference');
+  eq(state.ledger.length, before, 'invalid reference created ledger rows');
+
+  const out = await team({ action: 'settle_payout', id: claim.id, provider_transfer_ref: 'BANK-REF-1234' });
+  eq(out.status, 200, 'admin settlement');
+  eq(out.body.amount_kobo, 180000, 'settled amount');
+  const pair = state.ledger.filter((e) => e.entry_ref === claim.reference + ':settle' || e.entry_ref === claim.reference + ':cash');
+  eq(pair.length, 2, 'settlement movements');
+  eq(pair.map((e) => e.account + ':' + e.direction).sort(), ['cash:credit', 'payable:debit'], 'settlement pair');
+  eq(pair.reduce((sum, e) => sum + (e.direction === 'debit' ? e.amount_kobo : -e.amount_kobo), 0), 0, 'journal balance');
+  return pair.every((e) => e.source === 'repair_payout' && String(e.memo).indexOf('BANK-REF-1234') !== -1)
+    ? true : 'the payout rows do not identify the confirmed transfer';
+});
+
+await t('a payout retry is idempotent, and another reference cannot pay the claim twice', async () => {
+  const claim = claimRow(workRef);
+  const before = state.ledger.length;
+  const retry = await team({ action: 'settle_payout', id: claim.id, provider_transfer_ref: 'BANK-REF-1234' });
+  eq(retry.status, 200, 'same-reference retry');
+  eq(retry.body.already, true, 'retry result');
+  eq(state.ledger.length, before, 'same-reference retry added movements');
+  const duplicate = await team({ action: 'settle_payout', id: claim.id, provider_transfer_ref: 'BANK-REF-5678' });
+  eq(duplicate.status, 409, 'second transfer reference');
+  return eq(state.ledger.length, before, 'second transfer reference added movements');
+});
+
+await t('settlement refuses a missing matching expense/payable pair without writing', async () => {
+  const pass = openPass();
+  const filing = await student({ action: 'create', token: pass.token, issue: 'a door closer has stopped working' });
+  await decide({ action: 'decide', id: filing.body.claim.id, eligibility: 'covered', reason: 'A failed fitting inside the flat.' });
+  asSupport();
+  await team({ action: 'assign', id: filing.body.claim.id, provider_name: 'Yinka repairs', provider_phone: '08031112222' });
+  asAdmin();
+  const before = state.ledger.length;
+  const out = await team({ action: 'settle_payout', id: filing.body.claim.id, provider_transfer_ref: 'BANK-REF-MISSING' });
+  eq(out.status, 409, 'missing payable');
+  return eq(state.ledger.length, before, 'missing payable wrote entries');
 });
 
 await t('and the customer\u2019s confirmation is what finishes it', async () => {
@@ -1608,6 +1706,23 @@ await t('a claim that moves and goes late again is a NEW crossing', async () => 
   eq(state.alerts.length, before + 1, 'the new crossing was not paged exactly once');
   const mine = state.trail.filter((e) => e.claim_id === id && e.event === 'overdue_nudge');
   return ok(mine.length === 2, 'expected one nudge row per crossing, found ' + mine.length);
+});
+
+await t('the claim clock tells a rejected Supabase service key from a missing claims migration', async () => {
+  const invalidKey = Object.assign(new Error('Invalid API key'), { status: 401, credentialRefused: true });
+  const rejected = clock.clockFailure(invalidKey);
+  ok(rejected.kind === 'not-ready', 'the shared wire class should remain not-ready');
+  ok(/SUPABASE_SERVICE_ROLE_KEY/.test(rejected.action) && /Netlify/.test(rejected.action),
+    'the operator was not told to replace the Netlify service key');
+  ok(!/migration/i.test(rejected.action), 'the credential error incorrectly recommends SQL');
+
+  const missing = Object.assign(new Error('Could not find the table in the schema cache'), {
+    status: 404, code: 'PGRST205',
+  });
+  const migration = clock.clockFailure(missing);
+  ok(/claims relation/.test(migration.action) && /migration/.test(migration.action),
+    'a missing relation did not point to the claims migration');
+  return true;
 });
 
 await t('a clock that cannot read the database says so, rather than going silently dead', async () => {

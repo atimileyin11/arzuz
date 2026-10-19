@@ -767,11 +767,13 @@
       /* a Care Pass sold: cash taken, the obligation recorded */
       { business_line: 'care', account: 'cash', direction: 'debit', amount_kobo: 2000000 },
       { business_line: 'care', account: 'unearned', direction: 'credit', amount_kobo: 2000000 },
-      /* two repairs done: what they cost, and what we owe the workers */
-      { business_line: 'care', account: 'expense', direction: 'debit', amount_kobo: 180000 },
-      { business_line: 'care', account: 'payable', direction: 'credit', amount_kobo: 180000 },
-      { business_line: 'care', account: 'expense', direction: 'debit', amount_kobo: 50000 },
-      { business_line: 'care', account: 'payable', direction: 'credit', amount_kobo: 50000 }
+      /* the reported repairs in claim fixtures 3 and 4: the fixture ledger
+         carries the same stable references and amounts the settlement
+         checkpoint validates, not anonymous totals that could not settle. */
+      { entry_ref: 'AZ-C-MOCK-3:cost', business_line: 'care', account: 'expense', direction: 'debit', amount_kobo: 320000, source: 'repair_claim', env: 'production' },
+      { entry_ref: 'AZ-C-MOCK-3:payable', business_line: 'care', account: 'payable', direction: 'credit', amount_kobo: 320000, source: 'repair_claim', env: 'production' },
+      { entry_ref: 'AZ-C-MOCK-4:cost', business_line: 'care', account: 'expense', direction: 'debit', amount_kobo: 420000, source: 'repair_claim', env: 'production' },
+      { entry_ref: 'AZ-C-MOCK-4:payable', business_line: 'care', account: 'payable', direction: 'credit', amount_kobo: 420000, source: 'repair_claim', env: 'production' }
     ],
     referrals: [
       { status: 'under_review', claims: 2, reward_kobo: 200000, first_at: '2026-10-02T09:00:00.000Z', last_at: '2026-10-09T09:00:00.000Z' },
@@ -808,7 +810,7 @@
       if (e.account === 'unearned' && e.direction === 'debit') line.unearned_released_kobo += n;
       if (e.account === 'refund') line.refunds_kobo += n;
       if (e.account === 'expense') line.costs_kobo += n;
-      if (e.account === 'payable') line.payable_kobo += n;
+      if (e.account === 'payable') line.payable_kobo += e.direction === 'debit' ? -n : n;
     });
 
     Object.keys(lines).forEach(function (k) {
@@ -1263,6 +1265,25 @@
       /* The same order as byPain() in claims.js: late first, worst first,
          then the claim closest to going late, and a claim with no clock
          never outranks one that is still moving. */
+      var payoutOf = function (claim) {
+        var amount = Number(claim.actual_kobo);
+        if (!Number.isSafeInteger(amount) || amount <= 0) return null;
+        var payable = (FINANCE.journal || []).filter(function (e) { return e.entry_ref === claim.reference + ':settle'; })[0];
+        var cash = (FINANCE.journal || []).filter(function (e) { return e.entry_ref === claim.reference + ':cash'; })[0];
+        var env = claim.env || 'production';
+        var exact = function (entry, account, direction) {
+          return !!entry && entry.account === account && entry.direction === direction &&
+            Number(entry.amount_kobo) === amount && entry.source === 'repair_payout' &&
+            entry.business_line === 'care' && (entry.env || 'production') === env;
+        };
+        if (!exact(payable, 'payable', 'debit') || !exact(cash, 'cash', 'credit')) return null;
+        return {
+          amount_kobo: amount,
+          provider_transfer_ref: (String(payable.memo || '').match(/ · transfer (.+)$/) || [])[1] || null,
+          settled_at: payable.created_at || null
+        };
+      };
+
       var byPain = function (a, b) {
         var ag = a.aging, bg = b.aging;
         if (!!ag && !!bg && ag.overdue !== bg.overdue) return ag.overdue ? -1 : 1;
@@ -1284,7 +1305,7 @@
         var listed = theRows
           .filter(function (c) { return !wantStatus || c.status === wantStatus; })
           .slice(0, limit)
-          .map(function (c) { return Object.assign({}, c, { aging: agingOf(c) }); })
+          .map(function (c) { return Object.assign({}, c, { aging: agingOf(c), payout_settled: payoutOf(c) }); })
           .sort(byPain);
 
         /* claims_summary, built the way the view builds it: by status and
@@ -1339,9 +1360,9 @@
       }
 
       /* The admin's three. Support gets the refusal, not a hidden door. */
-      if (['decide', 'report_work', 'resolve'].indexOf(clAct) !== -1 && ROLE !== 'admin') {
+      if (['decide', 'report_work', 'resolve', 'settle_payout'].indexOf(clAct) !== -1 && ROLE !== 'admin') {
         return respondLater(errResp(403, {
-          error: 'Only the admin login may decide coverage, record a cost or close a claim.'
+          error: 'Only the admin login may decide coverage, record a cost, settle a provider payout or close a claim.'
         }));
       }
 
@@ -1477,13 +1498,17 @@
         if (actual !== null && !(actual >= 0)) {
           return respondLater(errResp(400, { error: 'actual_kobo must be a whole number of kobo.' }));
         }
+        if (actual === 0) return respondLater(errResp(400, { error: 'Enter a positive actual cost, or leave it blank if no provider payable is being recorded.' }));
+        if (claim.actual_kobo !== null && claim.actual_kobo !== undefined) return respondLater(errResp(409, { error: 'This claim already has an actual cost. Do not overwrite its posted payable.' }));
+        if (actual !== null && claim.estimate_kobo != null && actual > Number(claim.estimate_kobo) * 3) return respondLater(errResp(400, { error: 'The actual cost is over three times the estimate. Check the amount against the quote before posting it.' }));
+        if (!String(claim.provider_name || '').trim()) return respondLater(errResp(409, { error: 'Name the worker before reporting this repair; the payable must belong to the person who did it.' }));
         /* The pair the real function posts, into the same journal the
            Finance panel reconciles — so reporting a repair cannot make
            the books stop balancing in the mock, either. */
         if (actual && actual > 0) {
           FINANCE.journal.push(
-            { business_line: 'care', account: 'expense', direction: 'debit', amount_kobo: actual },
-            { business_line: 'care', account: 'payable', direction: 'credit', amount_kobo: actual }
+            { entry_ref: claim.reference + ':cost', business_line: 'care', account: 'expense', direction: 'debit', amount_kobo: actual, source: 'repair_claim', env: claim.env || 'production' },
+            { entry_ref: claim.reference + ':payable', business_line: 'care', account: 'payable', direction: 'credit', amount_kobo: actual, source: 'repair_claim', env: claim.env || 'production' }
           );
         }
         move(claim, 'awaiting_customer', {
@@ -1493,6 +1518,47 @@
           customer_note: clReq.note ? String(clReq.note) : null
         });
         return respondLater(resp({ ok: true, status: 'awaiting_customer', actual_kobo: actual }));
+      }
+
+      if (clAct === 'settle_payout') {
+        var transferRef = String(clReq.provider_transfer_ref || '').trim();
+        if (!transferRef || transferRef.length < 4 || transferRef.length > 120 || /^(test|todo|tbd|pending|na|none|unknown|placeholder|0+)$/i.test(transferRef)) {
+          return respondLater(errResp(400, { error: 'Enter the real transfer reference from the bank or payment provider.' }));
+        }
+        if (!claim.provider_name || !String(claim.provider_name).trim()) return respondLater(errResp(409, { error: 'This payable has no named worker.' }));
+        var amount = Number(claim.actual_kobo);
+        if (!Number.isSafeInteger(amount) || amount <= 0) return respondLater(errResp(409, { error: 'This claim has no positive actual cost.' }));
+        var settledRef = claim.reference + ':settle';
+        var cashRef = claim.reference + ':cash';
+        var env = claim.env || 'production';
+        var costEntry = FINANCE.journal.filter(function (e) { return e.entry_ref === claim.reference + ':cost'; })[0];
+        var payableEntry = FINANCE.journal.filter(function (e) { return e.entry_ref === claim.reference + ':payable'; })[0];
+        var exactRepair = function (entry, account, direction) {
+          return !!entry && entry.business_line === 'care' && entry.account === account && entry.direction === direction &&
+            Number(entry.amount_kobo) === amount && entry.source === 'repair_claim' && (entry.env || 'production') === env;
+        };
+        if (!exactRepair(costEntry, 'expense', 'debit') || !exactRepair(payableEntry, 'payable', 'credit')) {
+          return respondLater(errResp(409, { error: 'The matching repair expense and provider payable are missing.' }));
+        }
+        var priorPayable = FINANCE.journal.filter(function (e) { return e.entry_ref === settledRef; })[0];
+        var priorCash = FINANCE.journal.filter(function (e) { return e.entry_ref === cashRef; })[0];
+        var exactSettlement = function (entry, account, direction) {
+          return !!entry && entry.business_line === 'care' && entry.account === account && entry.direction === direction &&
+            Number(entry.amount_kobo) === amount && entry.source === 'repair_payout' && (entry.env || 'production') === env &&
+            String(entry.memo || '').endsWith(' · transfer ' + transferRef);
+        };
+        if (priorPayable || priorCash) {
+          if (exactSettlement(priorPayable, 'payable', 'debit') && exactSettlement(priorCash, 'cash', 'credit')) {
+            return respondLater(resp({ ok: true, settled: true, already: true, amount_kobo: amount, provider_transfer_ref: transferRef }));
+          }
+          return respondLater(errResp(409, { error: 'A settlement movement already exists for this claim; reconcile it before retrying.' }));
+        }
+        var time = nowIso();
+        FINANCE.journal.push(
+          { entry_ref: settledRef, business_line: 'care', account: 'payable', direction: 'debit', amount_kobo: amount, source: 'repair_payout', memo: 'Paid to ' + claim.provider_name + ' for ' + claim.reference + ' · transfer ' + transferRef, created_at: time, env: env },
+          { entry_ref: cashRef, business_line: 'care', account: 'cash', direction: 'credit', amount_kobo: amount, source: 'repair_payout', memo: 'Transfer to ' + claim.provider_name + ' for ' + claim.reference + ' · transfer ' + transferRef, created_at: time, env: env }
+        );
+        return respondLater(resp({ ok: true, settled: true, amount_kobo: amount, provider_transfer_ref: transferRef }));
       }
 
       if (clAct === 'resolve') {
@@ -1525,7 +1591,7 @@
       }
 
       return respondLater(errResp(400, {
-        error: 'Unknown action. Team: queue, decide, assign, progress, report_work, resolve.'
+        error: 'Unknown action. Team: queue, decide, assign, progress, report_work, resolve, settle_payout.'
       }));
     }
 

@@ -2091,6 +2091,49 @@ async function testRole(role) {
       check('claims: and the panel says where the cost went', () =>
         /expense and a provider payable/.test(clWork()) ? true : 'the panel does not say where the cost went');
 
+      check('claims: a posted payable opens the admin-only transfer checkpoint, without initiating a transfer', () => {
+        if (clWork().indexOf('Care provider payout') === -1) return 'the payable has no payout checkpoint';
+        if (clWork().indexOf('I confirmed the transfer — record payout') === -1) return 'the admin cannot record a confirmed transfer';
+        return /outside Arzuz/.test(clWork()) && /bank\/provider confirms/.test(clWork())
+          ? true : 'the panel does not make clear that the operator transfers externally first';
+      });
+
+      const payoutJournalBefore = sb.win.__MOCK__.financeJournal().length;
+      const payoutResidualBefore = residual();
+      $('claimTransferRef').value = 'BANK-CLAIM-0002';
+      await sb.win.arzuzClaims.settlePayout();
+      await tick(140);
+      check('claims: recording a confirmed transfer posts one balanced, claim-scoped pair', () => {
+        const journal = sb.win.__MOCK__.financeJournal();
+        const pair = journal.filter(e => e.entry_ref === 'AZ-C-MOCK-2:settle' || e.entry_ref === 'AZ-C-MOCK-2:cash');
+        if (pair.length !== 2) return 'expected two settlement entries, got ' + pair.length;
+        if (journal.length !== payoutJournalBefore + 2) return 'the journal added ' + (journal.length - payoutJournalBefore) + ' rows';
+        if (pair.some(e => e.source !== 'repair_payout' || e.amount_kobo !== 320000 || !String(e.memo).includes('BANK-CLAIM-0002'))) {
+          return 'the pair does not identify its source, amount and confirmed transfer';
+        }
+        return pair.map(e => e.account + ':' + e.direction).sort().join(',') === 'cash:credit,payable:debit'
+          ? true : 'the settlement was not payable debit / cash credit';
+      });
+      check('claims: the recorded transfer is visible on the claim after the queue re-reads', () =>
+        /Marked settled/.test(clWork()) && /BANK-CLAIM-0002/.test(clWork())
+          ? true : 'the refreshed claim does not show its transfer reference');
+      check('claims: payout settlement leaves the finance identity balanced', () =>
+        residual() === payoutResidualBefore ? true : 'the residual moved by ' + (residual() - payoutResidualBefore) + ' kobo');
+
+      /* Retry the operation through its function endpoint: same-reference
+         idempotency must be visible at the HTTP boundary, not just in the
+         mock journal. */
+      const retryResponse = await sb.win.fetch('/api/claims', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'settle_payout', id: 'claim-0002', provider_transfer_ref: 'BANK-CLAIM-0002' })
+      });
+      const retryBody = await retryResponse.json();
+      check('claims: the same transfer reference retries successfully without another pair', () => {
+        if (!retryResponse.ok || !retryBody.already) return 'retry was not acknowledged as already recorded';
+        return sb.win.__MOCK__.financeJournal().length === payoutJournalBefore + 2
+          ? true : 'retry posted another journal pair';
+      });
+
       /* --- the dispute ---------------------------------------------- */
       sb.win.arzuzClaims.select('claim-0004');
       await tick(40);
@@ -2189,6 +2232,24 @@ async function testRole(role) {
       check('claims: and neither the cost nor its posting reached the books', () =>
         claimRow('claim-0002').actual_kobo === null
           ? true : 'a cost of ' + claimRow('claim-0002').actual_kobo + ' was recorded by a support login');
+
+      sb.win.arzuzClaims.select('claim-0003');
+      await tick(40);
+      check('claims: support sees settlement state but no payout action', () => {
+        if (clWork().indexOf('Care provider payout') === -1) return 'the payable is hidden from support';
+        if (clWork().indexOf('data-claim-act="settle_payout"') !== -1) return 'support was offered a settlement control';
+        return /Only the admin login/.test(clWork()) ? true : 'the missing admin-only control is not explained';
+      });
+      const supportJournalBefore = sb.win.__MOCK__.financeJournal().length;
+      const supportPayout = await sb.win.fetch('/api/claims', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'settle_payout', id: 'claim-0003', provider_transfer_ref: 'BANK-SUPPORT-TEST' })
+      });
+      check('claims: support cannot settle a provider payout, even by calling the function directly', () => {
+        if (supportPayout.status !== 403) return 'the function returned ' + supportPayout.status;
+        return sb.win.__MOCK__.financeJournal().length === supportJournalBefore
+          ? true : 'a support request changed the journal';
+      });
 
       sb.win.arzuzClaims.select('claim-0004');
       await tick(40);

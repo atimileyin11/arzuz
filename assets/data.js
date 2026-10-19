@@ -63,14 +63,41 @@ var PROPERTY_TYPES = [
   "Boys quarters"
 ];
 
-/* Default amenities. The admin dashboard can add more, and those live
-   in the `amenities` table in Supabase so every browser sees them —
-   not just the browser that added them. localStorage is only the
-   offline fallback.                                                   */
+/* Default amenities. Keep familiar legacy labels for listings already in
+   Supabase, then offer clearer choices for a real property inspection.
+   Anything typed outside these defaults remains a custom amenity string. */
 var _DEFAULT_UTILITIES = [
  "Borehole water","Pipe-borne water","NEPA connection","Generator backup",
- "Private bathroom","Flush toilet","Security gate","Perimeter fence","Kitchen access"
+ "Private bathroom","Flush toilet","Security gate","Perimeter fence","Kitchen access",
+ "Water — Borehole / well","Water — Public pipe connection","Water — Storage tank",
+ "Water — Shared borehole / well","Water — Water available on the property",
+ "Water — Water available 24 hours","Water — Water available at set hours",
+ "Water — Storage tank available during supply cuts",
+ "Electricity — Public power connection (PHCN / IBEDC)","Electricity — Prepaid meter",
+ "Electricity — Shared meter","Electricity — Solar panels and battery","Electricity — Inverter backup",
+ "Electricity — Generator available during outages","Electricity — Power available at set hours",
+ "Electricity — Prepaid top-up paid by tenant","Electricity — Meter top-up shared with occupants",
+ "Sanitation — Private bathroom","Sanitation — Shared bathroom","Sanitation — Flush toilet",
+ "Sanitation — Septic tank","Sanitation — Waste collection arranged by landlord",
+ "Sanitation — Waste collection paid by tenant","Security — On-site caretaker","Security — Gated entrance",
+ "Security — Perimeter fence","Cooking — Private cooking area","Cooking — Shared kitchen",
+ "Connectivity — Wi-Fi","Other — Property-specific feature"
 ];
+
+/* Group labels help a landlord describe what is actually on the property,
+   while the selected value remains an ordinary amenity string in payload.ut. */
+function utilityGroup(name){
+ var value = String(name || '');
+ var split = value.indexOf(' — ');
+ if (split > 0) return value.slice(0, split);
+ if (/water|borehole|pipe-borne/i.test(value)) return 'Water';
+ if (/power|electric|nepa|generator|solar|inverter|meter/i.test(value)) return 'Electricity';
+ if (/bathroom|toilet|septic|sanitation/i.test(value)) return 'Sanitation';
+ if (/security|fence|gate|caretaker/i.test(value)) return 'Security';
+ if (/kitchen|cooking/i.test(value)) return 'Cooking';
+ if (/wifi|wi-fi|internet/i.test(value)) return 'Connectivity';
+ return 'Other features';
+}
 
 var ArzuzData = (function(){
 

@@ -683,7 +683,8 @@
              shapes the function writes them. Without these the panel has
              never rendered the answer a customer can actually give. */
           day_agreed_at: null, customer_proposal: null, customer_proposed_at: null,
-          estimate_kobo: null, actual_kobo: null, parts: [], evidence: [],
+          estimate_kobo: null,          actual_kobo: null, parts: [], evidence: [],
+          payout_settled: null,
           customer_confirmed_at: null, customer_note: null,
           disputed_at: null, dispute_reason: null,
           resolved_at: null, resolution: null, closed_by: null
