@@ -24,6 +24,7 @@
 
 'use strict';
 
+const { projectOrigin } = require('./supabase-url.js');
 const mem = new Map(); // key -> array of epoch millis, this instance only
 
 function memAllowed(key, windowMs, max) {
@@ -39,9 +40,8 @@ function memAllowed(key, windowMs, max) {
 }
 
 function dbCfg() {
-  const url = String(
-    process.env.SUPABASE_URL || process.env.SUPABASE_URL_KEY || ''
-  ).trim().replace(/\/+$/, '');
+  const rawUrl = process.env.SUPABASE_URL || process.env.SUPABASE_URL_KEY || '';
+  const url = projectOrigin(rawUrl);
   const serviceKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '');
   return { url, serviceKey, ready: !!(url && serviceKey) };
 }

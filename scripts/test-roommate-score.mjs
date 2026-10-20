@@ -37,6 +37,12 @@ const require = createRequire(import.meta.url);
    which is how Netlify will bundle it. */
 const ArzuzMatch = require('../assets/roommate-score.js');
 const fn = require('../netlify/functions/roommate-match.js');
+const ORIGINAL_SUPABASE_URL = process.env.SUPABASE_URL;
+const ORIGINAL_SUPABASE_URL_KEY = process.env.SUPABASE_URL_KEY;
+const ORIGINAL_SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const ORIGINAL_FETCH = global.fetch;
+process.env.SUPABASE_URL = 'https://stand-in.supabase.co';
+delete process.env.SUPABASE_URL_KEY;
 
 /* ---------------- tiny test runner ---------------- */
 
@@ -251,6 +257,8 @@ function fakeSupabase() {
     roommate_events: [],       /* the append-only consent trail */
     telegram: [],              /* every sendMessage the function asked for */
     __failEvents: false,       /* simulate the trail table being unwritable */
+    __databaseError: null,     /* simulate invalid REST configuration or a network failure */
+    requests: [],              /* calls made by the stand-in client */
     /* filled in on demand by the two view builders above */
     roommate_mutual_pairs: [],
     roommate_engine_summary: [],
@@ -375,6 +383,9 @@ function fakeSupabase() {
 
   global.fetch = async (url, options = {}) => {
     const u = new URL(url);
+    state.requests.push(String(url));
+
+    if (state.__databaseError && u.hostname !== 'api.telegram.org') throw state.__databaseError;
 
     /* The alert path. It is captured rather than sent, and answered
        like Telegram would — so a test can assert on how many alerts a
@@ -1140,6 +1151,80 @@ await t('a student-typed name cannot forge the digest formatting', async () => {
     'an unescaped name would let a student forge the message');
 });
 
+await t('a PostgreSQL connection string is rejected before fetch and never leaks its credentials', async () => {
+  const previousUrl = process.env.SUPABASE_URL;
+  const previousUrlKey = process.env.SUPABASE_URL_KEY;
+  const previousKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = 'postgresql://private-user:TOPSECRET@db.example.supabase.co:5432/postgres';
+  process.env.SUPABASE_URL = url;
+  delete process.env.SUPABASE_URL_KEY;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'stand-in-service-role-key';
+  state.__databaseError = null;
+  const databaseRequestsBefore = state.requests.filter((request) => !request.includes('api.telegram.org')).length;
+  const before = state.telegram.length;
+  let log = '';
+  const oldError = console.error;
+  console.error = (...args) => { log += args.join(' ') + '\n'; };
+  try {
+    const res = await digest.handler();
+    assert.equal(JSON.parse(res.body).outcome, 'invalid-config');
+    assert.equal(state.telegram.length, before + 1, 'the bad deploy needs one actionable alert');
+    const alert = state.telegram[before].text;
+    assert.match(alert, /Correct SUPABASE_URL.*HTTPS origin.*PostgreSQL/s);
+    assert.ok(!alert.includes('TOPSECRET') && !alert.includes(url), 'database credentials leaked to Telegram');
+    assert.ok(!log.includes('TOPSECRET') && !log.includes(url), 'database credentials leaked to logs');
+    assert.match(log, /SUPABASE_URL.*HTTPS origin.*PostgreSQL/);
+    const repeat = await digest.handler();
+    assert.equal(JSON.parse(repeat.body).outcome, 'invalid-config');
+    assert.equal(state.telegram.length, before + 1, 'identical invalid configuration paged repeatedly');
+    const databaseRequestsAfter = state.requests.filter((request) => !request.includes('api.telegram.org')).length;
+    assert.equal(databaseRequestsAfter, databaseRequestsBefore,
+      'invalid configuration made a Supabase request before failing closed');
+  } finally {
+    console.error = oldError;
+    state.__databaseError = null;
+    if (previousUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = previousUrl;
+    if (previousUrlKey === undefined) delete process.env.SUPABASE_URL_KEY;
+    else process.env.SUPABASE_URL_KEY = previousUrlKey;
+    if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previousKey;
+  }
+});
+
+await t('a transient database fetch failure is logged and alerted without URL credentials', async () => {
+  const previousUrl = process.env.SUPABASE_URL;
+  const previousUrlKey = process.env.SUPABASE_URL_KEY;
+  const previousKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = 'postgresql://private-user:TOPSECRET@db.example.supabase.co:5432/postgres';
+  process.env.SUPABASE_URL = 'https://stand-in.supabase.co';
+  delete process.env.SUPABASE_URL_KEY;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'stand-in-service-role-key';
+  state.__databaseError = Object.assign(new TypeError('Request cannot be constructed from a URL that includes credentials: ' + url), { cause: new Error('credential-bearing cause') });
+  let log = '';
+  const oldError = console.error;
+  console.error = (...args) => { log += args.join(' ') + '\n'; };
+  const before = state.telegram.length;
+  try {
+    const res = await digest.handler();
+    assert.equal(JSON.parse(res.body).outcome, 'read-failed');
+    assert.equal(state.telegram.length, before + 1);
+    const alert = state.telegram[before].text;
+    assert.match(alert, /Could not reach the configured Supabase REST endpoint/i);
+    assert.ok(!alert.includes('TOPSECRET') && !alert.includes(url), 'credentials leaked to Telegram');
+    assert.ok(!log.includes('TOPSECRET') && !log.includes(url), 'credentials leaked to logs');
+  } finally {
+    console.error = oldError;
+    state.__databaseError = null;
+    if (previousUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = previousUrl;
+    if (previousUrlKey === undefined) delete process.env.SUPABASE_URL_KEY;
+    else process.env.SUPABASE_URL_KEY = previousUrlKey;
+    if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previousKey;
+  }
+});
+
 await t('with no Telegram token the digest sends nothing and does not fail', async () => {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   delete process.env.TELEGRAM_BOT_TOKEN;
@@ -1285,6 +1370,18 @@ await t('one signed-in user cannot hammer it', async () => {
     'the allowed previews were refused: ' + codes.join(','));
   assert.equal(codes[codes.length - 1], 429, 'the cap never engaged: ' + codes.join(','));
 });
+
+/* Restore the caller's environment: this suite can also be run from the
+   repository's aggregate runner, where mutating the parent's test setup
+   would make results depend on execution order. */
+if (ORIGINAL_SUPABASE_URL === undefined) delete process.env.SUPABASE_URL;
+else process.env.SUPABASE_URL = ORIGINAL_SUPABASE_URL;
+if (ORIGINAL_SUPABASE_URL_KEY === undefined) delete process.env.SUPABASE_URL_KEY;
+else process.env.SUPABASE_URL_KEY = ORIGINAL_SUPABASE_URL_KEY;
+if (ORIGINAL_SUPABASE_SERVICE_ROLE_KEY === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+else process.env.SUPABASE_SERVICE_ROLE_KEY = ORIGINAL_SUPABASE_SERVICE_ROLE_KEY;
+if (ORIGINAL_FETCH === undefined) delete global.fetch;
+else global.fetch = ORIGINAL_FETCH;
 
 /* ---------------- summary ---------------- */
 

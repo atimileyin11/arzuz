@@ -72,17 +72,17 @@ const ApiErrors = require('../../assets/api-errors.js');
    same function. A second regex here is how a form starts accepting an
    address the sender then refuses. */
 const { mailDeliverable } = require('./notify.js');
+const { projectOrigin } = require('./lib/supabase-url.js');
 
 const SUPABASE_URL_FALLBACK = 'https://nihdbhjecdkpvzvjifrm.supabase.co';
 
 function cfg() {
-  const url = (process.env.SUPABASE_URL || process.env.SUPABASE_URL_KEY || SUPABASE_URL_FALLBACK)
-    .replace(/\/+$/, '');
+  const url = projectOrigin(process.env.SUPABASE_URL || process.env.SUPABASE_URL_KEY, SUPABASE_URL_FALLBACK);
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
   return {
     url,
     serviceKey,
-    ready: !!serviceKey,
+    ready: !!serviceKey && !!url,
     session: (process.env.ARZUZ_SESSION || '2026/2027').slice(0, 20),
     maxPerHour: clampInt(process.env.WAITLIST_MAX_PER_HOUR, 60, 1, 5000),
     minGapSeconds: clampInt(process.env.WAITLIST_MIN_GAP_SECONDS, 4, 0, 600),
@@ -285,6 +285,11 @@ function hashIp(event, salt) {
    ------------------------------------------------------------ */
 
 async function sb(cfgv, path, options) {
+  if (!cfgv.url) {
+    const err = new Error('SUPABASE_URL must be the Supabase project HTTPS origin, not a PostgreSQL connection string.');
+    err.configurationError = true;
+    throw err;
+  }
   const opts = Object.assign({}, options || {});
   opts.headers = Object.assign({
     apikey: cfgv.serviceKey,
@@ -451,7 +456,9 @@ exports.handler = async function (event) {
      retried as if the request were the problem. */
   if (!cfgv.ready) {
     return json(503, {
-      error: 'The waitlist door is not switched on in this deploy: SUPABASE_SERVICE_ROLE_KEY is missing in Netlify (Site settings → Environment variables).',
+      error: !cfgv.url
+        ? 'The waitlist door is not switched on in this deploy: SUPABASE_URL in Netlify must be the Supabase project HTTPS origin (https://<project-ref>.supabase.co), not a PostgreSQL connection string. Correct it, then redeploy.'
+        : 'The waitlist door is not switched on in this deploy: SUPABASE_SERVICE_ROLE_KEY is missing in Netlify (Site settings → Environment variables).',
     }, 'not-ready');
   }
 

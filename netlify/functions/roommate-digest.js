@@ -308,29 +308,47 @@ exports.handler = async function () {
     body: JSON.stringify({ ok: true, outcome: outcome, quiet_pairs: model ? model.quiet.length : 0 }),
   });
 
-  const { ready } = cfg();
-  if (!ready) {
+  const configured = cfg();
+  if (!configured.serviceKey) {
     /* Same shape as roommate-match's 503: not configured is a fact about
        the site, not an error worth a Telegram message every morning. */
     console.log('[roommate-digest] skipped: SUPABASE_SERVICE_ROLE_KEY is not set');
     return done('not-configured');
+  }
+  if (!configured.url) {
+    /* A malformed SUPABASE_URL (especially a database connection string)
+       cannot become healthy on a retry. Report the variable name without
+       echoing its potentially credential-bearing value. */
+    console.error('[roommate-digest] SUPABASE_URL must be the Supabase project HTTPS origin, not a PostgreSQL connection string');
+    if (opsAlertDue('invalid-supabase-url', 'not-ready')) {
+      await sendAlert(
+        '⚠️ <b>Roommate digest could not run</b>\n\n' +
+        '<b>not-ready</b> — Correct SUPABASE_URL in Netlify: use the Supabase project HTTPS origin (https://&lt;project-ref&gt;.supabase.co), not a PostgreSQL connection string. Then redeploy.\n' +
+        'No credentials were included in the configured URL.' +
+        '\n\nThe dashboard still has everything — only the daily summary failed.'
+      );
+    }
+    return done('invalid-config');
   }
 
   let model;
   try {
     model = await collect(new Date());
   } catch (err) {
-    console.error('[roommate-digest] read failed:', err.message);
+    const detail = err && (err.configurationError || err.offline)
+      ? err.message
+      : ApiErrors.detail(err);
+    console.error('[roommate-digest] read failed:', detail);
     /* The one failure that IS worth a phone: a digest that stops running
        does it silently, and the whole reason this job exists is that
        nobody is looking at the dashboard. Still on cooldown, though —
        a digest that fails the same way every morning must not page
        every morning about it. */
-    var digestKey = 'read-failed:' + String(err.message || '').slice(0, 120);
+    var digestKey = 'read-failed:' + String(detail || '').slice(0, 120);
     if (opsAlertDue(digestKey, ApiErrors.kindOf(err))) {
       await sendAlert(
         '\u26a0\ufe0f <b>Roommate digest could not run</b>\n\n' +
-        esc(err.message) +
+        esc(detail) +
         '\n\nThe dashboard still has everything \u2014 only the daily summary failed.'
       );
     } else {
