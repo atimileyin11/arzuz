@@ -40,6 +40,14 @@ create policy "creator or superadmin deletes tasks"
   using (auth.uid() = created_by);
 
 -- keep updated_at current
+create or replace function public.team_tasks_touch_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
 create trigger team_tasks_updated_at
   before update on public.team_tasks
-  for each row execute function public.set_updated_at();
+  for each row execute function public.team_tasks_touch_updated_at();
