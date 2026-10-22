@@ -76,7 +76,6 @@ async function check(name, fn) {
 const world = {
   /* what the project does with a key it does not know */
   keyMode: 'refuses',      // refuses | blind
-  badOrigin: false,
   finance: { status: 503, body: { error: 'The Care Pass is not on sale yet', kind: 'not-ready' } },
   care: { status: 404, body: { error: 'We do not recognise that Care link. Open it exactly as it arrived.', kind: 'rejected' } },
   projectDown: false,
@@ -170,9 +169,6 @@ global.fetch = async function (url, init = {}) {
     return resp(200, { id: 'standin-mail' });
   }
 
-  if (world.badOrigin && u.indexOf('postgresql://') === 0) {
-    throw new TypeError('Request cannot be constructed from a URL that includes credentials: postgresql://private-user:TOPSECRET@db.example.supabase.co');
-  }
   if (u.indexOf(PROJECT + '/rest/v1/') !== -1) {
     if (world.projectDown) throw new Error('ENOTFOUND standin.supabase.co');
     const key = String((init.headers && init.headers.apikey) || '');
@@ -228,7 +224,6 @@ global.fetch = async function (url, init = {}) {
 
 function reset(over) {
   world.keyMode = 'refuses';
-  world.badOrigin = false;
   world.projectDown = false;
   world.siteDown = false;
   world.requests = [];
@@ -263,14 +258,6 @@ const call = (extra) => probeDatabase(Object.assign({ project: PROJECT, base: SI
 /* ------------------------------------------------------------ */
 
 console.log('\ndatabase-health \u2014 the credential this deploy holds\n');
-
-await check('a PostgreSQL connection string fails closed as configuration and never leaks its credentials', async () => {
-  reset({ badOrigin: true });
-  const out = await call({ project: 'postgresql://private-user:TOPSECRET@db.example.supabase.co:5432/postgres' });
-  if (out.ok || out.stage !== 'configuration') return JSON.stringify(out);
-  return !out.message.includes('TOPSECRET') && !out.message.includes('private-user')
-    ? true : 'the connection string credentials escaped in the diagnosis';
-});
 
 await check('a key the project accepts, with both doors answering, is GREEN', async () => {
   reset();
@@ -450,7 +437,7 @@ await check('the alert tells the operator which command reproduces it', async ()
 });
 
 await check('every stage has a sentence a person can act on, and none of them blames the visitor', async () => {
-  const stages = ['key', 'probe', 'unreachable', 'door', 'configuration'];
+  const stages = ['key', 'probe', 'unreachable', 'door'];
   const missing = stages.filter((s) => !health.HELP[s] || health.HELP[s].length < 40);
   return missing.length ? 'no help for: ' + missing.join(', ') : true;
 });

@@ -104,7 +104,6 @@ const HELP = {
     'Supabase after it was copied in, an anon/publishable key pasted into the service slot, or a ' +
     'SUPABASE_URL pointing at another project. Replace the value, then REDEPLOY: a variable edited ' +
     'after a build only reaches the functions of the next deploy.',
-  configuration: 'Set SUPABASE_URL to the Supabase project HTTPS origin, not the PostgreSQL connection string shown in the database settings. Use https://<project-ref>.supabase.co, then redeploy.',
   probe: 'The relation the probe reads is reachable WITHOUT a credential, so every green it could ' +
     'report is worthless until that is fixed. That is a leak (RLS or a grant), not a key.',
   unreachable: 'Supabase did not answer at all. Check the project\'s status page, then this deploy\'s ' +

@@ -92,10 +92,9 @@ const TABLE = '(demand_records|listings|scout_submissions|booking_requests|suppo
 
 global.fetch = async function (url, init = {}) {
   const u = String(url);
-    const method = (init.method || 'GET').toUpperCase();
-    const body = init.body ? JSON.parse(init.body) : null;
-    state.requests.push(method + ' ' + u);
-
+  const method = (init.method || 'GET').toUpperCase();
+  const body = init.body ? JSON.parse(init.body) : null;
+  state.requests.push(method + ' ' + u);
 
   if (u.indexOf('/rest/v1/rpc/waitlist_throttle') !== -1) {
     if (state.throttleFails) return resp(500, { message: 'the stand-in is unwell' });
@@ -623,29 +622,6 @@ await t('and a failed duplicate lookup does not become a failed submission eithe
 /* ============================================================
    6 · WHEN THE DATABASE OR THE MIGRATION IS NOT WHAT IT SHOULD BE
    ============================================================ */
-
-await t('a PostgreSQL connection string is rejected without making a request or logging its password', async () => {
-  const previousUrl = process.env.SUPABASE_URL;
-  const secretUrl = 'postgresql://private-user:TOPSECRET@db.example.supabase.co:5432/postgres';
-  process.env.SUPABASE_URL = secretUrl;
-  const before = state.requests.length;
-  let log = '';
-  const oldError = console.error;
-  console.error = (...args) => { log += args.join(' ') + '\n'; };
-  try {
-    const res = await waitlist.handler(event({ form: 'demand_records', answers: STUDENT }));
-    assert.equal(res.statusCode, 503);
-    assert.equal(parsed(res).kind, 'not-ready');
-    assert.match(parsed(res).error, /SUPABASE_URL.*HTTPS origin.*PostgreSQL/);
-    assert.equal(state.requests.length, before, 'the malformed URL reached fetch');
-    assert.ok(!log.includes('TOPSECRET') && !log.includes(secretUrl));
-    assert.ok(!res.body.includes('TOPSECRET') && !res.body.includes(secretUrl));
-  } finally {
-    console.error = oldError;
-    if (previousUrl === undefined) delete process.env.SUPABASE_URL;
-    else process.env.SUPABASE_URL = previousUrl;
-  }
-});
 
 await t('an insert the database refuses is a 502 in our words, and never the platform\u2019s', async () => {
   reset({ insertStatus: 500 });

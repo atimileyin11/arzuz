@@ -52,7 +52,6 @@
 /* The same fallback the functions carry, so the probe checks the project
    the deploy actually talks to. */
 const DEFAULT_PROJECT = 'https://nihdbhjecdkpvzvjifrm.supabase.co';
-const { projectOrigin } = require('./supabase-url.js');
 
 /* A private table under RLS: a credential that is not this project's
    cannot read it, and the rows are settings rather than anybody's
@@ -157,14 +156,11 @@ function classifyCareDoor(status, text) {
  *          stage: accepts | key | probe | unreachable | door
  */
 async function probeDatabase(opts = {}) {
-  const project = projectOrigin(opts.project, DEFAULT_PROJECT);
+  const project = trim(opts.project || DEFAULT_PROJECT);
   const base = trim(opts.base || 'https://arzuz.com');
   const key = String(opts.key || '');
-  const host = project ? hostOf(project) : 'configured Supabase project';
+  const host = hostOf(project);
 
-  if (!project) {
-    return { ok: false, stage: 'configuration', message: 'SUPABASE_URL must be the Supabase project HTTPS origin (https://<project-ref>.supabase.co), not a PostgreSQL connection string' };
-  }
   if (!key) {
     return { ok: false, stage: 'key', message: 'SUPABASE_SERVICE_ROLE_KEY is not set on this deploy, so no door can write' };
   }

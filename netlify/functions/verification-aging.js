@@ -320,25 +320,14 @@ async function run(moves) {
 exports.handler = async function () {
   const c = cfg();
   if (!c || !c.serviceKey) {
-    /* Without the service key nothing can be read or written. */
+    /* Without the service key nothing can be read or written, and a run
+       that pretends to have checked is the failure this file exists to
+       prevent. The class is the shared one for a fact about the DEPLOYMENT
+       rather than about the database — `state` is how a caller names a
+       class it has already decided, and it refuses a name the vocabulary
+       does not have. */
     console.error('[verification-aging] no service key on this deploy — nothing was read or written');
     return done('no-service-key', null, [], null, ApiErrors.state('not-ready').kind);
-  }
-  if (!c.url) {
-    const detail = 'SUPABASE_URL must be the Supabase project HTTPS origin, not a PostgreSQL connection string';
-    console.error('[verification-aging] invalid configuration:', detail);
-    const alertKey = 'invalid-supabase-url';
-    try {
-      if (opsAlertDue(alertKey, 'not-ready')) {
-        await sendAlert('⚠️ <b>The verification clock could not read the queue</b>\n\n' +
-          '<b>not-ready</b> — Correct SUPABASE_URL in Netlify: use the Supabase project HTTPS origin (https://&lt;project-ref&gt;.supabase.co), not a PostgreSQL connection string. Then redeploy.\n' +
-          esc(detail, 240) +
-          '\n\nNobody is being told about listings that are late until this is fixed.');
-      }
-    } catch (err) {
-      console.error('[verification-aging] could not alert about invalid SUPABASE_URL');
-    }
-    return done('queue-unreadable', null, [], null, 'not-ready');
   }
 
   let rows;

@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#FAF7F2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0A0810" media="(prefers-color-scheme: dark)">
+  <title>This room doesn't exist (404) — Arzuz</title>
+  <meta name="robots" content="noindex, follow">
+  <meta name="description" content="The page you are looking for was moved, renamed, or never listed. Browse verified rooms in Malete or head back to the Arzuz homepage.">
+  <link rel="icon" href="/assets/icons/favicon.ico" sizes="any">
+  <link rel="stylesheet" href="/assets/arzuz.css">
+  <style>
+    /* ============================================================
+       404 — Paper-light aurora scene
+       Page-scoped styles (same convention as every other page).
+       Root-absolute asset paths: Netlify serves this file AT the
+       failed URL, so relative paths would break on /a/b/missing.
+       ============================================================ */
+
+    .nx {
+      position: relative;
+      min-height: calc(100vh - 61px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 44px 20px 34px;
+      overflow: hidden;
+    }
+
+    /* ---------- aurora scene ---------- */
+    .nx-scene {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      perspective: 1400px;
+      perspective-origin: 52% 42%;
+    }
+
+    /* The stage that leans. motion.js reads the pointer once per frame and
+       writes a single rotateX/rotateY here, while every [data-depth] plate
+       inside drifts at its own rate. The scene deliberately keeps pointer
+       events — .nx-inner paints above it — so the lean answers the whole
+       page rather than only the pixels a plate happens to cover. */
+    .nx-stage {
+      position: absolute;
+      inset: 0;
+      transform-style: preserve-3d;
+    }
+
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      will-change: transform;
+    }
+
+    .orb-1 {
+      width: 56vw;
+      height: 56vw;
+      min-width: 420px;
+      min-height: 420px;
+      left: -14%;
+      top: -22%;
+      background: radial-gradient(circle at center, rgba(124, 58, 237, 0.14), transparent 66%);
+      animation: nxOrb1 26s ease-in-out infinite alternate;
+    }
+
+    .orb-2 {
+      width: 48vw;
+      height: 48vw;
+      min-width: 360px;
+      min-height: 360px;
+      right: -16%;
+      bottom: -24%;
+      background: radial-gradient(circle at center, rgba(107, 59, 167, 0.11), transparent 64%);
+      animation: nxOrb2 22s ease-in-out infinite alternate;
+    }
+
+    .orb-3 {
+      width: 30vw;
+      height: 30vw;
+      min-width: 240px;
+      min-height: 240px;
+      right: 14%;
+      top: 6%;
+      background: radial-gradient(circle at center, rgba(144, 97, 216, 0.1), transparent 62%);
+      animation: nxOrb3 30s ease-in-out infinite alternate;
+    }
+
+    @keyframes nxOrb1 {
+      to {
+        transform: translate(9vw, 7vh) scale(1.12);
+      }
+    }
+
+    @keyframes nxOrb2 {
+      to {
+        transform: translate(-8vw, -6vh) scale(1.08);
+      }
+    }
+
+    @keyframes nxOrb3 {
+      to {
+        transform: translate(-10vw, 9vh) scale(0.92);
+      }
+    }
+
+    /* slow light sweep behind the digits */
+    .nx-beam {
+      position: absolute;
+      left: -30%;
+      top: 24%;
+      width: 160%;
+      height: 52vh;
+      transform: rotate(-16deg);
+      background: linear-gradient(90deg, transparent, rgba(124, 58, 237, 0.05), transparent);
+      animation: nxBeam 17s ease-in-out infinite alternate;
+    }
+
+    @keyframes nxBeam {
+      to {
+        transform: rotate(-16deg) translateX(18%);
+      }
+    }
+
+    /* ---------- floating motifs (house / pin / magnifier) ----------
+       Two elements per motif, on purpose: motion.js owns the transform on
+       the .mo layer itself (its depth in the scene), and the ambient
+       drift lives on the svg inside it. One element cannot carry both —
+       a running CSS animation beats an inline style, so the parallax
+       would silently stop working. */
+    .mo {
+      position: absolute;
+      color: rgba(107, 59, 167, 0.34);
+      will-change: transform;
+    }
+
+    .mo svg {
+      display: block;
+      animation: nxDrift 9s ease-in-out infinite alternate;
+      will-change: transform;
+    }
+
+    .mo-1 {
+      left: 9%;
+      top: 22%;
+    }
+
+    .mo-1 svg {
+      animation-delay: -1.2s;
+      animation-duration: 8s;
+    }
+
+    .mo-2 {
+      right: 11%;
+      top: 18%;
+    }
+
+    .mo-2 svg {
+      animation-delay: -3.4s;
+      animation-duration: 10.5s;
+    }
+
+    .mo-3 {
+      left: 16%;
+      bottom: 16%;
+    }
+
+    .mo-3 svg {
+      animation-delay: -5.1s;
+      animation-duration: 9.4s;
+    }
+
+    .mo-4 {
+      right: 18%;
+      bottom: 24%;
+    }
+
+    .mo-4 svg {
+      animation-delay: -2.3s;
+      animation-duration: 7.6s;
+    }
+
+    .mo-5 {
+      right: 34%;
+      top: 9%;
+    }
+
+    .mo-5 svg {
+      animation-delay: -4.4s;
+      animation-duration: 11.2s;
+    }
+
+    @keyframes nxDrift {
+      from {
+        transform: translateY(9px) rotate(-3deg);
+      }
+
+      to {
+        transform: translateY(-9px) rotate(3deg);
+      }
+    }
+
+    /* ---------- the object: one stage, three plates at three depths ----------
+       The same materials the homepage hero uses — a dashed compound plan, a
+       minted Arzuz stamp, a bezel slip on var(--plate) — so the 404 reads as
+       part of the same world rather than a second design. None of it is a
+       listing: no price, no name, no count. It is the site's own verification
+       language saying it holds no record of this address. */
+    .nx-planwrap,
+    .nx-sealwrap,
+    .nx-slipwrap {
+      position: absolute;
+      transform-style: preserve-3d;
+    }
+
+    /* the copy column is 620px wide and centred, so the outer plates live in
+       the margins; the lookup slip is hidden again below 1180px, where there
+       is no margin left to sit in */
+    .nx-planwrap,
+    .nx-slipwrap {
+      display: none;
+    }
+
+    .nx-sealwrap {
+      right: 3%;
+      top: 8%;
+      width: 132px;
+      height: 132px;
+      opacity: .5;
+      pointer-events: none;
+    }
+
+    .nx-planwrap {
+      left: 3%;
+      bottom: 15%;
+      width: 232px;
+    }
+
+    .nx-slipwrap {
+      right: 3%;
+      bottom: 6%;
+      width: 240px;
+    }
+
+    /* far plate — the plan a dropped pin sits on */
+    .nx-plan {
+      position: relative;
+      aspect-ratio: 5 / 4;
+      border-radius: 16px;
+      border: 1.5px dashed rgba(124, 58, 237, 0.32);
+      background:
+        linear-gradient(rgba(124, 58, 237, 0.07) 1px, transparent 1px) 0 0 / 100% 20px,
+        linear-gradient(90deg, rgba(124, 58, 237, 0.07) 1px, transparent 1px) 0 0 / 20px 100%,
+        rgba(255, 253, 249, 0.55);
+      box-shadow: var(--bezel);
+      transform: rotateY(14deg) rotateZ(-2.2deg);
+    }
+
+    .nx-plan-lbl {
+      position: absolute;
+      left: 13px;
+      top: 10px;
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: rgba(107, 59, 167, 0.7);
+    }
+
+    .nx-plan-pin {
+      position: absolute;
+      left: 46%;
+      top: 44%;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--stamp-vibrant);
+      box-shadow:
+        0 0 0 5px rgba(124, 58, 237, 0.16),
+        0 0 0 11px rgba(124, 58, 237, 0.07),
+        0 6px 16px rgba(124, 58, 237, 0.45);
+    }
+
+    /* mid plate — the seal, minted, marked as having nothing on file */
+    .nx-seal {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      border: 3px solid var(--stamp-vibrant);
+      color: var(--stamp-vibrant);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      background: linear-gradient(150deg, #FFFFFF 0%, #F5EEE5 55%, #E8DFF6 100%);
+      box-shadow:
+        var(--bezel),
+        inset 0 -8px 16px rgba(107, 59, 167, 0.14),
+        0 20px 44px -18px rgba(74, 40, 120, 0.5);
+      transform: rotateX(12deg) rotateY(-14deg) rotateZ(-7deg);
+      animation: nxCoin 0.9s var(--ease-out-strong) 0.34s both;
+    }
+
+    .nx-seal::after {
+      content: "";
+      position: absolute;
+      inset: 8px;
+      border: 1.5px solid var(--stamp-vibrant);
+      border-radius: 50%;
+      opacity: .45;
+    }
+
+    .nx-seal b {
+      font-size: 8.5px;
+      font-weight: 800;
+      letter-spacing: .2em;
+      display: block;
+    }
+
+    .nx-seal hr {
+      width: 44px;
+      border: none;
+      border-top: 1.5px solid var(--stamp-vibrant);
+      opacity: .5;
+      margin: 0;
+    }
+
+    .nx-seal strong {
+      font-family: var(--display);
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: -.02em;
+      display: block;
+      margin: 3px 0;
+    }
+
+    .nx-seal span {
+      font-size: 8px;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      display: block;
+      opacity: .75;
+    }
+
+    @keyframes nxCoin {
+      0% {
+        opacity: 0;
+        transform: rotateX(40deg) rotateY(-32deg) rotateZ(-7deg) scale(1.2);
+      }
+
+      100% {
+        opacity: 1;
+        transform: rotateX(12deg) rotateY(-14deg) rotateZ(-7deg) scale(1);
+      }
+    }
+
+    /* near plate — the lookup slip, and the only thing on this page that
+       leans under the pointer (one plate, so the cursor has one answer) */
+    .nx-slip {
+      border-radius: 15px;
+      padding: 16px 18px 13px;
+      background: var(--plate);
+      border: 1px solid var(--edge);
+      box-shadow: var(--bezel), var(--elev-3);
+      transform: rotateY(-12deg) rotateX(5deg);
+    }
+
+    .nx-slip-hd {
+      display: block;
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: var(--stamp-vibrant);
+      margin-bottom: 9px;
+    }
+
+    .nx-slip ul {
+      list-style: none;
+    }
+
+    .nx-slip li {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      padding: 6px 0;
+      border-top: 1px solid rgba(226, 217, 206, 0.7);
+      font-size: 12.5px;
+      line-height: 1.35;
+      text-align: left;
+    }
+
+    .nx-slip li:first-child {
+      border-top: none;
+    }
+
+    .nx-slip li b {
+      font-family: var(--display);
+      font-weight: 700;
+      color: var(--ink);
+      min-width: 52px;
+    }
+
+    .nx-slip li span {
+      color: var(--mid);
+    }
+
+    /* the plates only fit once there is margin either side of the copy */
+    @media(min-width: 1180px) {
+      .nx-planwrap,
+      .nx-slipwrap {
+        display: block;
+      }
+
+      .nx-sealwrap {
+        right: 5%;
+        top: 11%;
+        width: 176px;
+        height: 176px;
+        opacity: 1;
+      }
+
+      .nx-seal b {
+        font-size: 10px;
+      }
+
+      .nx-seal hr {
+        width: 62px;
+      }
+
+      .nx-seal strong {
+        font-size: 21px;
+      }
+
+      .nx-seal span {
+        font-size: 9.5px;
+      }
+    }
+
+    /* phone: the composition collapses to a single column and the object
+       retreats to a corner mark, exactly as the homepage hero does */
+    @media(max-width: 939px) {
+      .nx-scene {
+        perspective-origin: 68% 28%;
+      }
+
+      .nx-sealwrap {
+        right: -34px;
+        top: auto;
+        bottom: -28px;
+        width: 150px;
+        height: 150px;
+        opacity: .33;
+      }
+
+      .nx-seal strong {
+        font-size: 17px;
+      }
+
+      .nx-seal hr {
+        width: 52px;
+      }
+    }
+
+    /* ---------- content ---------- */
+    .nx-inner {
+      position: relative;
+      z-index: 1;
+      max-width: 620px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .nx-eyebrow {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--stamp);
+      margin-bottom: 26px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: rgba(124, 58, 237, 0.08);
+      border-radius: 20px;
+      border: 1px solid rgba(124, 58, 237, 0.18);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .nx-eyebrow::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--stamp-vibrant);
+      box-shadow: 0 0 10px var(--stamp-vibrant);
+      animation: nxBlink 2.4s ease-in-out infinite;
+    }
+
+    @keyframes nxBlink {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.35;
+      }
+    }
+
+    /* ---------- the 404 centerpiece ---------- */
+    .nx-digits {
+      display: flex;
+      gap: 0.015em;
+      margin: 0 0 6px;
+      line-height: 0.9;
+      user-select: none;
+    }
+
+    .d-slot {
+      display: inline-block;
+      overflow: hidden;
+      padding-bottom: 0.06em;
+      /* room for descender-less glyphs inside overflow:hidden */
+      animation: nxFloat 5.2s ease-in-out infinite alternate;
+    }
+
+    .d-slot:nth-child(1) {
+      animation-delay: -0.6s;
+    }
+
+    .d-slot:nth-child(2) {
+      animation-delay: -1.9s;
+      animation-duration: 6.1s;
+    }
+
+    .d-slot:nth-child(3) {
+      animation-delay: -3.1s;
+      animation-duration: 5.6s;
+    }
+
+    .nx-digits:hover .d-slot {
+      animation-play-state: paused;
+    }
+
+    .d-in {
+      display: inline-block;
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: clamp(110px, 26vw, 300px);
+      letter-spacing: -0.05em;
+      font-variant-numeric: tabular-nums;
+      background: linear-gradient(115deg,
+          var(--stamp) 0%,
+          var(--stamp-vibrant) 36%,
+          #A78BFA 50%,
+          var(--stamp-vibrant) 64%,
+          var(--stamp) 100%);
+      background-size: 230% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      color: var(--stamp);
+      transform: translateY(105%);
+      animation: nxRise 0.95s var(--ease-spring) forwards,
+        nxShimmer 8s ease-in-out 0.8s infinite;
+      will-change: transform;
+    }
+
+    .d-set {
+      /* JS adds this the moment a digit settles; keeps it there */
+      transform: none;
+    }
+
+    @keyframes nxRise {
+      to {
+        transform: none;
+      }
+    }
+
+    @keyframes nxShimmer {
+      0% {
+        background-position: 0% 50%;
+      }
+
+      50% {
+        background-position: 100% 50%;
+      }
+
+      100% {
+        background-position: 0% 50%;
+      }
+    }
+
+    @keyframes nxFloat {
+      from {
+        transform: translateY(0);
+      }
+
+      to {
+        transform: translateY(-9px);
+      }
+    }
+
+    /* ---------- copy & actions ---------- */
+    /* the eyebrow, headline, explanation, doors, help line and link row now
+       carry [data-rise] in the markup, so the shared motion layer gives
+       them one 3D entrance with a single stagger — no page-local fade-ups
+       competing with it */
+    .nx h1 {
+      font-size: clamp(30px, 6vw, 44px);
+      margin-bottom: 14px;
+    }
+
+    .nx-lede {
+      font-size: clamp(16px, 2.2vw, 18.5px);
+      line-height: 1.6;
+      color: var(--body-c);
+      max-width: 46ch;
+      margin-bottom: 34px;
+      text-wrap: pretty;
+    }
+
+    @keyframes nxFadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(18px);
+      }
+
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    .nx-doors {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    /* homepage button pair (page-scoped there; re-declared here) */
+    .h-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16.5px;
+      font-weight: 700;
+      padding: 16px 30px;
+      border-radius: 10px;
+      text-decoration: none;
+      border: 2px solid var(--stamp);
+      transition: transform 0.25s var(--ease-spring), box-shadow 0.25s ease, background 0.25s ease;
+    }
+
+    .h-btn:active {
+      transform: scale(0.965);
+    }
+
+    .h-p {
+      background: linear-gradient(135deg, var(--stamp) 0%, var(--stamp-vibrant) 100%);
+      color: #fff;
+      border: none;
+      box-shadow: 0 8px 24px var(--stamp-glow);
+    }
+
+    .h-p:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 14px 32px rgba(124, 58, 237, 0.4);
+    }
+
+    .h-s {
+      background: var(--glass-bg-light);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color: var(--stamp-vibrant);
+      border-color: rgba(124, 58, 237, 0.3);
+    }
+
+    .h-s:hover {
+      transform: translateY(-3px);
+      background: var(--stamp-soft);
+      border-color: var(--stamp-vibrant);
+    }
+
+    .nx-help {
+      margin-top: 22px;
+      font-size: 14.5px;
+      color: var(--mid);
+    }
+
+    .nx-help a {
+      color: var(--stamp);
+      font-weight: 600;
+      text-decoration: underline;
+      text-underline-offset: 4px;
+    }
+
+    /* quick links — glass chips */
+    .nx-links {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 40px;
+    }
+
+    .nx-links a {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 12px 18px;
+      border-radius: 12px;
+      background: var(--glass-bg-light);
+      border: 1px solid var(--line-strong);
+      color: var(--body-c);
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      transition: transform 0.22s var(--ease-spring), border-color 0.22s ease, color 0.22s ease, box-shadow 0.22s ease;
+    }
+
+    .nx-links a:hover {
+      transform: translateY(-2px);
+      border-color: var(--stamp-vibrant);
+      color: var(--stamp-vibrant);
+      box-shadow: 0 8px 20px rgba(124, 58, 237, 0.14);
+    }
+
+    .nx-links a::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--stamp-vibrant);
+      opacity: 0.55;
+    }
+
+    /* quiet entrance for the chrome */
+    header,
+    .sitefoot {
+      animation: nxFadeUp 0.7s var(--ease-spring) both;
+    }
+
+    /* ---------- motion-off escape hatch (?motion=off) ----------
+       Everything lands instantly on its final frame — this is the
+       exact state prefers-reduced-motion users see, whose global
+       rule in arzuz.css collapses every animation the same way. */
+    .nx-still .d-in,
+    .nx-still .nx-eyebrow,
+    .nx-still .nx h1,
+    .nx-still h1,
+    .nx-still .nx-lede,
+    .nx-still .nx-doors,
+    .nx-still .nx-help,
+    .nx-still .nx-links a,
+    .nx-still header,
+    .nx-still .sitefoot {
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+
+    /* ?motion=off must never leave the shared 3D entrance mid-flight, nor
+       freeze the ambient drift on the wrong frame */
+    .nx-still [data-rise] {
+      opacity: 1 !important;
+      transform: none !important;
+    }
+
+    .nx-still .d-slot,
+    .nx-still .mo svg,
+    .nx-still .orb,
+    .nx-still .nx-beam,
+    .nx-still .nx-seal,
+    .nx-still .nx-eyebrow::before {
+      animation: none !important;
+    }
+
+    .nx-still .d-in {
+      /* keep the gradient shimmer's base position */
+      background-position: 30% 50%;
+    }
+
+    /* ---------- small screens ---------- */
+    @media(max-width: 640px) {
+      .nx {
+        padding-top: 34px;
+      }
+
+      .nx-digits {
+        margin-bottom: 2px;
+      }
+
+      .mo-2,
+      .mo-5 {
+        display: none;
+      }
+
+      .mo-1,
+      .mo-3,
+      .mo-4 {
+        opacity: 0.7;
+      }
+
+      .nx-doors {
+        flex-direction: column;
+        width: 100%;
+        max-width: 340px;
+      }
+
+      .nx-doors .h-btn {
+        width: 100%;
+      }
+
+      .nx-links {
+        margin-top: 32px;
+      }
+    }
+  </style>
+  <noscript><style>[data-rise]{opacity:1;transform:none}</style></noscript>
+</head>
+
+<body>
+  <header>
+    <div class="hrow">
+      <a href="/" aria-label="Arzuz Home">
+        <span class="m"><span>az</span></span>
+        <span class="hw">ar<i>z</i>u<i>z</i></span>
+      </a>
+      <span class="htag">Know before you pay.</span>
+    </div>
+  </header>
+
+  <main class="nx">
+    <!-- The object. It is decoration around the copy, not copy: the page's
+         real text is in .nx-inner below, so the whole composition is one
+         labelled image to a screen reader. Three plates at three depths,
+         plus the ambient orbs and motifs at shallower depths; motion.js
+         leans the stage toward the pointer. -->
+    <div class="nx-scene stage" data-scene role="img" aria-label="A floating compound plan, an Arzuz stamp marked not filed, and a lookup slip reading that this route is not in our index.">
+      <div class="nx-stage p3d" data-scene-stage>
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+        <div class="nx-beam"></div>
+
+        <div class="nx-planwrap" data-depth="0.42" data-z="-50">
+          <div class="nx-plan">
+            <span class="nx-plan-lbl">Compound plan</span>
+            <span class="nx-plan-pin"></span>
+          </div>
+        </div>
+
+        <div class="nx-sealwrap" data-depth="0.8" data-z="38">
+          <div class="nx-seal">
+            <b>ARZUZ</b>
+            <hr>
+            <strong>NOT FILED</strong>
+            <hr>
+            <span>no record</span>
+          </div>
+        </div>
+
+        <div class="nx-slipwrap" data-depth="1" data-z="76">
+          <div class="nx-slip" data-tilt>
+            <span class="nx-slip-hd" data-layer="0.6">Lookup</span>
+            <ul>
+              <li><b>Route</b><span>not in our index</span></li>
+              <li><b>Page</b><span>moved or never listed</span></li>
+            </ul>
+          </div>
+        </div>
+
+        <span class="mo mo-1" data-depth="0.24">
+          <svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 11.5 12 4l9 7.5" />
+            <path d="M5.5 10.2V20h13v-9.8" />
+            <path d="M10 20v-5h4v5" />
+          </svg>
+        </span>
+        <span class="mo mo-2" data-depth="0.16">
+          <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z" />
+            <circle cx="12" cy="9.5" r="2.4" />
+          </svg>
+        </span>
+        <span class="mo mo-3" data-depth="0.36">
+          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="6" />
+            <path d="m15.6 15.6 5.4 5.4" />
+          </svg>
+        </span>
+        <span class="mo mo-4" data-depth="0.2">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 11.5 12 4l9 7.5" />
+            <path d="M5.5 10.2V20h13v-9.8" />
+          </svg>
+        </span>
+        <span class="mo mo-5" data-depth="0.44">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z" />
+            <circle cx="12" cy="9.5" r="2.4" />
+          </svg>
+        </span>
+      </div>
+    </div>
+
+    <div class="nx-inner">
+      <p class="nx-eyebrow" data-rise>Error 404 &middot; Room not found</p>
+
+      <div class="nx-digits" aria-hidden="true">
+        <span class="d-slot"><span class="d-in" id="d0">4</span></span>
+        <span class="d-slot"><span class="d-in" id="d1">0</span></span>
+        <span class="d-slot"><span class="d-in" id="d2">4</span></span>
+      </div>
+
+      <h1 data-rise>This room doesn&rsquo;t exist.</h1>
+      <p class="nx-lede" data-rise>
+        The address you followed was moved, renamed, or never listed. Nothing behind it has gone
+        missing &mdash; every verified room is still right where it should be.
+      </p>
+
+      <div class="nx-doors" data-rise>
+        <a class="h-btn h-p" href="/browse">Find a room</a>
+        <a class="h-btn h-s" href="/">Back to home</a>
+      </div>
+
+      <p class="nx-help" data-rise>
+        Stuck? <a href="https://wa.me/2349024814771" target="_blank" rel="noopener noreferrer">WhatsApp us</a>
+        &mdash; a person reads every message.
+      </p>
+
+      <nav class="nx-links" data-rise aria-label="Popular pages">
+        <a href="/browse">Verified rooms</a>
+        <a href="/register">I need a room</a>
+        <a href="/list">I have a property</a>
+        <a href="/safety">Your safety</a>
+      </nav>
+    </div>
+  </main>
+
+  <div class="wrap">
+    <div class="sitefoot">
+      <div class="flinks">
+        <a href="/safety">Your safety</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="mailto:support@arzuz.com">support@arzuz.com</a>
+        <a href="https://wa.me/2349024814771" target="_blank" rel="noopener noreferrer">WhatsApp: 09024814771</a>
+      </div>
+      Arzuz does not collect rent, hold deposits, or charge you to rent, view or contact a
+      landlord. The only thing Arzuz sells is an optional Care Pass for repairs.
+      Your phone number is used to verify your account and send you matches.
+      It is never shown publicly.<br><br>
+      Arzuz. Open to students everywhere, starting in Malete, Kwara State. Pronounced AR-zuz.
+    </div>
+  </div>
+
+  <script src="/assets/motion.js"></script>
+  <script>
+    /* 404 interactions — one inline script, no dependencies.
+       Skips everything for reduced-motion users and coarse pointers;
+       ?motion=off forces the final-frame state for testing.
+       The pointer parallax and the 3D lean are NOT here: they come from the
+       shared layer (/assets/motion.js), which drives this page's
+       [data-scene] stage and its [data-depth] plates. */
+    (function () {
+      var params = new URLSearchParams(location.search);
+      var off = params.get('motion') === 'off';
+      var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var finePointer = window.matchMedia && window.matchMedia('(pointer: fine)').matches;
+
+      if (off) document.documentElement.classList.add('nx-still');
+      if (off || reduce || !finePointer) return;
+
+      /* ---- digit scramble: digits rise, glitch-search for ~0.9s, settle ----
+         ?scrambleDelay=<seconds> pushes the start back (demo/test hook). */
+      var SEQ = ['4', '0', '4'];
+      var digits = [document.getElementById('d0'), document.getElementById('d1'), document.getElementById('d2')];
+      var delay = parseFloat(params.get('scrambleDelay')) || 0;
+      var scrambleStart = performance.now() + 950 + delay * 1000; /* entrance rise is 0.95s */
+
+      /* with the ?scrambleDelay test hook, record mid-scramble values for
+         verification — real visitors (no query param) never hit this */
+      var log = delay > 0 ? (window.__scrambleLog = []) : null;
+
+      digits.forEach(function (el, i) {
+        var settleAt = scrambleStart + 900 + i * 130 + Math.random() * 200;
+        function tick(now) {
+          if (log && now >= scrambleStart && now < settleAt) log.push(el.textContent);
+          if (now >= settleAt) {
+            el.textContent = SEQ[i];
+            el.classList.add('d-set');
+            el.animate(
+              [{ transform: 'scale(1.14)' }, { transform: 'scale(1)' }],
+              { duration: 480, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' }
+            );
+            return;
+          }
+          if (now >= scrambleStart) el.textContent = String(Math.floor(Math.random() * 10));
+          setTimeout(function () { requestAnimationFrame(tick); }, 55);
+        }
+        requestAnimationFrame(tick);
+      });
+    })();
+  </script>
+</body>
+
+</html>

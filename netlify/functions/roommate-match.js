@@ -120,7 +120,6 @@ const REQUIRED_ANSWERS = [
    second guess at the same status code. Loaded exactly like
    assets/roommate-score.js above, which is the same arrangement. */
 const ApiErrors = require('../../assets/api-errors.js');
-const { projectOrigin } = require('./lib/supabase-url.js');
 
 function json(statusCode, body, kind) {
   return {
@@ -135,40 +134,22 @@ function json(statusCode, body, kind) {
    ------------------------------------------------------------ */
 
 function cfg() {
-  const rawUrl = process.env.SUPABASE_URL || process.env.SUPABASE_URL_KEY;
-  const url = projectOrigin(rawUrl, SUPABASE_URL_FALLBACK);
+  const url = (process.env.SUPABASE_URL || process.env.SUPABASE_URL_KEY || SUPABASE_URL_FALLBACK).replace(/\/+$/, '');
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-  return { url, serviceKey, ready: !!serviceKey && !!url };
+  return { url, serviceKey, ready: !!serviceKey };
 }
 
 async function sb(path, options = {}) {
   const { url, serviceKey } = cfg();
-  if (!url) {
-    const err = new Error('SUPABASE_URL must be the project HTTPS origin, for example https://<project-ref>.supabase.co; do not use a PostgreSQL connection string.');
-    err.configurationError = true;
-    throw err;
-  }
-  let res;
-  try {
-    res = await fetch(url + '/rest/v1/' + path, {
-      ...options,
-      headers: {
-        apikey: serviceKey,
-        Authorization: 'Bearer ' + serviceKey,
-        'Content-Type': 'application/json',
-        ...(options.headers || {}),
-      },
-    });
-  } catch (cause) {
-    /* URL construction, DNS and transport failures must be diagnosed
-       without echoing a potentially credential-bearing configured URL. */
-    const err = new Error(cause && cause.name === 'TypeError'
-      ? 'Could not reach the configured Supabase REST endpoint.'
-      : 'The configured Supabase REST request failed.');
-    err.cause = cause;
-    err.offline = true;
-    throw err;
-  }
+  const res = await fetch(url + '/rest/v1/' + path, {
+    ...options,
+    headers: {
+      apikey: serviceKey,
+      Authorization: 'Bearer ' + serviceKey,
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+  });
   const text = await res.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch (_) { data = text; }
@@ -846,16 +827,14 @@ exports.handler = async function (event) {
   if (event.httpMethod === 'OPTIONS') return json(204, {});
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
 
-  const configured = cfg();
-  if (!configured.url) {
+  const { ready } = cfg();
+  if (!ready) {
+    /* A 503 that is a DEPLOYMENT FACT: roommate matching cannot answer
+       until the key is added, and no amount of retrying by a student
+       will change that. 'not-ready' is what says so. */
     return json(503, {
-      error: 'Roommate matching is not switched on yet: SUPABASE_URL in Netlify must be the Supabase project HTTPS origin (https://<project-ref>.supabase.co), not a PostgreSQL connection string. Correct it, then redeploy.',
-    }, 'not-ready');
-  }
-  if (!configured.serviceKey) {
-    /* Missing credentials are a deployment fact, not a transient failure. */
-    return json(503, {
-      error: 'Roommate matching is not switched on yet: SUPABASE_SERVICE_ROLE_KEY is missing in Netlify. Add it under Site settings → Environment variables, then redeploy.',
+      error: 'Roommate matching is not switched on yet: SUPABASE_SERVICE_ROLE_KEY is missing in Netlify. ' +
+        'Add it under Site settings → Environment variables, then redeploy.',
     }, 'not-ready');
   }
 

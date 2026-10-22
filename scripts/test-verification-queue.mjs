@@ -224,7 +224,6 @@ let queue = [];
 let queueThrows = null;
 
 const roommateMatch = req(join(SITE, 'netlify/functions/roommate-match.js'));
-const liveCfg = roommateMatch.cfg;
 roommateMatch.cfg = () => ({ serviceKey: 'stub-service-key', url: 'http://stub.local' });
 roommateMatch.sb = async (path, opts) => {
   const name = String(path).replace(/^rpc\//, '');
@@ -376,39 +375,6 @@ everything late is a clock nobody can act on. */
 console.log('\n7. The chaser when the database cannot be read at all');
 {
   reset();
-  const previousUrl = process.env.SUPABASE_URL;
-  const previousKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const secretUrl = 'postgresql://private-user:TOPSECRET@db.example.supabase.co:5432/postgres';
-  process.env.SUPABASE_URL = secretUrl;
-  process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
-  const chaserPath = req.resolve(join(SITE, 'netlify/functions/verification-aging.js'));
-  const stubCfg = roommateMatch.cfg;
-  roommateMatch.cfg = liveCfg;
-  delete req.cache[chaserPath];
-  const badOriginChaser = req(chaserPath);
-  const oldError = console.error;
-  let log = '';
-  console.error = (...args) => { log += args.join(' ') + '\n'; };
-  let invalidOrigin;
-  try {
-    invalidOrigin = JSON.parse((await badOriginChaser.handler({})).body);
-  } finally {
-    console.error = oldError;
-    if (previousUrl === undefined) delete process.env.SUPABASE_URL;
-    else process.env.SUPABASE_URL = previousUrl;
-    if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
-    else process.env.SUPABASE_SERVICE_ROLE_KEY = previousKey;
-    roommateMatch.cfg = stubCfg;
-    delete req.cache[chaserPath];
-  }
-  check('a PostgreSQL URL is identified as invalid configuration, not a database migration', () =>
-    invalidOrigin.outcome === 'queue-unreadable' && invalidOrigin.kind === 'not-ready' &&
-      calls.rpc.length === 0 && calls.alerts.length === 1 &&
-      /Correct SUPABASE_URL/.test(calls.alerts[0]) && !/TOPSECRET/.test(calls.alerts[0]) &&
-      !/TOPSECRET/.test(log) && !log.includes(secretUrl)
-      ? true : JSON.stringify({ invalidOrigin, calls, log }));
-
-  reset();
   queueThrows = 'the database is not answering';
   const r = await chaser.handler({});
   const body = JSON.parse(r.body);
@@ -423,14 +389,14 @@ console.log('\n7. The chaser when the database cannot be read at all');
      with a stub that has no key — poking the export afterwards would change
      nothing and the check would pass for the wrong reason. */
   reset();
-  const chaserPathNoKey = req.resolve(join(SITE, 'netlify/functions/verification-aging.js'));
+  const chaserPath = req.resolve(join(SITE, 'netlify/functions/verification-aging.js'));
   const withKey = roommateMatch.cfg;
   roommateMatch.cfg = () => ({ serviceKey: '' });
-  delete req.cache[chaserPathNoKey];
-  const chaserNoKey = req(chaserPathNoKey);
+  delete req.cache[chaserPath];
+  const chaserNoKey = req(chaserPath);
   const out = await chaserNoKey.handler({});
   roommateMatch.cfg = withKey;
-  delete req.cache[chaserPathNoKey];
+  delete req.cache[chaserPath];
   const keyless = JSON.parse(out.body);
   check('a run with no service key says so instead of pretending to have checked', () =>
     keyless.outcome === 'no-service-key' && calls.rpc.length === 0 && calls.alerts.length === 0
