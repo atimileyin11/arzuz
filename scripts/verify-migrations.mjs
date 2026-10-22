@@ -106,9 +106,10 @@ const no = (name, why) => FAIL.push(name + '  ::  ' + why);
    commented-out CREATE cannot be mistaken for the real thing) ---- */
 const RELATION_RE = /create\s+(?:or\s+replace\s+)?(?:table|view)\s+(?:if\s+not\s+exists\s+)?(?:public\.)?"?([a-z_][a-z0-9_]*)"?/gi;
 
-const files = readdirSync(SITE).filter((f) => /^supabase-.*\.sql$/.test(f)).sort();
+const MIGRATIONS_DIR = join(SITE, 'supabase', 'migrations');
+const files = readdirSync(MIGRATIONS_DIR).filter((f) => /^supabase-.*\.sql$/.test(f)).sort();
 const plan = files.map((file) => {
-  const src = readFileSync(join(SITE, file), 'utf8').replace(/--[^\n]*/g, ' ');
+  const src = readFileSync(join(MIGRATIONS_DIR, file), 'utf8').replace(/--[^\n]*/g, ' ');
   const relations = [...new Set([...src.matchAll(RELATION_RE)].map((m) => m[1].toLowerCase()))];
   return { file, relations };
 }).filter((m) => m.relations.length);

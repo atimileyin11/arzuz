@@ -162,7 +162,8 @@ const ROLE_MODEL = 'supabase-team-roles.sql';
 /* Every root migration, whether it raises or not. Read at run time
    rather than listed, so the SCOPE check below sees a new file the
    moment it lands — that is the whole point of it. */
-const ALL_SQL = readdirSync(ROOT).filter((f) => /^supabase-.*\.sql$/.test(f)).sort();
+const MIGRATIONS_DIR = join(ROOT, 'supabase', 'migrations');
+const ALL_SQL = readdirSync(MIGRATIONS_DIR).filter((f) => /^supabase-.*\.sql$/.test(f)).sort();
 
 const EXPECTED = [
   {
@@ -823,7 +824,7 @@ function guardMessages(text) {
 }
 
 function read(file) {
-  return readFileSync(join(ROOT, file), 'utf8');
+  return readFileSync(join(MIGRATIONS_DIR, file), 'utf8');
 }
 
 console.log('Arzuz SQL preflight guards \u2014 proved on real PostgreSQL in WebAssembly');

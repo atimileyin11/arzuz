@@ -3,7 +3,9 @@
 
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#FAF7F2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0A0810" media="(prefers-color-scheme: dark)">
   <title>Arzuz Care — what is covered, and what it costs — Arzuz</title>
   <meta name="description" content="Arzuz Care is an optional repair service: bulbs, taps, locks and small leaks. The covered and not-covered lists are published in full, price included.">
   <link rel="canonical" href="https://arzuz.com/care">
@@ -24,159 +26,7 @@
   <meta name="twitter:image" content="https://arzuz.com/assets/social/og-image.png">
   <meta name="twitter:image:alt" content="Arzuz — verified student hostels, zero agent fees">
   <link rel="stylesheet" href="assets/arzuz.css">
-  <style>
-    .doc {
-      max-width: 720px;
-      margin: 0 auto;
-      padding: 34px 20px 70px
-    }
-
-    /* A reading page reveals itself quietly — a shorter, calmer rise than
-       the marketing pages get. (opacity, then transform) */
-    /* prefixed with the shared layer's gate so this page's shorter rise keeps
-       beating the shared entrance on specificity */
-    html.motion-ready .doc > [data-rise] {
-      transition-duration: .5s, .62s;
-    }
-
-    .doc h1 {
-      font-family: var(--display);
-      font-size: clamp(28px, 5vw, 40px);
-      font-weight: 800;
-      letter-spacing: -.035em;
-      line-height: 1.08;
-      margin-bottom: 20px
-    }
-
-    .doc h2 {
-      font-family: var(--display);
-      font-size: 22px;
-      font-weight: 600;
-      letter-spacing: -.02em;
-      margin: 36px 0 12px;
-      padding-top: 20px;
-      border-top: 1px solid var(--line)
-    }
-
-    .doc p {
-      font-size: 15.5px;
-      line-height: 1.65;
-      color: var(--body-c);
-      margin-bottom: 14px
-    }
-
-    .doc ul {
-      margin: 0 0 16px 0;
-      padding: 0;
-      list-style: none
-    }
-
-    .doc li {
-      font-size: 15.5px;
-      line-height: 1.6;
-      color: var(--body-c);
-      margin-bottom: 8px
-    }
-
-    .doc strong {
-      color: var(--ink)
-    }
-
-    .doc a {
-      color: var(--stamp)
-    }
-
-    .doc hr {
-      border: none;
-      border-top: 1px solid var(--line);
-      margin: 30px 0
-    }
-
-    /* price box — printed-form style */
-    .pricebox {
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-left: 3px solid var(--stamp);
-      border-radius: 0 7px 7px 0;
-      padding: 18px 22px;
-      margin: 20px 0
-    }
-
-    .pricebox .p {
-      font-family: var(--display);
-      font-size: 26px;
-      font-weight: 800;
-      letter-spacing: -.02em;
-      color: var(--ink);
-      margin-bottom: 6px
-    }
-
-    .pricebox p {
-      margin-bottom: 0;
-      font-size: 14.5px
-    }
-
-    /* The buy link sits inside the price box because that is where the
-       decision is made; it goes to the one page that can take a payment,
-       where the published terms are shown again before anything is
-       charged. */
-    .pricebox .buy {
-      display: inline-block;
-      margin-top: 12px;
-      font-weight: 700;
-      font-size: 14.5px;
-      padding: 10px 16px;
-      border-radius: 8px;
-      background: var(--ink);
-      color: #fff;
-      text-decoration: none
-    }
-
-    /* covered / not-covered lists */
-    .covbox h3 {
-      font-family: var(--display);
-      font-size: 17px;
-      font-weight: 700;
-      margin: 22px 0 10px
-    }
-
-    .cov li {
-      display: flex;
-      gap: 10px;
-      align-items: flex-start;
-      padding: 9px 14px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.6);
-      margin-bottom: 8px;
-      font-size: 14.5px
-    }
-
-    .cov li .ic {
-      flex: none;
-      font-weight: 800;
-      width: 18px;
-      text-align: center
-    }
-
-    .cov.yes li .ic {
-      color: var(--stamp)
-    }
-
-    .cov.no li .ic {
-      color: var(--alert)
-    }
-
-    .cov.no li {
-      background: transparent
-    }
-
-    .note {
-      font-size: 14px;
-      color: var(--mid);
-      line-height: 1.6
-    }
-  </style>
+  <link rel="stylesheet" href="assets/pages/care.css">
 </head>
 
 <body>

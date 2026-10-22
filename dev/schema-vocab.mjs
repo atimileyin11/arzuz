@@ -125,7 +125,8 @@ const SHAPES = [
 ];
 
 export function loadVocab(root) {
-  const files = readdirSync(root).filter((f) => /^supabase-.*\.sql$/.test(f)).sort();
+  const migrationsDir = join(root, 'supabase', 'migrations');
+  const files = readdirSync(migrationsDir).filter((f) => /^supabase-.*\.sql$/.test(f)).sort();
   const order = chainOrder(root) || [];
   const rank = (f) => {
     const i = order.indexOf(f);
@@ -134,7 +135,7 @@ export function loadVocab(root) {
 
   const entries = [];
   for (const file of files) {
-    const raw = readFileSync(join(root, file), 'utf8');
+    const raw = readFileSync(join(migrationsDir, file), 'utf8');
     const src = raw.replace(/--[^\n]*/g, blank);
     const ranges = createRanges(src).concat(alterRanges(src));
 

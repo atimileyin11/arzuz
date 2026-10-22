@@ -57,6 +57,26 @@ var Arzuz = (function(){
       '<span class="m"><span>az</span></span>'+
       '<span class="hw">ar<i>z</i>u<i>z</i></span></a>'+
       '<span class="htag">' + tag + '</span></div></header>');
+    bottomNav();
+  }
+
+  function bottomNav(){
+    if (document.querySelector('.bot-nav')) return;
+    var p = window.location.pathname.replace(/\.html$/, '');
+    var items = [
+      { href: '/', label: 'Home', icon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l7-6 7 6v9a1 1 0 01-1 1h-3v-4H8v4H4a1 1 0 01-1-1V9z"/></svg>' },
+      { href: '/browse', label: 'Browse', icon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2.5" y="2.5" width="6" height="6" rx="1.5"/><rect x="11.5" y="2.5" width="6" height="6" rx="1.5"/><rect x="2.5" y="11.5" width="6" height="6" rx="1.5"/><rect x="11.5" y="11.5" width="6" height="6" rx="1.5"/></svg>' },
+      { href: '/register', label: 'Register', cta: true, icon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M10 4v12M4 10h12"/></svg>' },
+      { href: '/status', label: 'Status', icon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="12" height="16" rx="2"/><path d="M7 7h6M7 11h4"/></svg>' }
+    ];
+    var html = '<nav class="bot-nav" aria-label="Navigation">' +
+      items.map(function(it){
+        var active = it.href === '/' ? (p === '' || p === '/') : p === it.href || p.indexOf(it.href + '/') === 0;
+        return '<a class="bot-nav-item' + (it.cta ? ' bot-nav-cta' : '') + (active ? ' active' : '') +
+          '" href="' + it.href + '"><span class="bot-nav-ico">' + it.icon + '</span>' +
+          '<span class="bot-nav-lbl">' + it.label + '</span></a>';
+      }).join('') + '</nav>';
+    document.body.insertAdjacentHTML('beforeend', html);
   }
 
   /* The footer is the site's internal-link hub: the only navigation every

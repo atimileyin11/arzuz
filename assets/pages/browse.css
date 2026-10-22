@@ -1,0 +1,280 @@
+    .bw {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 34px 24px 70px;
+    }
+
+    .bw .h-lbl { margin-bottom: 14px; }
+
+    .bw h1 {
+      margin-bottom: 12px;
+    }
+
+    .bw .lede {
+      font-size: 17px;
+      line-height: 1.6;
+      color: var(--body-c);
+      max-width: 62ch;
+      margin-bottom: 30px;
+    }
+
+    /* The half of the page that answers a question: what the badges mean,
+       how to read a price, where Arzuz actually is. The board above is
+       rendered by the server (netlify/functions/browse.js) and arrives in
+       this document, so a crawler sees the rooms AND this. It sits below
+       the listings so a visitor only scrolls into it after the rooms. */
+    .bw-more {
+      margin-top: 46px;
+      padding-top: 30px;
+      border-top: 1px solid var(--line);
+    }
+    .bw-more h2 {
+      font-size: clamp(20px, 3.4vw, 24px);
+      margin: 26px 0 10px;
+    }
+    .bw-more h2:first-child { margin-top: 0; }
+    .bw-more p {
+      font-size: 15.5px;
+      line-height: 1.62;
+      color: var(--body-c);
+      max-width: 68ch;
+      margin-bottom: 12px;
+    }
+    .bw-more ul {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 12px;
+      max-width: 68ch;
+    }
+    .bw-more li {
+      position: relative;
+      font-size: 15.5px;
+      line-height: 1.6;
+      color: var(--body-c);
+      padding: 8px 0 8px 22px;
+    }
+    .bw-more li::before {
+      content: "";
+      position: absolute;
+      left: 2px;
+      top: 16px;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--stamp);
+    }
+
+    /* honest empty state */
+    .empty {
+      background: var(--surface);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 44px 32px;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);
+    }
+    .empty .m {
+      width: 64px; height: 64px; font-size: 30px;
+      margin: 0 auto 20px;
+    }
+    .empty h2 {
+      font-size: clamp(22px, 4vw, 27px);
+      margin-bottom: 12px;
+    }
+    .empty p {
+      color: var(--body-c);
+      line-height: 1.6;
+      max-width: 52ch;
+      margin: 0 auto 8px;
+      font-size: 15.5px;
+    }
+    .empty .h-doors {
+      margin-top: 26px;
+      justify-content: center;
+    }
+
+    /* listing grid */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      background: var(--glass-bg-light);
+      backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--glass-border-light);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04);
+      transition: transform 0.28s var(--ease-spring), box-shadow 0.28s var(--ease-spring), border-color 0.28s ease;
+      display: flex;
+      flex-direction: column;
+    }
+    /* hover only where a real pointer exists — on touch this fires on tap,
+       and the card would jump under the finger. The 3D tilt layer owns the
+       transform from here. */
+    @media (hover: hover) and (pointer: fine) {
+      .card:hover {
+        /* the tilt layer writes its own transform while it is active, so
+           this one is the fallback whenever it is not bound (reduced motion) */
+        transform: translateY(-5px);
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
+        border-color: rgba(124, 58, 237, 0.35);
+      }
+    }
+
+    .card .ph {
+      position: relative;
+      aspect-ratio: 4 / 3;
+      background:
+        repeating-linear-gradient(45deg, #ECE5DC, #ECE5DC 10px, #F4EFE9 10px, #F4EFE9 20px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--mid);
+      font-size: 14px;
+      overflow: hidden;
+    }
+    .card .ph img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .card .media-chips {
+      position: absolute; left: 12px; bottom: 12px;
+      display: flex; gap: 6px; z-index: 2;
+    }
+    .card .media-chip {
+      font-size: 11px; font-weight: 700; color: #fff;
+      background: rgba(10, 8, 16, 0.55);
+      backdrop-filter: blur(6px);
+      padding: 4px 9px; border-radius: 999px;
+    }
+    .card .ph .badge {
+      position: absolute;
+      top: 12px; left: 12px;
+      margin: 0;
+    }
+
+    .card .body { padding: 18px 20px 20px; display: flex; flex-direction: column; flex: 1; }
+    .card h3 {
+      font-size: 19px;
+      margin-bottom: 4px;
+    }
+    .card .area {
+      font-size: 13.5px;
+      color: var(--mid);
+      margin-bottom: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 12px;
+    }
+    .card .price {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: 24px;
+      letter-spacing: -.02em;
+      color: var(--ink);
+      line-height: 1;
+      margin-bottom: 2px;
+    }
+    .card .per {
+      font-size: 12.5px;
+      color: var(--mid);
+      margin-bottom: 14px;
+    }
+    .card .walk {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--stamp-vibrant);
+      background: rgba(124, 58, 237, 0.08);
+      border: 1px solid rgba(124, 58, 237, 0.2);
+      border-radius: 8px;
+      padding: 6px 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 14px;
+      width: fit-content;
+    }
+    /* What the visit checked, under the walk line and above the
+       amenities: the badge names the claim, this names its parts. It is
+       deliberately quieter than the price and the walk — evidence is
+       what makes them believable, not a second headline. */
+    .card .checks {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--mid);
+      margin: -4px 0 14px;
+    }
+    .card .checks span {
+      display: block;
+      font-size: 11.5px;
+      color: var(--stamp);
+      margin-top: 2px;
+    }
+    .card .checks.stale {
+      color: #9a5b12;
+    }
+    .card .amen {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+    .card .amen span {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--stamp);
+      background: var(--stamp-soft);
+      border: 1px solid rgba(107, 59, 167, 0.18);
+      border-radius: 6px;
+      padding: 3px 8px;
+    }
+    .card .cta {
+      margin-top: auto;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .card .cta a {
+      flex: 1;
+      text-align: center;
+      text-decoration: none;
+      font-size: 14.5px;
+      font-weight: 700;
+      padding: 12px 14px;
+      border-radius: 9px;
+      border: 2px solid var(--stamp);
+      transition: transform 0.22s var(--ease-spring), background 0.22s ease;
+    }
+    .card .cta a.primary {
+      background: linear-gradient(135deg, var(--stamp) 0%, var(--stamp-vibrant) 100%);
+      color: #fff;
+      border: none;
+      box-shadow: 0 4px 14px var(--stamp-glow);
+    }
+    .card .cta a.primary:hover { transform: translateY(-2px); }
+    .card .cta a.ghost {
+      background: transparent;
+      color: var(--stamp-vibrant);
+      border-color: rgba(124, 58, 237, 0.35);
+    }
+    .card .cta a.ghost:hover { background: var(--stamp-soft); }
+
+    .note {
+      margin-top: 34px;
+      font-size: 13.5px;
+      color: var(--mid);
+      line-height: 1.65;
+      border-top: 1px solid var(--line);
+      padding-top: 20px;
+    }
+
+    @media (max-width: 640px) {
+      .bw { padding: 26px 18px 60px; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  

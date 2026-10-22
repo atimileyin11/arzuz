@@ -73,6 +73,7 @@ import { fileURLToPath } from 'node:url';
 import { loadVocab } from './schema-vocab.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const MIGRATIONS = join(ROOT, 'supabase', 'migrations');
 
 let pass = 0;
 const failures = [];
@@ -368,7 +369,7 @@ check('the registry does not name a vocabulary the schema lacks', () => {
 check('the note appender knows every word the note column allows', () => {
   const note = schema.effective('status_code_deliveries.note');
   if (!note) return 'the note CHECK is gone';
-  const src = readFileSync(join(ROOT, 'supabase-status-history.sql'), 'utf8').replace(/--[^\n]*/g, ' ');
+  const src = readFileSync(join(MIGRATIONS, 'supabase-status-history.sql'), 'utf8').replace(/--[^\n]*/g, ' ');
   const m = /known\s+text\[\]\s*:=\s*array\s*\[([\s\S]*?)\]/.exec(src);
   if (!m) return 'the appender no longer declares a `known` array in supabase-status-history.sql';
   const known = [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);

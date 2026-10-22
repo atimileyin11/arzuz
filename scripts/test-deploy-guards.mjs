@@ -54,10 +54,9 @@ const denied = new Map(REDIRECTS.filter(r => r.status === 404).map(r => [r.from,
 
 const rootFiles = await readdir(SITE);
 const mustBeDenied = [
-  ...rootFiles.filter(f => f.endsWith('.sql')).map(f => '/' + f),
   ...rootFiles.filter(f => f.endsWith('.md')).map(f => '/' + f),
   ...rootFiles.filter(f => f === 'package.json' || f === 'package-lock.json' || f === 'netlify.toml').map(f => '/' + f),
-  '/dev/*', '/scripts/*'
+  '/dev/*', '/scripts/*', '/supabase/*', '/docs/*'
 ];
 
 check('netlify.toml publishes the repo root, so every file in it is a URL',
@@ -77,9 +76,9 @@ for (const path of mustBeDenied) {
 
 /* every deny rule is deliberate: a 404 route that is not in the list above
    is either a new private path (add it to mustBeDenied) or a leftover */
-const known = new Set(mustBeDenied.map(p => (p.endsWith('/*') ? p : p)));
+const known = new Set(mustBeDenied);
 for (const from of denied.keys()) {
-  const expected = known.has(from) || /^\/(supabase-[a-z-]+\.sql|strategy.*|dev\/\*|scripts\/\*|.*\.md)$/.test(from);
+  const expected = known.has(from) || /^\/(strategy.*|dev\/\*|scripts\/\*|supabase\/\*|docs\/\*|.*\.md)$/.test(from);
   check('deny rule ' + from + ' is accounted for', expected, 'this 404 route is not in the guard list — is it still meant to be private?');
 }
 

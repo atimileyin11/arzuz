@@ -260,8 +260,8 @@ function stage(mutation) {
 
   /* every supabase-*.sql, because the guard suite reads the whole
      dependency chain for its happy-path section */
-  for (const f of readdirSync(ROOT)) {
-    if (/^supabase-.*\.sql$/.test(f)) copyFileSync(join(ROOT, f), join(dir, f));
+  for (const f of readdirSync(join(ROOT, 'supabase', 'migrations'))) {
+    if (/^supabase-.*\.sql$/.test(f)) copyFileSync(join(ROOT, 'supabase', 'migrations', f), join(dir, f));
   }
   copyFileSync(join(ROOT, HARNESS), join(dir, HARNESS));
 

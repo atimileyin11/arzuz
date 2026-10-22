@@ -61,6 +61,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const MIGRATIONS = join(ROOT, 'supabase', 'migrations');
 
 /* The order is not alphabetical, and it is the point.
 
@@ -336,7 +337,7 @@ const applied = [];
 const failuresApplying = [];
 
 async function apply(file, run) {
-  const text = readFileSync(join(ROOT, file), 'utf8');
+  const text = readFileSync(join(MIGRATIONS, file), 'utf8');
   /* Each file is one transaction, because that is how the Supabase
      SQL editor runs a pasted file — and the files rely on it: they
      raise in a preflight expecting nothing half-built to survive. */
@@ -931,7 +932,7 @@ await check('care.html\u2019s published numbers are the ones in the module', asy
    ------------------------------------------------------------ */
 section('9. The hardening file sweeps before it creates (the bug this harness found)');
 
-const hardening = readFileSync(join(ROOT, 'supabase-hardening.sql'), 'utf8');
+const hardening = readFileSync(join(MIGRATIONS, 'supabase-hardening.sql'), 'utf8');
 const sweepAt = hardening.indexOf('declare p text;');
 const firstCreateAt = hardening.indexOf('create policy "public can submit demand"');
 const lastCreateAt = hardening.lastIndexOf('create policy');
@@ -1288,7 +1289,7 @@ await check('listings.updated_at exists, is NOT NULL and defaults to now()', asy
 });
 
 await check('the backfill reads created_at, never now()', async () => {
-  const src = readFileSync(join(ROOT, 'supabase-listings-updated-at.sql'), 'utf8');
+  const src = readFileSync(join(MIGRATIONS, 'supabase-listings-updated-at.sql'), 'utf8');
   if (!/update\s+listings\s+set\s+updated_at\s*=\s*created_at/i.test(src))
     return 'the backfill is not updated_at = created_at \u2014 every listing on the site would claim to have been edited the day the SQL was run';
   return /where\s+updated_at\s+is\s+null/i.test(src) ? true : 'the backfill is not restricted to rows that have no stamp yet';
@@ -1870,7 +1871,7 @@ section('13b. supabase-claims.sql refuses a half-built database');
   const bare = new PGlite();
   let raised = '';
   try {
-    await bare.exec(readFileSync(join(ROOT, 'supabase-claims.sql'), 'utf8'));
+    await bare.exec(readFileSync(join(MIGRATIONS, 'supabase-claims.sql'), 'utf8'));
   } catch (err) {
     raised = why(err);
   }

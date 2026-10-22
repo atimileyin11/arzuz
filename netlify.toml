@@ -235,189 +235,28 @@
   # somebody rotates the key by creating a new file.
   included_files = ["netlify/functions/**", "listing.html", "browse.html", "404.html", "assets/listing-url.js", "assets/verification-badge.js", "assets/listing-score.js", "assets/indexnow.js", "8e15f62cc98636edef91c1ba76943ebb.txt", "strategy/*.md"]
 
+# Strip .html from every page URL. Netlify already serves browse.html at /browse etc.;
+# this redirect kills the ugly /*.html version permanently.
+# force = true is required because the .html files physically exist — without it
+# Netlify serves the file directly instead of applying the redirect.
+[[redirects]]
+  from   = "/*.html"
+  to     = "/:splat"
+  status = 301
+  force  = true
+
 # Repo files that are NOT part of the website. `publish = "."` means Netlify
-# will happily serve any of them as plain text — and it was: supabase-hardening.sql
-# and supabase-media-booking.sql were both publicly readable, handing anyone the
-# complete RLS design, the table shapes and the admin model in one fetch. The
-# database is the real boundary (see supabase-team-roles.sql); this simply stops
-# the map from being handed out with it. None of these paths is requested by the
-# live site, and the dev harnesses are meant to run on localhost (they are
-# localhost-guarded anyway).
-# Netlify path patterns cannot wildcard mid-segment (`/*.sql` does NOT match
-# /supabase-schema.sql — only a trailing /* does), so each SQL file is listed.
-# ADD A LINE HERE WHEN YOU ADD A supabase-*.sql FILE. Verified on the live site:
-# every one of these must answer 404, or the whole RLS design is public.
+# serves every file in root as a public URL. SQL migrations, docs, and dev
+# tooling are blocked here so the schema design and operational notes stay private.
+
+# All SQL migrations — moved to supabase/migrations/ (one rule covers all of them)
 [[redirects]]
-  from = "/supabase-roommate.sql"
+  from = "/supabase/*"
   to   = "/404.html"
   status = 404
   force = true
 
-[[redirects]]
-  from = "/supabase-schema.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-[[redirects]]
-  from = "/supabase-hardening.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-[[redirects]]
-  from = "/supabase-team-roles.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-[[redirects]]
-  from = "/supabase-drafts-support.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-[[redirects]]
-  from = "/supabase-draft-sharing.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-[[redirects]]
-  from = "/supabase-media-booking.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-[[redirects]]
-  from = "/supabase-location.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-[[redirects]]
-  from = "/supabase-public-view.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-# The Care ledger. This line was MISSING until the Care feature was
-# finished: `publish = "."` serves every repo file, so the moment the
-# next deploy shipped, the complete RLS design for Care credits — table
-# shapes, view definitions, the check-list of what support may read —
-# would have been a public URL. (It answers 404 on the live site today
-# only because the deployed build predates this file.)
-[[redirects]]
-  from = "/supabase-care.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-# The Care ledger is the same class of file as the rest of them: its CHECK
-# constraints and RLS policies describe the whole credit model. scripts/
-# test-deploy-guards.mjs fails the build if a supabase-*.sql is ever added
-# without the rule above this line.
-[[redirects]]
-  from = "/supabase-care.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-# The launch waitlist migration. Same class of file as the rest: it
-# describes the reference format, the throttle ceilings and, in its
-# comments, exactly which staff role may read the audit trail — a map
-# worth more to an attacker than to anyone else. scripts/
-# test-deploy-guards.mjs fails the build if a supabase-*.sql is ever
-# added without the rule above this line.
-[[redirects]]
-  from = "/supabase-waitlist-launch.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-# The file that closes the direct path. It is the last migration in the
-# chain and, like the others, it says in prose what the database now
-# refuses and which role holds what — the same map. scripts/
-# test-deploy-guards.mjs fails the build if a supabase-*.sql is ever
-# added without the rule above this line.
-[[redirects]]
-  from = "/supabase-close-public-inserts.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-# The column-scoped verification RPC. Its header spells out which officer
-# may change which four columns of a listing and why the row-wide policy
-# was withdrawn — a description of the write path, which is the map these
-# rules exist to keep off the public web. Same rule as every other
-# supabase-*.sql: scripts/test-deploy-guards.mjs fails the build if a new
-# one is ever added without it.
-[[redirects]]
-  from = "/supabase-verification-rpc.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-# The shift: who holds which listing, the append-only trail of takes and
-# releases, and the note fields the chaser writes when it takes a job
-# back. A file that describes how the verification queue is worked is a
-# map of the operation, which is the same reason as every other
-# supabase-*.sql here.
-[[redirects]]
-  from = "/supabase-verification-queue.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-# The status page's code table and its own throttle. Its header is the
-# clearest single description of how a reference is proved to belong to
-# the person holding it, which is a description of the mechanism anyone
-# trying to read someone else's file would want. Same rule as every other
-# supabase-*.sql.
-[[redirects]]
-  from = "/supabase-status-codes.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-# The desk's half of the same page: the delivery trail and the function
-# that reads it. Same rule again — it describes which logins may ask
-# about a reference and what the answer contains.
-[[redirects]]
-  from = "/supabase-status-history.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-# The evidence a verification visit leaves behind: who inspected the
-# property, what they saw and when. Same rule as every other supabase-*.sql
-# — and the one the deploy guard caught, because a file added without a rule
-# here is a public URL rather than a private one.
-[[redirects]]
-  from = "/supabase-verification-evidence.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-# The duplicate-check fast path: which column the tail lives in and the
-# trigger that keeps it honest. Same rule as every other supabase-*.sql
-# — scripts/test-deploy-guards.mjs fails the build if a new one is ever
-# added without it.
-[[redirects]]
-  from = "/supabase-phone-tail.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-# The alert outbox and the shared send throttle (see below). Same rule —
-# it names the retry table and the per-minute ceilings, which is the map
-# these rules exist to keep off the public web.
-[[redirects]]
-  from = "/supabase-alert-outbox.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
+# Dev tooling and scripts
 [[redirects]]
   from = "/dev/*"
   to   = "/404.html"
@@ -430,59 +269,21 @@
   status = 404
   force = true
 
+# Documentation (moved to docs/)
+[[redirects]]
+  from = "/docs/*"
+  to   = "/404.html"
+  status = 404
+  force = true
+
+# Root markdown (README.md stays at root)
 [[redirects]]
   from = "/README.md"
   to   = "/404.html"
   status = 404
   force = true
 
-[[redirects]]
-  from = "/SETUP.md"
-  to   = "/404.html"
-  status = 404
-  force = true
-# SEO.md is the runbook for the one thing the other docs do not cover, and
-# it names the live gaps in this site by name — the private SQL files, the
-# unindexed listings, the hand-maintained lastmod. Same rule as README.md
-# and SETUP.md, and scripts/test-deploy-guards.mjs fails the build if a new
-# root .md file is ever added without one of these.
-[[redirects]]
-  from = "/SEO.md"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-# LAUNCH-READINESS.md is the worst of them to leak: it is a written list of
-# the residual risks in this site, the env vars each function needs, which
-# migrations are still unapplied and what a verification step does not yet
-# cover. It was created and left with no rule, which the guard below caught.
-[[redirects]]
-  from = "/LAUNCH-READINESS.md"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-# LAUNCH-RUNBOOK.md is the operator's copy of the same thing: the ordered
-# list of which migration has not run, which credential a step depends on,
-# and the exact command that re-verifies each one. It is a map of where the
-# site is soft, so it is served to nobody.
-[[redirects]]
-  from = "/LAUNCH-RUNBOOK.md"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-# Implementation acceptance and operational notes stay in the repository,
-# not on the public website (publish = "." exposes root files by default).
-[[redirects]]
-  from = "/IMPLEMENTATION-PLAN.md"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-# Same rule as the SQL files, for the dev tooling: publish = "." puts these
-# on the public web the moment they are committed. They describe what the
-# repo runs locally, which is nobody's business but the owner's.
+# Config files
 [[redirects]]
   from = "/netlify.toml"
   to   = "/404.html"
@@ -856,27 +657,3 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
 
-# The money core. Same rule as every other supabase-*.sql: `publish = "."`
-# makes every repo file a URL, and this file names the ledger's accounts,
-# the payment constraints and the referral uniqueness. Public reads of the
-# RLS design are how the whole point of it is lost.
-[[redirects]]
-  from = "/supabase-claims.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-[[redirects]]
-  from = "/supabase-finance.sql"
-  to   = "/404.html"
-  status = 404
-  force = true
-
-# The listings edit stamp: one column, one trigger, and the reason the
-# listings sitemap can report a truthful lastmod. Same rule as the rest —
-# it is schema design, not part of the website.
-[[redirects]]
-  from = "/supabase-listings-updated-at.sql"
-  to   = "/404.html"
-  status = 404
-  force = true

@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FAF7F2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0A0810" media="(prefers-color-scheme: dark)">
+<title>Arzuz — Team Board</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="assets/icons/favicon.ico" sizes="any">
+<link rel="stylesheet" href="assets/arzuz.css">
+<link rel="stylesheet" href="assets/admin.css?v=16">
+<style>
+/* ---- task board layout ---- */
+.board-wrap {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+  padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
+  align-items: start;
+}
+.board-col { display: flex; flex-direction: column; gap: 10px; }
+.col-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  font-size: 12.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--mid);
+}
+.col-head .col-count {
+  margin-left: auto;
+  background: var(--line); border-radius: var(--r-full);
+  padding: 1px 7px; font-size: 11px;
+}
+/* status dot colours */
+.dot-backlog  { background: var(--mid); }
+.dot-active   { background: #3B82F6; }
+.dot-review   { background: #F59E0B; }
+.dot-done     { background: #10B981; }
+.dot-blocked  { background: var(--alert); }
+.col-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ---- task card ---- */
+.task-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  position: relative;
+}
+.task-card:hover {
+  border-color: var(--stamp-light);
+  box-shadow: 0 2px 12px var(--stamp-glow);
+}
+.task-title {
+  font-size: 14px; font-weight: 600; color: var(--ink);
+  margin-bottom: 8px; line-height: 1.35;
+}
+.task-meta {
+  display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px;
+}
+.tag {
+  font-size: 10.5px; font-weight: 600; padding: 2px 7px;
+  border-radius: var(--r-full); background: var(--line);
+  color: var(--mid); white-space: nowrap;
+}
+.tag-urgent  { background: rgba(199,62,29,0.15); color: var(--alert); }
+.tag-high    { background: rgba(245,158,11,0.15); color: #D97706; }
+.tag-medium  { background: var(--stamp-soft); color: var(--stamp); }
+.tag-low     { background: var(--line); color: var(--mid); }
+.task-owner {
+  font-size: 12px; color: var(--mid); margin-top: 6px;
+  display: flex; align-items: center; gap: 5px;
+}
+.task-due {
+  font-size: 11.5px; color: var(--mid); margin-top: 4px;
+}
+.task-due.overdue { color: var(--alert); font-weight: 600; }
+.task-notes {
+  font-size: 12.5px; color: var(--mid); margin-top: 8px;
+  line-height: 1.5; border-top: 1px solid var(--line); padding-top: 8px;
+}
+.card-del-btn {
+  position: absolute; top: 10px; right: 10px;
+  background: none; border: none; cursor: pointer;
+  color: var(--mid); font-size: 14px; padding: 2px 5px;
+  border-radius: 5px; display: none;
+  transition: color 0.15s, background 0.15s;
+}
+.task-card:hover .card-del-btn { display: block; }
+.card-del-btn:hover { color: var(--alert); background: rgba(199,62,29,0.1); }
+
+/* ---- add task button ---- */
+.add-task-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 14px;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: none; color: var(--mid); font-size: 13px; font-weight: 500;
+  cursor: pointer; width: 100%;
+  transition: border-color 0.15s, color 0.15s;
+}
+.add-task-btn:hover { border-color: var(--stamp-light); color: var(--stamp); }
+
+/* ---- modal ---- */
+.modal-bg {
+  display: none; position: fixed; inset: 0; z-index: 1000;
+  background: rgba(10,8,16,0.55); backdrop-filter: blur(4px);
+  align-items: center; justify-content: center; padding: 16px;
+}
+.modal-bg.open { display: flex; }
+.modal-card {
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xl);
+  padding: 28px;
+  width: 100%; max-width: 440px;
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+}
+.modal-card h3 { font-size: 18px; margin-bottom: 20px; }
+.modal-card label {
+  display: block; font-size: 12.5px; font-weight: 700;
+  color: var(--mid); margin-bottom: 5px; margin-top: 14px;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.modal-card input,
+.modal-card select,
+.modal-card textarea {
+  width: 100%; padding: 10px 12px;
+  background: var(--surface);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--r-md);
+  font-size: 14px; font-family: var(--body);
+  color: var(--ink);
+}
+.modal-card textarea { min-height: 80px; resize: vertical; }
+.modal-card input:focus,
+.modal-card select:focus,
+.modal-card textarea:focus {
+  outline: none; border-color: var(--stamp-vibrant);
+}
+.modal-actions {
+  display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;
+}
+.btn-cancel {
+  padding: 10px 18px; border-radius: var(--r-full);
+  background: none; border: 1.5px solid var(--line-strong);
+  color: var(--mid); font-size: 14px; cursor: pointer;
+}
+.btn-save {
+  padding: 10px 22px; border-radius: var(--r-full);
+  background: linear-gradient(135deg, var(--stamp) 0%, var(--stamp-vibrant) 100%);
+  border: none; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---- topbar actions ---- */
+.team-actions { display: flex; gap: 10px; align-items: center; }
+.btn-new-task {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: var(--r-full);
+  background: linear-gradient(135deg, var(--stamp) 0%, var(--stamp-vibrant) 100%);
+  border: none; color: #fff; font-size: 13.5px; font-weight: 600; cursor: pointer;
+}
+
+/* ---- status change in detail view ---- */
+.status-select-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.status-opt {
+  padding: 5px 12px; border-radius: var(--r-full); font-size: 12px; font-weight: 600;
+  border: 1.5px solid var(--line); background: none; cursor: pointer; color: var(--mid);
+  transition: all 0.15s;
+}
+.status-opt.sel, .status-opt:hover {
+  border-color: var(--stamp); color: var(--stamp); background: var(--stamp-soft);
+}
+
+/* empty state */
+.board-empty {
+  grid-column: 1 / -1; text-align: center;
+  padding: 60px 20px; color: var(--mid); font-size: 14px;
+}
+</style>
+</head>
+<body class="admin-body">
+
+<!-- Auth Gate -->
+<div class="gate-wrap" id="gateModal" style="display:none;">
+  <div class="gate-card">
+    <div class="m"><span>az</span></div>
+    <h2>Team Board</h2>
+    <p>Internal task tracker. Sign in with your admin account.</p>
+    <div class="lockout-msg" id="gateErr"></div>
+    <input type="email" id="gateEmail" placeholder="you@example.com" autofocus autocomplete="username">
+    <input type="password" id="gatePass" placeholder="Password" autocomplete="current-password">
+    <button class="next btn-wide" id="btnUnlock">Sign in</button>
+    <p class="gate-foot">Signed in with Supabase Auth · session ends when you close this tab</p>
+  </div>
+</div>
+
+<!-- Sidebar -->
+<div class="side-scrim" id="sideScrim" aria-hidden="true"></div>
+<aside class="admin-side" id="adminSide">
+  <a href="/" class="admin-brand">
+    <span class="m"><span>az</span></span>
+    <strong>arzuz <i>team</i></strong>
+  </a>
+  <nav class="admin-nav">
+    <a class="nav-item" href="/admin">← Admin Dashboard</a>
+    <span class="nav-group-label">Board</span>
+    <button class="nav-item active" id="navAll">All tasks</button>
+    <button class="nav-item" id="navMine">Assigned to me</button>
+    <span class="nav-group-label">Categories</span>
+    <button class="nav-item nav-cat" data-cat="">All categories</button>
+    <button class="nav-item nav-cat" data-cat="product">Product</button>
+    <button class="nav-item nav-cat" data-cat="ops">Ops</button>
+    <button class="nav-item nav-cat" data-cat="growth">Growth</button>
+    <button class="nav-item nav-cat" data-cat="tech">Tech</button>
+    <button class="nav-item nav-cat" data-cat="finance">Finance</button>
+    <button class="nav-item nav-cat" data-cat="legal">Legal</button>
+  </nav>
+  <div class="admin-side-foot">
+    <span class="who-badge" id="whoBadge"></span>
+    <button class="btn-inline danger" id="btnLock">Sign out</button>
+  </div>
+</aside>
+
+<!-- Main -->
+<main class="admin-main">
+  <header class="admin-topbar">
+    <div class="topbar-left">
+      <button type="button" class="side-toggle" id="sideToggle" aria-label="Toggle navigation">☰</button>
+      <h1>Team Board</h1>
+    </div>
+    <div class="topbar-actions team-actions">
+      <button class="btn-new-task" id="btnNewTask">+ New task</button>
+    </div>
+  </header>
+
+  <!-- Task Board -->
+  <div class="board-wrap" id="boardWrap">
+    <div class="board-empty" id="boardEmpty" hidden>No tasks yet. Create the first one.</div>
+  </div>
+</main>
+
+<!-- New / Edit Task Modal -->
+<div class="modal-bg" id="taskModal" role="dialog" aria-modal="true" aria-label="Task">
+  <div class="modal-card">
+    <h3 id="modalTitle">New task</h3>
+    <label for="ftTitle">Title</label>
+    <input type="text" id="ftTitle" placeholder="What needs to happen?" maxlength="200">
+    <label for="ftNotes">Notes</label>
+    <textarea id="ftNotes" placeholder="Context, links, acceptance criteria…"></textarea>
+    <label for="ftPriority">Priority</label>
+    <select id="ftPriority">
+      <option value="low">Low</option>
+      <option value="medium" selected>Medium</option>
+      <option value="high">High</option>
+      <option value="urgent">Urgent</option>
+    </select>
+    <label for="ftCategory">Category</label>
+    <select id="ftCategory">
+      <option value="product">Product</option>
+      <option value="ops">Ops</option>
+      <option value="growth">Growth</option>
+      <option value="tech">Tech</option>
+      <option value="finance">Finance</option>
+      <option value="legal">Legal</option>
+    </select>
+    <label for="ftOwner">Owner</label>
+    <input type="text" id="ftOwner" placeholder="Name or @handle">
+    <label for="ftDue">Due date</label>
+    <input type="date" id="ftDue">
+    <div id="editStatusRow" style="display:none;">
+      <label>Status</label>
+      <div class="status-select-row">
+        <button class="status-opt" data-s="backlog">Backlog</button>
+        <button class="status-opt" data-s="active">Active</button>
+        <button class="status-opt" data-s="review">Review</button>
+        <button class="status-opt" data-s="done">Done</button>
+        <button class="status-opt" data-s="blocked">Blocked</button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="btnModalClose">Cancel</button>
+      <button class="btn-save" id="btnModalSave">Save task</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/config.js"></script>
+<script>
+/* ---------- Supabase client (same pattern as admin.html) ---------- */
+const CFG = window.ARZUZ_CONFIG || {};
+const SB_URL  = CFG.SUPABASE_URL  || '';
+const SB_ANON = CFG.SUPABASE_ANON_KEY || '';
+
+async function sbFetch(path, opts = {}) {
+  const headers = {
+    'apikey': SB_ANON,
+    'Authorization': 'Bearer ' + (currentSession ? currentSession.access_token : SB_ANON),
+    'Content-Type': 'application/json',
+    'Prefer': opts.prefer || '',
+    ...opts.headers
+  };
+  const res = await fetch(SB_URL + path, { ...opts, headers });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || res.statusText);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+/* ---------- Auth ---------- */
+let currentSession = null;
+let currentUser    = null;
+
+function showGate(msg) {
+  document.getElementById('gateErr').textContent = msg || '';
+  document.getElementById('gateModal').style.display = 'flex';
+}
+function hideGate() {
+  document.getElementById('gateModal').style.display = 'none';
+}
+
+async function checkAuth() {
+  try {
+    const stored = localStorage.getItem('sb-session');
+    if (!stored) { showGate(); return; }
+    const session = JSON.parse(stored);
+    if (session.expires_at && Date.now() / 1000 > session.expires_at) {
+      localStorage.removeItem('sb-session');
+      showGate('Session expired. Sign in again.');
+      return;
+    }
+    currentSession = session;
+    const me = await sbFetch('/auth/v1/user');
+    currentUser = me;
+    document.getElementById('whoBadge').textContent = me.email || '';
+    hideGate();
+    loadBoard();
+  } catch(e) {
+    showGate();
+  }
+}
+
+async function signIn() {
+  const email = document.getElementById('gateEmail').value.trim();
+  const pass  = document.getElementById('gatePass').value;
+  const err   = document.getElementById('gateErr');
+  err.textContent = '';
+  try {
+    const r = await fetch(SB_URL + '/auth/v1/token?grant_type=password', {
+      method: 'POST',
+      headers: { 'apikey': SB_ANON, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pass })
+    });
+    const data = await r.json();
+    if (!r.ok) { err.textContent = data.error_description || data.message || 'Sign-in failed.'; return; }
+    currentSession = data;
+    localStorage.setItem('sb-session', JSON.stringify(data));
+    currentUser = { email };
+    document.getElementById('whoBadge').textContent = email;
+    hideGate();
+    loadBoard();
+  } catch(e) {
+    err.textContent = 'Network error. Try again.';
+  }
+}
+
+document.getElementById('btnUnlock').addEventListener('click', signIn);
+document.getElementById('gatePass').addEventListener('keydown', e => { if (e.key === 'Enter') signIn(); });
+document.getElementById('btnLock').addEventListener('click', () => {
+  localStorage.removeItem('sb-session');
+  currentSession = null;
+  location.reload();
+});
+
+/* ---------- Sidebar toggle ---------- */
+document.getElementById('sideToggle').addEventListener('click', () => {
+  document.getElementById('adminSide').classList.toggle('open');
+});
+document.getElementById('sideScrim').addEventListener('click', () => {
+  document.getElementById('adminSide').classList.remove('open');
+});
+
+/* ---------- Tasks state ---------- */
+let allTasks = [];
+let filterCat = '';
+let filterMine = false;
+
+/* ---------- Load board ---------- */
+async function loadBoard() {
+  try {
+    const tasks = await sbFetch('/rest/v1/team_tasks?order=created_at.desc&select=*');
+    allTasks = tasks || [];
+    renderBoard();
+  } catch(e) {
+    console.error('load tasks', e);
+  }
+}
+
+/* ---------- Render ---------- */
+const COLS = [
+  { key: 'backlog',  label: 'Backlog'  },
+  { key: 'active',   label: 'Active'   },
+  { key: 'review',   label: 'Review'   },
+  { key: 'done',     label: 'Done'     },
+  { key: 'blocked',  label: 'Blocked'  },
+];
+
+function renderBoard() {
+  const board = document.getElementById('boardWrap');
+  let tasks = allTasks;
+  if (filterCat) tasks = tasks.filter(t => t.category === filterCat);
+  if (filterMine && currentUser) tasks = tasks.filter(t => t.owner && t.owner.toLowerCase().includes((currentUser.email || '').split('@')[0].toLowerCase()));
+
+  board.innerHTML = '';
+  const empty = document.getElementById('boardEmpty');
+  if (tasks.length === 0) { empty.hidden = false; board.appendChild(empty); return; }
+  empty.hidden = true;
+
+  COLS.forEach(col => {
+    const colTasks = tasks.filter(t => t.status === col.key);
+    const div = document.createElement('div');
+    div.className = 'board-col';
+    div.innerHTML = `<div class="col-head"><span class="col-dot dot-${col.key}"></span>${col.label}<span class="col-count">${colTasks.length}</span></div>` +
+      colTasks.map(taskCard).join('') +
+      `<button class="add-task-btn" data-col="${col.key}">+ Add task</button>`;
+    board.appendChild(div);
+  });
+
+  board.querySelectorAll('.task-card').forEach(el => {
+    el.addEventListener('click', e => {
+      if (e.target.closest('.card-del-btn')) return;
+      openModal(el.dataset.id);
+    });
+  });
+  board.querySelectorAll('.card-del-btn').forEach(el => {
+    el.addEventListener('click', e => { e.stopPropagation(); deleteTask(el.dataset.id); });
+  });
+  board.querySelectorAll('.add-task-btn').forEach(el => {
+    el.addEventListener('click', () => openModal(null, el.dataset.col));
+  });
+}
+
+function taskCard(t) {
+  const now = new Date(); now.setHours(0,0,0,0);
+  const due = t.due_date ? new Date(t.due_date) : null;
+  const overdue = due && due < now && t.status !== 'done';
+  const canDel = currentUser && t.created_by === currentUser.id;
+  return `<div class="task-card" data-id="${t.id}">` +
+    (canDel ? `<button class="card-del-btn" data-id="${t.id}" title="Delete" aria-label="Delete task">✕</button>` : '') +
+    `<div class="task-title">${esc(t.title)}</div>` +
+    `<div class="task-meta"><span class="tag tag-${t.priority}">${t.priority}</span><span class="tag">${t.category}</span></div>` +
+    (t.owner ? `<div class="task-owner">👤 ${esc(t.owner)}</div>` : '') +
+    (t.due_date ? `<div class="task-due${overdue ? ' overdue' : ''}">Due ${formatDate(t.due_date)}${overdue ? ' · overdue' : ''}</div>` : '') +
+    (t.notes ? `<div class="task-notes">${esc(t.notes).replace(/\n/g, '<br>')}</div>` : '') +
+    '</div>';
+}
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function formatDate(d) {
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/* ---------- Filter nav ---------- */
+document.getElementById('navAll').addEventListener('click', e => {
+  filterMine = false; renderBoard();
+  setActive(e.target, '#navAll,#navMine');
+});
+document.getElementById('navMine').addEventListener('click', e => {
+  filterMine = true; renderBoard();
+  setActive(e.target, '#navAll,#navMine');
+});
+document.querySelectorAll('.nav-cat').forEach(btn => {
+  btn.addEventListener('click', e => {
+    filterCat = btn.dataset.cat;
+    renderBoard();
+    setActive(btn, '.nav-cat');
+  });
+});
+function setActive(el, selector) {
+  document.querySelectorAll(selector).forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+}
+
+/* ---------- Modal ---------- */
+let editingId = null;
+let editingStatus = 'backlog';
+
+function openModal(id, defaultCol) {
+  editingId = id || null;
+  const modal = document.getElementById('taskModal');
+  const title = document.getElementById('modalTitle');
+  const statusRow = document.getElementById('editStatusRow');
+
+  if (id) {
+    const t = allTasks.find(x => x.id === id);
+    if (!t) return;
+    title.textContent = 'Edit task';
+    document.getElementById('ftTitle').value = t.title;
+    document.getElementById('ftNotes').value = t.notes || '';
+    document.getElementById('ftPriority').value = t.priority;
+    document.getElementById('ftCategory').value = t.category;
+    document.getElementById('ftOwner').value = t.owner || '';
+    document.getElementById('ftDue').value = t.due_date || '';
+    editingStatus = t.status;
+    statusRow.style.display = '';
+  } else {
+    title.textContent = 'New task';
+    document.getElementById('ftTitle').value = '';
+    document.getElementById('ftNotes').value = '';
+    document.getElementById('ftPriority').value = 'medium';
+    document.getElementById('ftCategory').value = 'product';
+    document.getElementById('ftOwner').value = '';
+    document.getElementById('ftDue').value = '';
+    editingStatus = defaultCol || 'backlog';
+    statusRow.style.display = 'none';
+  }
+  document.querySelectorAll('.status-opt').forEach(b => {
+    b.classList.toggle('sel', b.dataset.s === editingStatus);
+  });
+  modal.classList.add('open');
+  document.getElementById('ftTitle').focus();
+}
+
+document.querySelectorAll('.status-opt').forEach(btn => {
+  btn.addEventListener('click', () => {
+    editingStatus = btn.dataset.s;
+    document.querySelectorAll('.status-opt').forEach(b => b.classList.toggle('sel', b === btn));
+  });
+});
+
+document.getElementById('btnModalClose').addEventListener('click', () => {
+  document.getElementById('taskModal').classList.remove('open');
+});
+document.getElementById('taskModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+});
+
+document.getElementById('btnNewTask').addEventListener('click', () => openModal(null));
+
+document.getElementById('btnModalSave').addEventListener('click', saveTask);
+
+async function saveTask() {
+  const t = document.getElementById('ftTitle').value.trim();
+  if (!t) { document.getElementById('ftTitle').focus(); return; }
+  const payload = {
+    title:    t,
+    notes:    document.getElementById('ftNotes').value.trim() || null,
+    priority: document.getElementById('ftPriority').value,
+    category: document.getElementById('ftCategory').value,
+    owner:    document.getElementById('ftOwner').value.trim() || null,
+    due_date: document.getElementById('ftDue').value || null,
+    status:   editingStatus,
+  };
+  const btn = document.getElementById('btnModalSave');
+  btn.disabled = true;
+  try {
+    if (editingId) {
+      await sbFetch('/rest/v1/team_tasks?id=eq.' + editingId, {
+        method: 'PATCH', prefer: 'return=minimal',
+        body: JSON.stringify(payload)
+      });
+      Object.assign(allTasks.find(x => x.id === editingId), payload);
+    } else {
+      payload.created_by = currentUser ? currentUser.id : null;
+      const [row] = await sbFetch('/rest/v1/team_tasks', {
+        method: 'POST', prefer: 'return=representation',
+        body: JSON.stringify(payload)
+      });
+      if (row) allTasks.unshift(row);
+    }
+    document.getElementById('taskModal').classList.remove('open');
+    renderBoard();
+  } catch(e) {
+    alert('Could not save task: ' + e.message);
+  }
+  btn.disabled = false;
+}
+
+async function deleteTask(id) {
+  if (!confirm('Delete this task?')) return;
+  try {
+    await sbFetch('/rest/v1/team_tasks?id=eq.' + id, { method: 'DELETE', prefer: 'return=minimal' });
+    allTasks = allTasks.filter(t => t.id !== id);
+    renderBoard();
+  } catch(e) {
+    alert('Could not delete: ' + e.message);
+  }
+}
+
+/* ---------- boot ---------- */
+checkAuth();
+</script>
+</body>
+</html>

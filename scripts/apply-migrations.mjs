@@ -47,32 +47,34 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 /* The order is LAUNCH-READINESS §3a's, narrowed to the files this
    project is actually missing. Each line names what it creates, so a
    failure is readable without opening the SQL. */
+const MIGRATIONS = 'supabase/migrations';
+
 const PLAN = [
-  ['supabase-waitlist-launch.sql', 'waitlist_ref_registry, submission_guard, staff_audit_log'],
-  ['supabase-status-codes.sql', 'status_codes, status_guard — the /status page reads these'],
-  ['supabase-status-history.sql', 'status_code_deliveries'],
-  ['supabase-care.sql', 'care_plans, care_credit_events, care_credit_balance, care_plans_live'],
+  [`${MIGRATIONS}/supabase-waitlist-launch.sql`, 'waitlist_ref_registry, submission_guard, staff_audit_log'],
+  [`${MIGRATIONS}/supabase-status-codes.sql`, 'status_codes, status_guard — the /status page reads these'],
+  [`${MIGRATIONS}/supabase-status-history.sql`, 'status_code_deliveries'],
+  [`${MIGRATIONS}/supabase-care.sql`, 'care_plans, care_credit_events, care_credit_balance, care_plans_live'],
   /* finance before claims, not after: supabase-claims.sql refuses to run
      without ledger_entries, which finance creates. The order is the
      guard's, not a preference. */
-  ['supabase-finance.sql', 'finance_config, product_terms, payments, ledger_entries, referrals, …'],
-  ['supabase-claims.sql', 'repair_claims, claim_events, claims_summary'],
-  ['supabase-roommate.sql', 'roommate_profiles, roommate_interests, roommate_events, …'],
-  ['supabase-verification-queue.sql', 'verification_events'],
+  [`${MIGRATIONS}/supabase-finance.sql`, 'finance_config, product_terms, payments, ledger_entries, referrals, …'],
+  [`${MIGRATIONS}/supabase-claims.sql`, 'repair_claims, claim_events, claims_summary'],
+  [`${MIGRATIONS}/supabase-roommate.sql`, 'roommate_profiles, roommate_interests, roommate_events, …'],
+  [`${MIGRATIONS}/supabase-verification-queue.sql`, 'verification_events'],
   /* the evidence file reads the shift rpc creates, so it goes between
      the two — its own guard says so */
-  ['supabase-verification-rpc.sql', 'verification_shift, verification_decision — the rpc the queue calls'],
-  ['supabase-verification-evidence.sql', 'listing_evidence, public_listing_checks'],
+  [`${MIGRATIONS}/supabase-verification-rpc.sql`, 'verification_shift, verification_decision — the rpc the queue calls'],
+  [`${MIGRATIONS}/supabase-verification-evidence.sql`, 'listing_evidence, public_listing_checks'],
   /* resilience: the duplicate-check fast path (phone_tail + trigger +
      index on the five public tables) and the alert outbox with the
      shared send throttle. Both additive; the door and the drain fall
      back gracefully until they are run, but every submit pays the
      fifty-row scan and every alert is unretried until they are. */
-  ['supabase-phone-tail.sql', 'phone_tail on the five public tables'],
-  ['supabase-alert-outbox.sql', 'alert_outbox, alert_send_log, alert_throttle()'],
+  [`${MIGRATIONS}/supabase-phone-tail.sql`, 'phone_tail on the five public tables'],
+  [`${MIGRATIONS}/supabase-alert-outbox.sql`, 'alert_outbox, alert_send_log, alert_throttle()'],
 ];
 
-const LOCKDOWN = ['supabase-close-public-inserts.sql', 'revokes anon INSERT on the five public tables'];
+const LOCKDOWN = [`${MIGRATIONS}/supabase-close-public-inserts.sql`, 'revokes anon INSERT on the five public tables'];
 
 const argFile = (() => {
   const hit = process.argv.find((a) => a.startsWith('--url-file='));

@@ -275,6 +275,7 @@ var ArzuzMotion = (function () {
 
     if (fine && !reduce) bindTilt();
     scan();
+    bindHeader();
 
     if ('MutationObserver' in window) {
       watcher = new MutationObserver(function () {
@@ -288,6 +289,35 @@ var ArzuzMotion = (function () {
     var onChange = function () { motionPrefs(); if (reduce) { leaveTilt(); reveal(); } };
     if (mq.addEventListener) mq.addEventListener('change', onChange);
     else if (mq.addListener) mq.addListener(onChange);
+  }
+
+  /* Scroll-linked header: shadow when scrolled, hide on scroll-down, show
+     on scroll-up. Matches native iOS app behavior. Uses passive listener
+     so it never blocks the scroll compositor thread. */
+  function bindHeader() {
+    var h = document.querySelector('header');
+    if (!h) return;
+    var last = window.scrollY;
+    var hidden = false;
+    window.addEventListener('scroll', function () {
+      var y = window.scrollY;
+      h.classList.toggle('scrolled', y > 4);
+      /* Only apply hide/show past 80px — avoids jitter at the very top */
+      if (y > 80) {
+        var goingDown = y > last;
+        if (goingDown && !hidden) {
+          h.classList.add('header-hidden');
+          hidden = true;
+        } else if (!goingDown && hidden) {
+          h.classList.remove('header-hidden');
+          hidden = false;
+        }
+      } else {
+        h.classList.remove('header-hidden');
+        hidden = false;
+      }
+      last = y;
+    }, { passive: true });
   }
 
   function boot() {
