@@ -311,7 +311,8 @@ function runHarness(dir) {
    go
    ------------------------------------------------------------ */
 
-const before = Object.fromEntries(GUARDED.map((f) => [f, sha(join(ROOT, f))]));
+const MIGRATIONS = join(ROOT, 'supabase', 'migrations');
+const before = Object.fromEntries(GUARDED.map((f) => [f, sha(join(MIGRATIONS, f))]));
 
 console.log(line);
 console.log('Arzuz SQL guard battery \u2014 break a guard, require the suite to notice');
@@ -369,7 +370,7 @@ for (const mutation of MUTATIONS) {
    did we leave the working tree alone?
    ------------------------------------------------------------ */
 
-const after = Object.fromEntries(GUARDED.map((f) => [f, sha(join(ROOT, f))]));
+const after = Object.fromEntries(GUARDED.map((f) => [f, sha(join(MIGRATIONS, f))]));
 const touched = GUARDED.filter((f) => before[f] !== after[f]);
 
 console.log('\n' + line);

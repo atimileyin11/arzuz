@@ -1,7 +1,7 @@
 {
   "name": "arzuz-site",
   "private": true,
-  "description": "Dev tooling for the Arzuz site. The site itself is plain HTML/CSS/JS plus Netlify Functions — nothing here is bundled into it.",
+  "description": "Dev tooling for the Arzuz site. The site itself is plain HTML/CSS/JS plus Netlify Functions \u2014 nothing here is bundled into it.",
   "scripts": {
     "sql:proof": "node dev/sql-proof.mjs",
     "sql:guards": "node dev/sql-guard-test.mjs",

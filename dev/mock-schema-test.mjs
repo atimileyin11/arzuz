@@ -253,6 +253,9 @@ const NO_MIRROR = {
   'status_code_deliveries.channel': 'whatsapp or email, chosen by the branch that sends. The status suite asserts each attempt names one of them.',
   'demand_records.applicant_type': 'written by the SQL door, never named in JavaScript; a NULL is legal, so nothing in the app needs to restate it.',
   'listings.applicant_type': 'same column, same door, same reason.',
+  'team_tasks.status': 'the board columns in team.html (COLS and the status picker) are inline HTML and object literals, not an exported list this file can read. The database refuses anything else, and the board only ever writes one of its five columns.',
+  'team_tasks.priority': 'chosen from the four-option select in team.html. Inline markup, not a named list, so there is nothing for this file to compare.',
+  'team_tasks.category': 'chosen from the six-option select in team.html. Inline markup, not a named list, so there is nothing for this file to compare.',
   'listings.draft_permission': 'view or edit, normalised by the dashboard (anything that is not "view" is "edit") — a defaulting rule, not a vocabulary that accepts words.',
 };
 

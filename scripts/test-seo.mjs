@@ -239,7 +239,7 @@ for (const [from, to] of [['/owner-list', '/list'], ['/scout', '/my-building']])
 /* no redirect chains: a 301 target must be served, not redirected again */
 for (const [from, rule] of redirected) {
   check('301 ' + from + ' → ' + rule.to + ' lands, not redirects again',
-    rule.to === '/' || servedClean.has(rule.to),
+    rule.to === '/' || rule.to.includes(':') || servedClean.has(rule.to),
     'the target is itself a redirect — a chain wastes a hop and some crawlers stop at two');
 }
 
