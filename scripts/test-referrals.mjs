@@ -823,7 +823,7 @@ await t('a private page is never advertised', async () => {
 });
 
 await t('clicks carry no identity, by migration as well as by code', async () => {
-  const sql = source('supabase-finance.sql');
+  const sql = source('supabase/migrations/supabase-finance.sql');
   if (sql.indexOf('create table if not exists referral_clicks') === -1) {
     throw new Error('the clicks table is not in the migration');
   }

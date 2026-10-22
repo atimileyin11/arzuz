@@ -275,7 +275,7 @@ check('an unvisited or evidence-less listing has no detail lines to print', () =
 /* ------------------------------------------------------------ */
 console.log('\n7. The module and the migration cannot drift apart\n');
 
-const SQL = readFileSync(join(SITE, 'supabase-verification-evidence.sql'), 'utf8');
+const SQL = readFileSync(join(SITE, 'supabase', 'migrations', 'supabase-verification-evidence.sql'), 'utf8');
 
 check('the CHECK constraint accepts exactly the kinds this module can name', () => {
   const m = /kind\s+text\s+not\s+null\s*\n?\s*check\s*\(\s*kind\s+in\s*\(([^)]+)\)/i.exec(SQL);
