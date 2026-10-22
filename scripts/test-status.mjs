@@ -1183,8 +1183,8 @@ await t('and it is noindexed with a header a crawler is guaranteed to read', () 
 
 await t('the new SQL file has a hard 404 like every other one', () => {
   const toml = readFileSync(join(SITE, 'netlify.toml'), 'utf8');
-  assert.match(toml, /from\s*=\s*"\/supabase-status-codes\.sql"\s*\n\s*to\s*=\s*"\/404\.html"\s*\n\s*status\s*=\s*404\s*\n\s*force\s*=\s*true/,
-    'supabase-status-codes.sql is served to anyone who asks for it');
+  assert.match(toml, /from\s*=\s*"\/supabase\/\*"\s*\n\s*to\s*=\s*"\/404\.html"\s*\n\s*status\s*=\s*404\s*\n\s*force\s*=\s*true/,
+    'the /supabase/* hard 404 is missing — supabase-status-codes.sql would be served to anyone who asks for it');
 });
 
 await t('the page loads the shared failure vocabulary and never stores the reference', () => {

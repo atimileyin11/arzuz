@@ -214,7 +214,7 @@ section('3. the numbers README.md and dev/admin-test-report.md quote');
 /* strip markdown emphasis so a phrase reads the same in both files */
 const flat = s => s.replace(/\*/g, '').replace(/\s+/g, ' ');
 const README = flat(read('README.md'));
-const REPORT = flat(read('dev/admin-test-report.md'));
+const REPORT = flat(read('docs/admin-test-report.md'));
 const commas = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 const WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight',
   'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen',
@@ -264,23 +264,23 @@ quotes('dev/invite-fixture.js (worst note)', iSrc, commas(inv.descLen) + '-chara
 quotes('dev/invite-fixture.js (worst note)', iSrc, inv.amenities + ' amenities and ' + inv.media + ' media');
 
 /* ---- the invite fixture: dev/admin-test-report.md ---- */
-quotes('dev/admin-test-report.md', REPORT, inv.nameLen + '-character lodge name');
-quotes('dev/admin-test-report.md', REPORT, inv.nameLen + '-char name');
-quotes('dev/admin-test-report.md', REPORT, '`cl_prop_name` ' + inv.nameLen + ' chars');
-quotes('dev/admin-test-report.md', REPORT, '₦' + commas(inv.rent) + ' rent and ask');
-quotes('dev/admin-test-report.md', REPORT, '₦' + (inv.rent / 1e6) + 'm rent and ask');
-quotes('dev/admin-test-report.md', REPORT, '`cl_rent` and `cl_ask` both `' + inv.rent + '`');
-quotes('dev/admin-test-report.md', REPORT, '`cl_units` `' + inv.units + '`');
-quotes('dev/admin-test-report.md', REPORT, commas(inv.descLen) + '-character description');
-quotes('dev/admin-test-report.md', REPORT, commas(inv.descLen) + '-char blurb');
-quotes('dev/admin-test-report.md', REPORT, '`cl_desc` ' + inv.descLen);
-quotes('dev/admin-test-report.md', REPORT, word(inv.amenities) + ' amenities');
-quotes('dev/admin-test-report.md', REPORT, inv.longestAmenity + ' characters long');
-quotes('dev/admin-test-report.md', REPORT, inv.longestAmenity + '-character label');
-quotes('dev/admin-test-report.md', REPORT, inv.media + ' media items');
-quotes('dev/admin-test-report.md', REPORT, 'a ' + word(inv.landmarkLines) + '-line note');
-quotes('dev/admin-test-report.md', REPORT, 'a ' + word(inv.landmarkLines) + '-line landmark');
-quotes('dev/admin-test-report.md', REPORT, word(inv.seeds) + ' generated seeds');
+quotes('docs/admin-test-report.md', REPORT, inv.nameLen + '-character lodge name');
+quotes('docs/admin-test-report.md', REPORT, inv.nameLen + '-char name');
+quotes('docs/admin-test-report.md', REPORT, '`cl_prop_name` ' + inv.nameLen + ' chars');
+quotes('docs/admin-test-report.md', REPORT, '₦' + commas(inv.rent) + ' rent and ask');
+quotes('docs/admin-test-report.md', REPORT, '₦' + (inv.rent / 1e6) + 'm rent and ask');
+quotes('docs/admin-test-report.md', REPORT, '`cl_rent` and `cl_ask` both `' + inv.rent + '`');
+quotes('docs/admin-test-report.md', REPORT, '`cl_units` `' + inv.units + '`');
+quotes('docs/admin-test-report.md', REPORT, commas(inv.descLen) + '-character description');
+quotes('docs/admin-test-report.md', REPORT, commas(inv.descLen) + '-char blurb');
+quotes('docs/admin-test-report.md', REPORT, '`cl_desc` ' + inv.descLen);
+quotes('docs/admin-test-report.md', REPORT, word(inv.amenities) + ' amenities');
+quotes('docs/admin-test-report.md', REPORT, inv.longestAmenity + ' characters long');
+quotes('docs/admin-test-report.md', REPORT, inv.longestAmenity + '-character label');
+quotes('docs/admin-test-report.md', REPORT, inv.media + ' media items');
+quotes('docs/admin-test-report.md', REPORT, 'a ' + word(inv.landmarkLines) + '-line note');
+quotes('docs/admin-test-report.md', REPORT, 'a ' + word(inv.landmarkLines) + '-line landmark');
+quotes('docs/admin-test-report.md', REPORT, word(inv.seeds) + ' generated seeds');
 
 /* ---- the listing fixture: both documents ---- */
 const lf = {
@@ -299,13 +299,13 @@ const lf = {
 
 quotes('README.md', README,
   lf.cells + ' declared cells over ' + lf.fields + ' fields, ' + word(lf.cases) + ' named cases');
-quotes('dev/admin-test-report.md', REPORT, lf.cells + ' cells over ' + lf.fields + ' fields');
-quotes('dev/admin-test-report.md', REPORT, word(lf.cases) + ' generated cases');
-quotes('dev/admin-test-report.md', REPORT, lf.worstNameLen + '-character unbroken name');
-quotes('dev/admin-test-report.md', REPORT, '`' + lf.worstRent + '`');
-quotes('dev/admin-test-report.md', REPORT, '`' + lf.worstTier + '`');
-quotes('dev/admin-test-report.md', REPORT, word(lf.worstAmenities) + ' amenities of which');
-quotes('dev/admin-test-report.md', REPORT,
+quotes('docs/admin-test-report.md', REPORT, lf.cells + ' cells over ' + lf.fields + ' fields');
+quotes('docs/admin-test-report.md', REPORT, word(lf.cases) + ' generated cases');
+quotes('docs/admin-test-report.md', REPORT, lf.worstNameLen + '-character unbroken name');
+quotes('docs/admin-test-report.md', REPORT, '`' + lf.worstRent + '`');
+quotes('docs/admin-test-report.md', REPORT, '`' + lf.worstTier + '`');
+quotes('docs/admin-test-report.md', REPORT, word(lf.worstAmenities) + ' amenities of which');
+quotes('docs/admin-test-report.md', REPORT,
   lf.hugeMedia + ' media / ' + lf.hugeFeatures + ' features / ' + lf.hugeSteps + ' steps / `' + lf.hugeRent + '`');
 
 /* ============================================================
